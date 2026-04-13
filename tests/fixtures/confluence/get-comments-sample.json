@@ -1,0 +1,48 @@
+{
+  "results": [
+    {
+      "id": "456789001",
+      "type": "comment",
+      "status": "current",
+      "title": "Re: Design Document",
+      "version": {
+        "number": 1,
+        "when": "2024-01-15T09:00:00.000Z",
+        "by": {
+          "displayName": "Alice Kim",
+          "name": "alice.kim"
+        }
+      },
+      "body": {
+        "view": {
+          "value": "<p>This design looks solid. One concern: have we considered backward compatibility?</p>",
+          "representation": "view"
+        }
+      }
+    },
+    {
+      "id": "456789002",
+      "type": "comment",
+      "status": "current",
+      "title": "Re: Design Document",
+      "version": {
+        "number": 1,
+        "when": "2024-01-16T11:30:00.000Z",
+        "by": {
+          "displayName": "Bob Lee",
+          "name": "bob.lee"
+        }
+      },
+      "body": {
+        "view": {
+          "value": "<p>Good point Alice. Let me add a migration section to address that.</p>",
+          "representation": "view"
+        }
+      }
+    }
+  ],
+  "start": 0,
+  "limit": 25,
+  "size": 2,
+  "_links": {}
+}

@@ -1,0 +1,14 @@
+{
+  "issue_key": "RLM-3",
+  "watcher_count": 1,
+  "is_watching": true,
+  "watchers": [
+    {
+      "display_name": "조은산(eunsan.jo) 연구원",
+      "name": "eunsan.jo",
+      "email": "eunsan.jo@example.com",
+      "avatar_url": "https://jira.example.com/secure/useravatar?ownerId=JIRAUSER14505&avatarId=14600",
+      "key": "JIRAUSER14505"
+    }
+  ]
+}

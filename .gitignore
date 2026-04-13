@@ -1,0 +1,58 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+
+# uv
+.venv/
+.python-version
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local dev artifacts
+.omc/
+.omx/
+/tmp/
+*.log
+
+# Secrets (never commit)
+.secrets/
+*.pem
+*.key
+
+# References (git submodule or manual clone — not part of this package)
+references/
+
+# Integration test fixtures with real company data
+/tests/fixtures/private/

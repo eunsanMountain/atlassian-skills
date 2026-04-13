@@ -1,0 +1,6 @@
+{
+  "_comment": "Expected response structure from POST /rest/api/2/issue (source: mcp-atlassian/jira/issues.py:693)",
+  "id": "999999",
+  "key": "RLM-99",
+  "self": "https://jira.example.com/rest/api/2/issue/999999"
+}

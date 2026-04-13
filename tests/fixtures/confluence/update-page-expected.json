@@ -1,0 +1,22 @@
+{
+  "_comment": "Expected response structure from PUT /rest/api/content/{id}. Note: version.number must be currentVersion+1 in request (optimistic concurrency). Source: mcp-atlassian/confluence/pages.py:676",
+  "id": "429140627",
+  "type": "page",
+  "status": "current",
+  "title": "[RLM-3] Navi Map 통합-경로 판단 개선",
+  "space": {
+    "key": "IVSL",
+    "name": "IVS Lab"
+  },
+  "version": {
+    "number": 3,
+    "when": "2026-04-13T10:00:00.000+0900",
+    "message": "Updated via atls"
+  },
+  "body": {
+    "storage": {
+      "value": "<p>Updated content</p>",
+      "representation": "storage"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "_comment": "Expected response structure from POST /rest/api/content (source: mcp-atlassian/confluence/pages.py:577)",
+  "id": "999999999",
+  "type": "page",
+  "status": "current",
+  "title": "Test Page",
+  "space": {
+    "key": "TEST",
+    "name": "Test Space"
+  },
+  "version": {
+    "number": 1,
+    "when": "2026-04-13T10:00:00.000+0900"
+  },
+  "body": {
+    "storage": {
+      "value": "<p>Test content</p>",
+      "representation": "storage"
+    }
+  },
+  "_links": {
+    "webui": "/pages/viewpage.action?pageId=999999999",
+    "self": "https://confluence.example.com/rest/api/content/999999999"
+  }
+}

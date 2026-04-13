@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "id": "100001",
+      "prefix": "global",
+      "name": "architecture",
+      "label": "architecture"
+    },
+    {
+      "id": "100002",
+      "prefix": "global",
+      "name": "reviewed",
+      "label": "reviewed"
+    },
+    {
+      "id": "100003",
+      "prefix": "my",
+      "name": "important",
+      "label": "important"
+    }
+  ],
+  "start": 0,
+  "limit": 200,
+  "size": 3,
+  "_links": {}
+}

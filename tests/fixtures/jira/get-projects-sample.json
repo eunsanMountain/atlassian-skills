@@ -1,0 +1,35 @@
+[
+  {
+    "id": "10000",
+    "key": "TEST",
+    "name": "Test Project",
+    "projectTypeKey": "software",
+    "description": "Test project for unit tests",
+    "lead": {
+      "displayName": "Test Lead",
+      "name": "test.lead"
+    }
+  },
+  {
+    "id": "10001",
+    "key": "DEMO",
+    "name": "Demo Project",
+    "projectTypeKey": "business",
+    "description": "Demo project for testing",
+    "lead": {
+      "displayName": "Demo Lead",
+      "name": "demo.lead"
+    }
+  },
+  {
+    "id": "10002",
+    "key": "SAMPLE",
+    "name": "Sample Project",
+    "projectTypeKey": "service_desk",
+    "description": "Sample project with service desk",
+    "lead": {
+      "displayName": "Sample Lead",
+      "name": "sample.lead"
+    }
+  }
+]

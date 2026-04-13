@@ -1,0 +1,12 @@
+[
+  {
+    "id": "395",
+    "name": "Kanban",
+    "type": "kanban"
+  },
+  {
+    "id": "394",
+    "name": "Scrum Board",
+    "type": "scrum"
+  }
+]

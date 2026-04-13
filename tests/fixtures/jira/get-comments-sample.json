@@ -1,0 +1,43 @@
+{
+  "startAt": 0,
+  "maxResults": 100,
+  "total": 3,
+  "comments": [
+    {
+      "id": "10101",
+      "self": "https://jira.example.com/rest/api/2/issue/TEST-1/comment/10101",
+      "author": {
+        "displayName": "John Smith",
+        "name": "john.smith",
+        "emailAddress": "john.smith@example.com"
+      },
+      "body": "I've analyzed this issue and found that we need to update the configuration settings.",
+      "created": "2024-01-15T09:14:01.240+0000",
+      "updated": "2024-01-15T09:14:15.433+0000"
+    },
+    {
+      "id": "10102",
+      "self": "https://jira.example.com/rest/api/2/issue/TEST-1/comment/10102",
+      "author": {
+        "displayName": "Jane Doe",
+        "name": "jane.doe",
+        "emailAddress": "jane.doe@example.com"
+      },
+      "body": "I agree with John. Let's schedule a meeting to discuss the implementation details.",
+      "created": "2024-01-15T14:35:28.392+0000",
+      "updated": "2024-01-15T14:35:28.392+0000"
+    },
+    {
+      "id": "10103",
+      "self": "https://jira.example.com/rest/api/2/issue/TEST-1/comment/10103",
+      "author": {
+        "displayName": "Robert Johnson",
+        "name": "robert.johnson",
+        "emailAddress": "robert.johnson@example.com"
+      },
+      "body": "I've created a draft implementation. Please review the code changes in the linked PR.",
+      "created": "2024-01-18T10:47:53.672+0000",
+      "updated": "2024-01-18T11:01:55.589+0000"
+    }
+  ]
+}

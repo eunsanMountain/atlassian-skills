@@ -1,0 +1,80 @@
+# serializer version: 1
+# name: test_auth_error_json_snapshot
+  '''
+  {
+    "error": {
+      "code": "AUTH",
+      "exit_code": 6,
+      "message": "Unauthorized",
+      "hint": "Check your personal access token",
+      "http_status": 401,
+      "http_url": "https://jira.example.com/rest/api/2/issue/PROJ-1",
+      "http_method": "GET"
+    }
+  }
+  '''
+# ---
+# name: test_conflict_error_json_snapshot
+  '''
+  {
+    "error": {
+      "code": "CONFLICT",
+      "exit_code": 4,
+      "message": "Conflict: https://jira.example.com/rest/api/2/issue/PROJ-1",
+      "hint": "Use --if-version to check current version before updating",
+      "http_status": 409,
+      "http_url": "https://jira.example.com/rest/api/2/issue/PROJ-1",
+      "http_method": "PUT",
+      "context": {
+        "server_message": "Version mismatch"
+      }
+    }
+  }
+  '''
+# ---
+# name: test_not_found_error_json_snapshot
+  '''
+  {
+    "error": {
+      "code": "NOT_FOUND",
+      "exit_code": 2,
+      "message": "Issue PROJ-1 not found",
+      "http_status": 404,
+      "http_url": "https://jira.example.com/rest/api/2/issue/PROJ-1",
+      "http_method": "GET"
+    }
+  }
+  '''
+# ---
+# name: test_rate_limit_error_json_snapshot
+  '''
+  {
+    "error": {
+      "code": "RATE_LIMITED",
+      "exit_code": 11,
+      "message": "Rate limited: https://jira.example.com/rest/api/2/issue/PROJ-1",
+      "hint": "Retry after the indicated delay",
+      "http_status": 429,
+      "http_url": "https://jira.example.com/rest/api/2/issue/PROJ-1",
+      "http_method": "GET"
+    }
+  }
+  '''
+# ---
+# name: test_validation_error_json_snapshot
+  '''
+  {
+    "error": {
+      "code": "VALIDATION",
+      "exit_code": 7,
+      "message": "Bad request: field 'summary' is required",
+      "http_status": 400,
+      "http_url": "https://jira.example.com/rest/api/2/issue/PROJ-1",
+      "http_method": "POST",
+      "context": {
+        "field": "summary"
+      }
+    }
+  }
+  '''
+# ---
