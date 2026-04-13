@@ -112,6 +112,7 @@ class Issue(BaseModel):
     resolution_date: str | None = None
     due_date: str | None = None
     parent: Issue | None = None
+    attachment: list[dict[str, Any]] = Field(default_factory=list)
     custom_fields: dict[str, Any] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="before")
@@ -175,9 +176,31 @@ class JiraField(BaseModel):
 class Board(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
-    id: str
+    id: int
     name: str
     type: str
+
+
+class JiraAttachment(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    id: str
+    filename: str = ""
+    size: int | None = None
+    mime_type: str | None = Field(default=None, alias="mimeType")
+    author: User | None = None
+    created: str | None = None
+
+
+class JiraComment(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    id: str
+    body: str | None = None
+    author: User | None = None
+    update_author: User | None = Field(default=None, alias="updateAuthor")
+    created: str | None = None
+    updated: str | None = None
 
 
 class Worklog(BaseModel):

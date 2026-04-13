@@ -387,7 +387,15 @@ def test_get_space_tree_empty_space(client: ConfluenceClient) -> None:
 @respx.mock
 def test_download_attachment_to_specified_path(client: ConfluenceClient, tmp_path: Path) -> None:
     content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-    respx.get(f"{BASE_URL}/rest/api/content/att42/download").mock(
+    dl_path = "/download/attachments/123/image.png?version=1&api=v2"
+    # When no download_link is given, client fetches metadata to find the link
+    respx.get(f"{BASE_URL}/rest/api/content/att42").mock(
+        return_value=httpx.Response(200, json={
+            "id": "att42", "title": "image.png",
+            "_links": {"download": dl_path},
+        })
+    )
+    respx.get(f"{BASE_URL}/download/attachments/123/image.png").mock(
         return_value=httpx.Response(200, content=content)
     )
     dest = tmp_path / "subdir" / "image.png"
@@ -403,22 +411,25 @@ def test_download_attachment_to_specified_path(client: ConfluenceClient, tmp_pat
 def test_download_all_attachments_mixed_content_types(client: ConfluenceClient, tmp_path: Path) -> None:
     list_fixture = {
         "results": [
-            {"id": "att1", "title": "photo.jpg", "mediaType": "image/jpeg", "fileSize": 1000},
-            {"id": "att2", "title": "notes.pdf", "mediaType": "application/pdf", "fileSize": 5000},
-            {"id": "att3", "title": "data.csv", "mediaType": "text/csv", "fileSize": 200},
+            {"id": "att1", "title": "photo.jpg", "mediaType": "image/jpeg", "fileSize": 1000,
+             "_links": {"download": "/download/attachments/200/photo.jpg?api=v2"}},
+            {"id": "att2", "title": "notes.pdf", "mediaType": "application/pdf", "fileSize": 5000,
+             "_links": {"download": "/download/attachments/200/notes.pdf?api=v2"}},
+            {"id": "att3", "title": "data.csv", "mediaType": "text/csv", "fileSize": 200,
+             "_links": {"download": "/download/attachments/200/data.csv?api=v2"}},
         ],
         "_links": {},
     }
     respx.get(f"{BASE_URL}/rest/api/content/200/child/attachment").mock(
         return_value=httpx.Response(200, json=list_fixture)
     )
-    respx.get(f"{BASE_URL}/rest/api/content/att1/download").mock(
+    respx.get(f"{BASE_URL}/download/attachments/200/photo.jpg").mock(
         return_value=httpx.Response(200, content=b"jpg-data")
     )
-    respx.get(f"{BASE_URL}/rest/api/content/att2/download").mock(
+    respx.get(f"{BASE_URL}/download/attachments/200/notes.pdf").mock(
         return_value=httpx.Response(200, content=b"pdf-data")
     )
-    respx.get(f"{BASE_URL}/rest/api/content/att3/download").mock(
+    respx.get(f"{BASE_URL}/download/attachments/200/data.csv").mock(
         return_value=httpx.Response(200, content=b"csv-data")
     )
 

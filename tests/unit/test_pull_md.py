@@ -101,7 +101,7 @@ class TestPullMdResolveAssetsSidecar:
 
         result = _resolve_assets_sidecar(client, "12345", md_with_marker, asset_dir, md_path)
 
-        client.download_attachment.assert_called_once_with("att-001", asset_dir / "diagram.png")
+        client.download_attachment.assert_called_once_with("att-001", asset_dir / "diagram.png", download_link=None)
         assert "assets/diagram.png" in result
         # Marker is preserved
         assert '<!-- cfxmark:asset src="diagram.png" -->' in result

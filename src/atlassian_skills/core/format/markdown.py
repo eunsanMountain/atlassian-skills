@@ -155,14 +155,25 @@ def md_to_confluence_storage(source: str) -> str:
     return result.xhtml or ""
 
 
+def _extract_name(value: Any) -> str:
+    """Extract display name from a field that may be a string, dict, or None."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return value.get("display_name", value.get("displayName", value.get("name", "")))
+    return str(value)
+
+
 def format_md_issue(issue: dict[str, Any]) -> str:
     """Format a Jira issue dict as Markdown with description converted from wiki markup."""
     key = issue.get("key", "")
     summary = issue.get("summary", "")
-    status = issue.get("status", "")
-    issuetype = issue.get("issuetype", issue.get("type", ""))
-    priority = issue.get("priority", "")
-    assignee = issue.get("assignee", "")
+    status = _extract_name(issue.get("status"))
+    issuetype = _extract_name(issue.get("issuetype") or issue.get("issue_type") or issue.get("type"))
+    priority = _extract_name(issue.get("priority"))
+    assignee = _extract_name(issue.get("assignee"))
     description_raw = issue.get("description", "")
     description_md = jira_wiki_to_md(description_raw) if description_raw else ""
 

@@ -19,15 +19,18 @@
 # ---
 # name: test_confluence_search_compact
   '''
-   | None | page |  |  |  | 
-   | None | page |  |  |  | 
-   | None | page |  |  |  | 
+  429148294 | [RLM-23] Multi-Dataset 학습 인프라 | page | space:IVSL | v
+  url:https://confluence.example.com/pages/viewpage.action?pageId=429148294
+  429148028 | [RLM-20] Navi 정보 기반 쿼리 생성 모델 구현 | page | space:IVSL | v
+  url:https://confluence.example.com/pages/viewpage.action?pageId=429148028
+  429148293 | [RLM-22] 4-Dataset Subset 재구축 + SSD 용량 산정 | page | space:IVSL | v
+  url:https://confluence.example.com/pages/viewpage.action?pageId=429148293
   
   '''
 # ---
 # name: test_confluence_search_json_format
   '''
-  [{"id":"429148294","title":"[RLM-23] Multi-Dataset 학습 인프라","type":"page","status":null,"space":{"id":null,"key":"IVSL","name":"Space IVSL","type":null},"version":null,"body_storage":null,"body_view":null,"ancestors":[],"children":[],"links":null,"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148294","content":{"value":"Story Summary\nBehavior\n@@@hl@@@RLM@@@endhl@@@ 학습 파이프라인이 4개 데이터셋(av2\\_sensor, nuscenes, nuplan, av2\\_motion)을 하나의 학습 루프에서 사용할 수 있게 된다 …","format":"view"},"attachments":[],"created":"","updated":"","emoji":null},{"id":"429148028","title":"[RLM-20] Navi 정보 기반 쿼리 생성 모델 구현","type":"page","status":null,"space":{"id":null,"key":"IVSL","name":"Space IVSL","type":null},"version":null,"body_storage":null,"body_view":null,"ancestors":[],"children":[],"links":null,"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148028","content":{"value":".\nWhy\n@@@hl@@@RLM@@@endhl@@@ 모델은 BEV Grid Map만으로 경로를 예측하므로, 전방 분기점 방향/거리, 도로 등급/차로수 등 글로벌 경로 정보가 부재하다.","format":"view"},"attachments":[],"created":"","updated":"","emoji":null},{"id":"429148293","title":"[RLM-22] 4-Dataset Subset 재구축 + SSD 용량 산정","type":"page","status":null,"space":{"id":null,"key":"IVSL","name":"Space IVSL","type":null},"version":null,"body_storage":null,"body_view":null,"ancestors":[],"children":[],"links":null,"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148293","content":{"value":"+ ring\\_front\\_center(portrait) 기준이다. @@@hl@@@RLM@@@endhl@@@-13에서 정의한 2-stage normalize를 적용하려면 subset 자체를 재구축해야 한다.","format":"view"},"attachments":[],"created":"","updated":"","emoji":null}]
+  [{"id":"429148294","title":"[RLM-23] Multi-Dataset 학습 인프라","type":"page","space":{"key":"IVSL","name":"Space IVSL"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148294","content":{"value":"Story Summary\nBehavior\n@@@hl@@@RLM@@@endhl@@@ 학습 파이프라인이 4개 데이터셋(av2\\_sensor, nuscenes, nuplan, av2\\_motion)을 하나의 학습 루프에서 사용할 수 있게 된다 …","format":"view"},"attachments":[],"created":"","updated":""},{"id":"429148028","title":"[RLM-20] Navi 정보 기반 쿼리 생성 모델 구현","type":"page","space":{"key":"IVSL","name":"Space IVSL"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148028","content":{"value":".\nWhy\n@@@hl@@@RLM@@@endhl@@@ 모델은 BEV Grid Map만으로 경로를 예측하므로, 전방 분기점 방향/거리, 도로 등급/차로수 등 글로벌 경로 정보가 부재하다.","format":"view"},"attachments":[],"created":"","updated":""},{"id":"429148293","title":"[RLM-22] 4-Dataset Subset 재구축 + SSD 용량 산정","type":"page","space":{"key":"IVSL","name":"Space IVSL"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148293","content":{"value":"+ ring\\_front\\_center(portrait) 기준이다. @@@hl@@@RLM@@@endhl@@@-13에서 정의한 2-stage normalize를 적용하려면 subset 자체를 재구축해야 한다.","format":"view"},"attachments":[],"created":"","updated":""}]
   
   '''
 # ---

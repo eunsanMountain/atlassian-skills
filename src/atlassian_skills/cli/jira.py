@@ -502,8 +502,7 @@ def board_list(
     try:
         client = _make_client(ctx.obj)
         boards = client.list_boards(name=name, project=project)
-        data = [b.model_dump() for b in boards]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(boards, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -544,8 +543,7 @@ def sprint_list(
     try:
         client = _make_client(ctx.obj)
         sprints = client.list_sprints(board_id, state=state)
-        data = [s.model_dump() for s in sprints]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(sprints, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -674,6 +672,28 @@ def watcher_list(
 
 
 # ---------------------------------------------------------------------------
+# attachment list <key>
+# ---------------------------------------------------------------------------
+
+
+@attachment_app.command("list")
+def attachment_list(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """List attachments for an issue."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        attachments = client.get_attachment_content(key)
+        typer.echo(format_output(attachments, fmt), err=False)
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+# ---------------------------------------------------------------------------
 # attachment download <key> [--output-dir]
 # ---------------------------------------------------------------------------
 
@@ -685,7 +705,7 @@ def attachment_download(
     output_dir: str = typer.Option(".", "--output-dir", "-o", help="Directory to save attachments"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
-    """List attachments for an issue (download not yet implemented)."""
+    """Download attachments for an issue (not yet implemented — currently lists only)."""
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
@@ -949,8 +969,25 @@ def issue_transition(
 
 
 # ---------------------------------------------------------------------------
-# comment add / edit
+# comment list / add / edit
 # ---------------------------------------------------------------------------
+
+
+@comment_app.command("list")
+def comment_list(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """List comments on an issue."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        comments = client.list_comments(key)
+        typer.echo(format_output(comments, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
 
 
 @comment_app.command("add")

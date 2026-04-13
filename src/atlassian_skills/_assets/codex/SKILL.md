@@ -10,6 +10,40 @@ description: Use when the task involves Jira or Confluence and the preferred pat
 ## When to use
 Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations.
 
+## Command tree
+```
+atls
+├── jira
+│   ├── issue        get, search, create, update, delete, transition, transitions, dates, sla, images
+│   ├── issue-batch  create
+│   ├── epic         link
+│   ├── comment      list, add, edit, delete
+│   ├── sprint       list, issues, create, update, add-issues
+│   ├── board        list, issues
+│   ├── field        search, options
+│   ├── link         list-types, create, remote-create, delete
+│   ├── worklog      list, add
+│   ├── watcher      list, add, remove
+│   ├── attachment   list, upload, download, delete
+│   ├── dev-info     get, get-many
+│   ├── service-desk list, queues, queue-issues
+│   ├── project      list, issues, versions, components, versions-create
+│   └── user         get
+└── confluence
+    ├── page         get, search, children, history, diff, images, create, update, delete, move, push-md, pull-md, diff-local
+    ├── space        tree
+    ├── comment      list, add, reply
+    ├── label        list, add
+    ├── attachment   list, upload, upload-batch, download, download-all, delete
+    └── user         search
+```
+
+When unsure, navigate with `--help`:
+```bash
+atls jira --help          # subgroups: issue, epic, comment, sprint, ...
+atls jira issue --help    # actions: get, search, create, ...
+```
+
 ## Format selection
 1. List/scan many items? → `--format=compact` (default, fewest tokens)
 2. Parse fields programmatically? → `--format=json`
@@ -17,10 +51,12 @@ Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations
 4. Preserve byte-exact server response? → `--format=raw`
 
 ## Format placement
-- Global: `atls --format=json jira issue get KEY`
-- Local: `atls jira issue get KEY --format=json`
-- Prefer local `--format=...` after the subcommand.
-- If a command already uses `-f` for a file input (`page create`, `page update`, `page push-md`, comment body flags), use the long form `--format`, not `-f`.
+- **Never use `-f` as a short form for `--format`** — several commands use `-f` for file input (`page create`, `page update`, `push-md`, `confluence comment add/reply`), so `-f json` may be silently interpreted as a filename.
+- Always use the long form `--format=...` after the subcommand.
+
+## page update vs push-md
+- `page update`: Low-level. Replace page body directly (`--body-format=storage|md`). No attachment handling.
+- `push-md`: High-level. Markdown-native with attachment syncing, passthrough comments, asset-dir, no-change detection. **Prefer this for markdown workflows.**
 
 ## Common patterns
 ```bash
@@ -28,8 +64,11 @@ Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations
 atls jira issue get KEY                    # compact view
 atls jira issue search "project=PROJ"      # JQL search
 atls jira issue create --project PROJ --type Story --summary "..." --body-file=-
-atls jira issue transition KEY --transition-id ID
 atls jira issue update KEY --body-file=- --body-format=md --heading-promotion=jira
+
+# Jira transition (2-step: discover ID, then transition)
+atls jira issue transitions KEY --format=json   # → [{"id":"31","name":"In Progress"},...]
+atls jira issue transition KEY --transition-id 31
 
 # Confluence
 atls confluence page get ID                # compact view
@@ -51,10 +90,13 @@ atls confluence page diff-local ID page.md --passthrough-prefix workflow:
 |---|---|---|
 | `--if-version N` | push-md, page update | Optimistic lock (exit 5 if stale) |
 | `--asset-dir DIR` | push-md, pull-md | Batch attach / download assets (missing dir on push-md = empty set) |
+| `--output -o PATH` | pull-md | Write markdown to file instead of stdout |
 | `--resolve-assets=sidecar` | pull-md | Download attachments, rewrite image links |
-| `--passthrough-prefix P` | push-md, pull-md, diff-local | Preserve `<!-- P:... -->` comments |
+| `--passthrough-prefix P` | push-md, pull-md, diff-local, issue update | Preserve `<!-- P:... -->` comments |
 | `--md-file -` | push-md | Read markdown from stdin |
-| `--heading-promotion jira` | issue update | Heading level adjust for md→wiki |
+| `--body-repr md\|raw\|wiki` | issue get, issue search | Control body representation (separate from `--format`) |
+| `--heading-promotion jira` | issue update, issue get, issue search | Heading level adjust for md↔wiki |
+| `--section "H2 Title"` | issue get, issue search | Extract specific H2 section from body |
 
 ## Exit codes
 | Code | Meaning |
@@ -63,19 +105,22 @@ atls confluence page diff-local ID page.md --passthrough-prefix workflow:
 | 2 | Not found — check key/ID |
 | 3 | Permission denied — check PAT scopes |
 | 4 | Conflict — fetch current version, use `--if-version` |
+| 5 | Stale — re-fetch, then re-apply changes |
 | 6 | Auth failure — check ATLS_*_TOKEN env var |
+| 7 | Validation error — fix request parameters |
+| 10 | Network / server error — retry after delay |
 | 11 | Rate limited — wait and retry |
 
 ## Jira wiki flags (--format=md)
 ```bash
-atls jira issue get KEY -f md --section "Acceptance Criteria"
-atls jira issue get KEY -f md --drop-leading-notice "Auto-generated"
+atls jira issue get KEY --format=md --section "Acceptance Criteria"
+atls jira issue get KEY --format=md --drop-leading-notice "Auto-generated"
 ```
 
 ## JSON output parsing
 ```bash
 atls confluence page push-md ID --md-file p.md --format=json  # push-md uses -f for --md-file
-atls confluence page pull-md ID --format=json                 # → {"markdown":"...","version":15,"title":"..."}
+atls confluence page pull-md ID --format=json                  # → {"markdown":"...","version":15,"title":"..."}
 atls jira issue get KEY --format=json | jq '{key, summary}'
 atls jira issue search "project=PROJ" --format=json | jq '.[].key'
 atls jira issue get KEY --fields=summary,customfield_10100 --format=json | jq '.customfield_10100'

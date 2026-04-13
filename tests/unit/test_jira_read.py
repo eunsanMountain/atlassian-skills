@@ -201,10 +201,10 @@ def test_list_boards_returns_boards(client: JiraClient) -> None:
 
     assert len(boards) == 2
     assert all(isinstance(b, Board) for b in boards)
-    assert boards[0].id == "395"
+    assert boards[0].id == 395
     assert boards[0].name == "Kanban"
     assert boards[0].type == "kanban"
-    assert boards[1].id == "394"
+    assert boards[1].id == 394
     assert boards[1].type == "scrum"
 
 

@@ -30,12 +30,12 @@ def _claude_md_block() -> str:
     return f"""{_ATLS_CLAUDE_BLOCK_START}
 <!-- ATLS:VERSION:{ver} -->
 ## Atlassian (atls)
-- Atlassian(Jira, Confluence) 작업에는 `atls` CLI를 사용한다 (mcp-atlassian MCP 대신).
-- 사용법: `/atls` 커맨드로 전체 가이드 로드, 또는 `atls <command> --help`.
-- 쓰기 작업 전 반드시 `--dry-run` 먼저 실행.
-- 기본 출력은 compact (최소 토큰). 본문 필요시 `--format=md`, 파싱시 `--format=json`.
-- `--format`은 전역(`atls --format=json ...`) 또는 Jira/Confluence 커맨드 로컬(`... --format=json`)로 둘 다 사용 가능.
-- `page push-md` 같은 일부 커맨드는 `-f`를 파일 입력에 사용하므로, 포맷은 긴 플래그 `--format`을 쓴다.
+- Use `atls` CLI for all Atlassian (Jira, Confluence) operations instead of mcp-atlassian MCP.
+- Usage: load the full guide with `/atls`, or run `atls <command> --help`.
+- Always run `--dry-run` before write operations.
+- Default output is compact (minimal tokens). Use `--format=md` for body reading, `--format=json` for parsing.
+- `--format` works both globally (`atls --format=json ...`) and locally on subcommands (`... --format=json`).
+- Some commands use `-f` for file input (e.g. `page push-md`), so use the long form `--format` for output format.
 {_ATLS_CLAUDE_BLOCK_END}"""
 
 
@@ -45,12 +45,12 @@ def _codex_agents_block() -> str:
     return f"""{_ATLS_CODEX_BLOCK_START}
 <!-- ATLS:VERSION:{ver} -->
 ## Atlassian via atls
-- Jira/Confluence 작업에는 Atlassian MCP 대신 `atls` CLI를 우선 사용한다.
-- 자세한 절차, 포맷 선택, 쓰기 안전 규칙이 필요하면 `$atls` skill을 사용한다.
-- 쓰기 작업 전에는 반드시 `--dry-run`을 먼저 실행한다.
-- 목록/스캔은 compact, 본문 읽기는 `--format=md`, 파싱은 `--format=json`, 원문 보존은 `--format=raw`.
-- `--format`은 전역 또는 Jira/Confluence 서브커맨드 로컬로 둘 다 사용할 수 있다.
-- `page push-md` 같은 일부 커맨드는 `-f`가 파일 입력이므로 포맷은 `--format` 긴 플래그를 사용한다.
+- Prefer `atls` CLI over Atlassian MCP tools for all Jira/Confluence operations.
+- Use the `$atls` skill for detailed format selection, write safety rules, and workflows.
+- Always run `--dry-run` before write operations.
+- Listing/scanning: compact (default). Body reading: `--format=md`. Parsing: `--format=json`. Raw: `--format=raw`.
+- `--format` works both globally and locally on Jira/Confluence subcommands.
+- Some commands use `-f` for file input (e.g. `page push-md`), so use the long form `--format` for output format.
 {_ATLS_CODEX_BLOCK_END}"""
 
 

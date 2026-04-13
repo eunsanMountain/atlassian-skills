@@ -26,7 +26,15 @@ def format_output(data: Any, fmt: OutputFormat) -> str:
 
         return format_raw(data)
     if fmt == OutputFormat.MD:
-        # markdown format on a plain dict/model — render as JSON fallback
+        from atlassian_skills.core.format.markdown import format_md_issue
+
+        # Single issue dict with "key" → markdown rendering
+        if isinstance(data, dict) and "key" in data:
+            return format_md_issue(data)
+        # List of issue dicts
+        if isinstance(data, list) and data and isinstance(data[0], dict) and "key" in data[0]:
+            return "\n\n---\n\n".join(format_md_issue(item) for item in data)
+        # Fallback: JSON for non-issue data
         from atlassian_skills.core.format.json_fmt import format_json
 
         return format_json(data)

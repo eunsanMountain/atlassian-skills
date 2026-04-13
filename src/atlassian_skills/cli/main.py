@@ -31,7 +31,7 @@ def main(
     ),
     fields: str | None = typer.Option(None, "--fields", help="Comma-separated fields to include"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
-    verbose: int = typer.Option(0, "--verbose", "-v", help="Verbosity level (0-3)"),
+    verbose: int = typer.Option(0, "--verbose", help="Verbosity level (0-3)"),
     timeout: float = typer.Option(30.0, "--timeout", help="Request timeout in seconds"),
 ) -> None:
     ctx.ensure_object(dict)

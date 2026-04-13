@@ -333,7 +333,14 @@ def test_get_space_tree_returns_result(client: ConfluenceClient) -> None:
 @respx.mock
 def test_download_attachment(client: ConfluenceClient, tmp_path: Path) -> None:
     content = b"file-content-bytes"
-    respx.get(f"{BASE_URL}/rest/api/content/att100/download").mock(
+    dl_path = "/download/attachments/99/test.bin?api=v2"
+    respx.get(f"{BASE_URL}/rest/api/content/att100").mock(
+        return_value=httpx.Response(200, json={
+            "id": "att100", "title": "test.bin",
+            "_links": {"download": dl_path},
+        })
+    )
+    respx.get(f"{BASE_URL}/download/attachments/99/test.bin").mock(
         return_value=httpx.Response(200, content=content)
     )
 
@@ -353,18 +360,20 @@ def test_download_all_attachments(client: ConfluenceClient, tmp_path: Path) -> N
     # Mock list attachments
     list_fixture = {
         "results": [
-            {"id": "att1", "title": "file1.txt", "mediaType": "text/plain", "fileSize": 100},
-            {"id": "att2", "title": "file2.txt", "mediaType": "text/plain", "fileSize": 200},
+            {"id": "att1", "title": "file1.txt", "mediaType": "text/plain", "fileSize": 100,
+             "_links": {"download": "/download/attachments/100/file1.txt?api=v2"}},
+            {"id": "att2", "title": "file2.txt", "mediaType": "text/plain", "fileSize": 200,
+             "_links": {"download": "/download/attachments/100/file2.txt?api=v2"}},
         ],
         "_links": {},
     }
     respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
         return_value=httpx.Response(200, json=list_fixture)
     )
-    respx.get(f"{BASE_URL}/rest/api/content/att1/download").mock(
+    respx.get(f"{BASE_URL}/download/attachments/100/file1.txt").mock(
         return_value=httpx.Response(200, content=b"content1")
     )
-    respx.get(f"{BASE_URL}/rest/api/content/att2/download").mock(
+    respx.get(f"{BASE_URL}/download/attachments/100/file2.txt").mock(
         return_value=httpx.Response(200, content=b"content2")
     )
 
@@ -558,7 +567,14 @@ def test_list_attachments_multiple_types(client: ConfluenceClient) -> None:
 @respx.mock
 def test_download_attachment_returns_correct_path(client: ConfluenceClient, tmp_path: Path) -> None:
     content = b"binary file content here"
-    respx.get(f"{BASE_URL}/rest/api/content/att500/download").mock(
+    dl_path = "/download/attachments/99/output.bin?api=v2"
+    respx.get(f"{BASE_URL}/rest/api/content/att500").mock(
+        return_value=httpx.Response(200, json={
+            "id": "att500", "title": "output.bin",
+            "_links": {"download": dl_path},
+        })
+    )
+    respx.get(f"{BASE_URL}/download/attachments/99/output.bin").mock(
         return_value=httpx.Response(200, content=content)
     )
 
@@ -571,7 +587,14 @@ def test_download_attachment_returns_correct_path(client: ConfluenceClient, tmp_
 @respx.mock
 def test_download_attachment_creates_parent_dirs(client: ConfluenceClient, tmp_path: Path) -> None:
     content = b"file content"
-    respx.get(f"{BASE_URL}/rest/api/content/att600/download").mock(
+    dl_path = "/download/attachments/99/file.txt?api=v2"
+    respx.get(f"{BASE_URL}/rest/api/content/att600").mock(
+        return_value=httpx.Response(200, json={
+            "id": "att600", "title": "file.txt",
+            "_links": {"download": dl_path},
+        })
+    )
+    respx.get(f"{BASE_URL}/download/attachments/99/file.txt").mock(
         return_value=httpx.Response(200, content=content)
     )
 

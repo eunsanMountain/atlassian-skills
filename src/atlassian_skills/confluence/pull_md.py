@@ -91,9 +91,11 @@ def _resolve_assets_sidecar(
     if not markers:
         return md_content
 
-    # Build filename -> attachment_id map
+    # Build filename -> (attachment_id, download_link) map
     attachments = client.list_attachments(page_id)
-    att_map: dict[str, str] = {a.title: a.id for a in attachments}
+    att_map: dict[str, tuple[str, str | None]] = {
+        a.title: (a.id, a.links.download if a.links else None) for a in attachments
+    }
 
     # Compute relative link base
     if md_path is not None:
@@ -109,9 +111,9 @@ def _resolve_assets_sidecar(
     for _prefix, _old_src, _suffix, original_filename in markers:
         if original_filename not in att_map:
             continue
-        att_id = att_map[original_filename]
+        att_id, dl_link = att_map[original_filename]
         dest = asset_dir / original_filename
-        client.download_attachment(att_id, dest)
+        client.download_attachment(att_id, dest, download_link=dl_link)
 
         # Rewrite: ![alt](old_src)<!-- ... --> -> ![alt](assets/filename)<!-- ... -->
         new_src = f"{link_base}{original_filename}"

@@ -6,6 +6,40 @@
 For ALL Atlassian operations (Jira, Confluence), prefer `atls` CLI over `mcp__mcp-atlassian__*` MCP tools.
 atls provides the same functionality with 50%+ fewer tokens.
 
+## Command tree
+```
+atls
+├── jira
+│   ├── issue        get, search, create, update, delete, transition, transitions, dates, sla, images
+│   ├── issue-batch  create
+│   ├── epic         link
+│   ├── comment      list, add, edit, delete
+│   ├── sprint       list, issues, create, update, add-issues
+│   ├── board        list, issues
+│   ├── field        search, options
+│   ├── link         list-types, create, remote-create, delete
+│   ├── worklog      list, add
+│   ├── watcher      list, add, remove
+│   ├── attachment   list, upload, download, delete
+│   ├── dev-info     get, get-many
+│   ├── service-desk list, queues, queue-issues
+│   ├── project      list, issues, versions, components, versions-create
+│   └── user         get
+└── confluence
+    ├── page         get, search, children, history, diff, images, create, update, delete, move, push-md, pull-md, diff-local
+    ├── space        tree
+    ├── comment      list, add, reply
+    ├── label        list, add
+    ├── attachment   list, upload, upload-batch, download, download-all, delete
+    └── user         search
+```
+
+When unsure, navigate with `--help`:
+```bash
+atls jira --help          # subgroups: issue, epic, comment, sprint, ...
+atls jira issue --help    # actions: get, search, create, ...
+```
+
 ## Format selection decision tree
 1. Need to list/scan many items? → `--format=compact` (default, fewest tokens)
 2. Need to parse fields programmatically? → `--format=json`
@@ -13,17 +47,19 @@ atls provides the same functionality with 50%+ fewer tokens.
 4. Need to preserve byte-exact server response? → `--format=raw`
 
 ## Format placement
-- Global: `atls --format=json jira issue get KEY`
-- Local: `atls jira issue get KEY --format=json`
-- Prefer the long local form `--format=...` after the subcommand.
-- If a command already uses `-f` for a file flag (`page create`, `page update`, `page push-md`, comment body flags), keep using the long `--format` form after the command.
+- **Never use `-f` as a short form for `--format`** — several commands use `-f` for file input (`page create`, `page update`, `push-md`, `confluence comment add/reply`), so `-f json` may be silently interpreted as a filename.
+- Always use the long form `--format=...` after the subcommand.
 
-| Use case | Flag | Example |
-|---|---|---|
-| List/scan | `--format=compact` (default) | `atls jira issue search "..."` |
-| Parse/automate | `--format=json` | `atls jira issue get KEY -f json` |
-| Read body | `--format=md` | `atls confluence page get ID -f md` |
-| Preserve body | `--format=raw` | `atls jira issue get KEY -f raw` |
+| Use case | Example |
+|---|---|
+| List/scan | `atls jira issue search "..."` (compact is default) |
+| Parse/automate | `atls jira issue get KEY --format=json` |
+| Read body | `atls confluence page get ID --format=md` |
+| Preserve body | `atls jira issue get KEY --format=raw` |
+
+## page update vs push-md
+- `page update`: Low-level. Replace page body directly (`--body-format=storage\|md`). No attachment handling.
+- `push-md`: High-level. Markdown-native with attachment syncing, passthrough comments, asset-dir support, no-change detection. **Prefer this for markdown workflows.**
 
 ## Write safety
 - `--dry-run` before any write
@@ -37,11 +73,29 @@ atls provides the same functionality with 50%+ fewer tokens.
 | `--if-version N` | push-md | Reject if server version != N (optimistic lock) |
 | `--asset-dir DIR` | push-md | Upload all files in DIR as attachments (missing dir = empty set) |
 | `--attachment-if-exists skip\|replace` | push-md | How to handle duplicate attachments (default: replace) |
+| `--output -o PATH` | pull-md | Write markdown to file instead of stdout |
 | `--resolve-assets=sidecar` | pull-md | Download attachments to `--asset-dir` and rewrite image links |
 | `--asset-dir DIR` | pull-md | Target directory for downloaded assets |
-| `--passthrough-prefix PREFIX` | push-md, pull-md, diff-local | Preserve/exclude `<!-- PREFIX:... -->` metadata comments |
+| `--passthrough-prefix PREFIX` | push-md, pull-md, diff-local, issue update | Preserve/exclude `<!-- PREFIX:... -->` metadata comments |
 | `--md-file -` | push-md | Read markdown from stdin |
+
+## Jira body flags
+| Flag | Command | Effect |
+|---|---|---|
+| `--body-repr md\|raw\|wiki` | issue get, issue search | Control body representation (separate from `--format`) |
 | `--heading-promotion jira\|confluence` | issue update | Heading level adjustment for md→wiki conversion |
+| `--section "H2 Title"` | issue get, issue search | Extract specific H2 section from body |
+| `--drop-leading-notice "prefix"` | issue get, issue search | Strip auto-generated notice paragraphs |
+
+## Jira transition workflow
+```bash
+# Step 1: list available transitions
+atls jira issue transitions KEY --format=json
+# → [{"id": "31", "name": "In Progress"}, ...]
+
+# Step 2: transition using the ID
+atls jira issue transition KEY --transition-id 31
+```
 
 ## JSON output parsing
 ```bash
@@ -76,18 +130,6 @@ atls jira issue get KEY --fields=summary,customfield_10100 --format=json | jq '.
 | 7 | Validation error | Fix request parameters |
 | 10 | Network / server error | Retry after delay |
 | 11 | Rate limited | Wait and retry |
-
-## Jira wiki flags (--format=md)
-```bash
-# Extract a specific H2 section from the body
-atls jira issue get KEY -f md --section "Acceptance Criteria"
-
-# Strip a leading notice paragraph (e.g. auto-generated header)
-atls jira issue get KEY -f md --drop-leading-notice "This issue was created"
-
-# Both together
-atls jira issue get KEY -f md --section "Background" --drop-leading-notice "Auto-generated"
-```
 
 ## Multi-profile setup
 ```bash

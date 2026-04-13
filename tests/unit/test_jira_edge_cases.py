@@ -534,7 +534,7 @@ def test_get_attachment_content_returns_all_attachments(client: JiraClient) -> N
     req = route.calls[0].request
     assert req.url.params["fields"] == "attachment"
     assert len(result) == 3
-    assert result[0]["filename"] == "spec.pdf"
+    assert result[0].filename == "spec.pdf"
 
 
 @respx.mock

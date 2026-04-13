@@ -7,6 +7,8 @@ from atlassian_skills.core.client import BaseClient
 from atlassian_skills.jira.models import (
     Board,
     Issue,
+    JiraAttachment,
+    JiraComment,
     JiraField,
     LinkType,
     Project,
@@ -321,6 +323,12 @@ class JiraClient(BaseClient):
     # Comment / Worklog
     # ------------------------------------------------------------------
 
+    def list_comments(self, key: str) -> list[JiraComment]:
+        """GET /rest/api/2/issue/{key}/comment — list all comments."""
+        data = self.get(f"/rest/api/2/issue/{key}/comment").json()
+        items: list[Any] = data.get("comments", []) if isinstance(data, dict) else []
+        return [JiraComment.model_validate(c) for c in items]
+
     def add_comment(
         self,
         key: str,
@@ -543,10 +551,10 @@ class JiraClient(BaseClient):
     # Attachments (read)
     # ------------------------------------------------------------------
 
-    def get_attachment_content(self, key: str) -> list[dict[str, Any]]:
+    def get_attachment_content(self, key: str) -> list[JiraAttachment]:
         data: dict[str, Any] = self.get(f"/rest/api/2/issue/{key}", params={"fields": "attachment"}).json()
-        result: list[dict[str, Any]] = data.get("fields", {}).get("attachment", data.get("attachments", []))
-        return result
+        items: list[dict[str, Any]] = data.get("fields", {}).get("attachment", data.get("attachments", []))
+        return [JiraAttachment.model_validate(a) for a in items]
 
     # ------------------------------------------------------------------
     # Service desk

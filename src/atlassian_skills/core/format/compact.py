@@ -3,8 +3,24 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from atlassian_skills.confluence.models import ConfluenceSearchResult, Page
-    from atlassian_skills.jira.models import Issue, SearchResult, Transition, WatcherList, WorklogList
+    from atlassian_skills.confluence.models import (
+        Attachment,
+        Comment,
+        ConfluenceSearchResult,
+        Label,
+        Page,
+    )
+    from atlassian_skills.jira.models import (
+        Board,
+        Issue,
+        JiraAttachment,
+        JiraComment,
+        SearchResult,
+        Sprint,
+        Transition,
+        WatcherList,
+        WorklogList,
+    )
 
 
 def _format_issue_row(issue: dict[str, Any]) -> str:
@@ -92,6 +108,56 @@ def _format_worklog_list(worklogs: WorklogList) -> str:
     return "\n".join(lines)
 
 
+def _format_board(board: Board) -> str:
+    """Format a Jira Board as a compact one-liner."""
+    return f"{board.id} | {board.name} | {board.type}"
+
+
+def _format_sprint(sprint: Sprint) -> str:
+    """Format a Jira Sprint as a compact one-liner."""
+    state = sprint.state or ""
+    start = sprint.start_date or ""
+    end = sprint.end_date or ""
+    return f"{sprint.id} | {sprint.name} | {state} | {start} | {end}"
+
+
+def _format_jira_attachment(att: JiraAttachment) -> str:
+    """Format a Jira Attachment as a compact one-liner."""
+    author = att.author.display_name if att.author else ""
+    created = att.created or ""
+    size = att.size or 0
+    mime = att.mime_type or ""
+    return f"{att.id} | {att.filename} | {mime} | {size} | {author} | {created}"
+
+
+def _format_jira_comment(comment: JiraComment) -> str:
+    """Format a Jira Comment as compact text."""
+    author = comment.author.display_name if comment.author else ""
+    created = comment.created or ""
+    body_preview = (comment.body or "")[:80].replace("\n", " ")
+    return f"{comment.id} | {author} | {created} | {body_preview}"
+
+
+def _format_confluence_label(label: Label) -> str:
+    """Format a Confluence Label as a compact one-liner."""
+    return f"{label.name} ({label.prefix})"
+
+
+def _format_confluence_comment(comment: Comment) -> str:
+    """Format a Confluence Comment as compact text."""
+    author = comment.version.by.display_name if comment.version and comment.version.by else ""
+    when = comment.version.when or "" if comment.version else ""
+    body_preview = (comment.body_view or "")[:80].replace("\n", " ")
+    return f"{comment.id} | {author} | {when} | {body_preview}"
+
+
+def _format_confluence_attachment(attachment: Attachment) -> str:
+    """Format a Confluence Attachment as a compact one-liner."""
+    media = attachment.media_type or ""
+    size = attachment.file_size or 0
+    return f"{attachment.id} | {attachment.title} | {media} | {size}B"
+
+
 def format_compact(data: Any) -> str:
     """Return a compact, pipe-separated string representation.
 
@@ -100,8 +166,24 @@ def format_compact(data: Any) -> str:
     and arbitrary objects.
     """
     # Import here to avoid circular imports at module load time
-    from atlassian_skills.confluence.models import ConfluenceSearchResult, Page
-    from atlassian_skills.jira.models import Issue, SearchResult, Transition, WatcherList, WorklogList
+    from atlassian_skills.confluence.models import (
+        Attachment,
+        Comment,
+        ConfluenceSearchResult,
+        Label,
+        Page,
+    )
+    from atlassian_skills.jira.models import (
+        Board,
+        Issue,
+        JiraAttachment,
+        JiraComment,
+        SearchResult,
+        Sprint,
+        Transition,
+        WatcherList,
+        WorklogList,
+    )
 
     if isinstance(data, Issue):
         return _format_jira_issue(data)
@@ -117,8 +199,22 @@ def format_compact(data: Any) -> str:
         return _format_watcher_list(data)
     if isinstance(data, WorklogList):
         return _format_worklog_list(data)
+    if isinstance(data, Board):
+        return _format_board(data)
+    if isinstance(data, Sprint):
+        return _format_sprint(data)
+    if isinstance(data, JiraAttachment):
+        return _format_jira_attachment(data)
+    if isinstance(data, JiraComment):
+        return _format_jira_comment(data)
+    if isinstance(data, Label):
+        return _format_confluence_label(data)
+    if isinstance(data, Comment):
+        return _format_confluence_comment(data)
+    if isinstance(data, Attachment):
+        return _format_confluence_attachment(data)
     if isinstance(data, list):
-        return "\n".join(_format_issue_row(item) if isinstance(item, dict) else str(item) for item in data)
+        return "\n".join(format_compact(item) for item in data)
     if isinstance(data, dict):
         return _format_issue_row(data)
     return str(data)

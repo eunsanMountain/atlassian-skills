@@ -298,7 +298,7 @@ class TestGoldenBoards:
         adapter: TypeAdapter[list[Board]] = TypeAdapter(list[Board])
         boards = adapter.validate_python(data)
         kanban = next(b for b in boards if b.type == "kanban")
-        assert kanban.id == "395"
+        assert kanban.id == 395
         assert kanban.name == "Kanban"
 
 

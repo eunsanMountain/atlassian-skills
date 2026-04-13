@@ -203,10 +203,14 @@ class TestFormatOutputDispatcher:
         result = format_output("raw string", OutputFormat.RAW)
         assert result == "raw string"
 
+    def test_markdown_dispatch_renders_issue(self) -> None:
+        result = format_output({"key": "PROJ-1", "summary": "Test"}, OutputFormat.MD)
+        assert "# PROJ-1: Test" in result
+
     def test_markdown_dispatch_falls_back_to_json(self) -> None:
-        result = format_output({"key": "v"}, OutputFormat.MD)
+        result = format_output({"x": 1}, OutputFormat.MD)
         parsed = json.loads(result)
-        assert parsed["key"] == "v"
+        assert parsed["x"] == 1
 
 
 # ---------------------------------------------------------------------------

@@ -126,8 +126,18 @@ class ConfluenceClient(BaseClient):
             items_key="results",
             limit=limit,
         )
+        # /rest/api/search on Server/DC wraps page data inside a "content"
+        # key that has {id, title, …}.  Unwrap only when "content" looks like
+        # a page object (has "id"), not when it is body content (has "value").
+        pages: list[Page] = []
+        for i in items:
+            if isinstance(i, dict):
+                inner = i.get("content")
+                if isinstance(inner, dict) and "id" in inner:
+                    i = inner
+            pages.append(Page.model_validate(i))
         return ConfluenceSearchResult(
-            results=[Page.model_validate(i) for i in items],
+            results=pages,
             total=len(items),
             limit=limit,
         )
@@ -212,9 +222,29 @@ class ConfluenceClient(BaseClient):
         )
         return [Attachment.model_validate(i) for i in items]
 
-    def download_attachment(self, att_id: str, output_path: str | Path) -> Path:
-        """Download a single attachment by its content ID."""
-        resp = self.get(f"/rest/api/content/{att_id}/download")
+    def download_attachment(
+        self,
+        att_id: str,
+        output_path: str | Path,
+        *,
+        download_link: str | None = None,
+    ) -> Path:
+        """Download a single attachment.
+
+        If *download_link* (the ``_links.download`` path from the API) is
+        provided it is used directly.  Otherwise the attachment metadata is
+        fetched first to obtain the correct download path.  The previous
+        ``/rest/api/content/{id}/download`` endpoint does not exist on
+        Server/DC — see GitHub issue #1.
+        """
+        if not download_link:
+            meta = self.get(f"/rest/api/content/{att_id}", params={"expand": ""}).json()
+            download_link = meta.get("_links", {}).get("download")
+            if not download_link:
+                from atlassian_skills.core.errors import NotFoundError
+
+                raise NotFoundError(f"No download link found for attachment {att_id}")
+        resp = self.get(download_link)
         out = Path(output_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(resp.content)
@@ -232,7 +262,7 @@ class ConfluenceClient(BaseClient):
             # Verify no path traversal
             if not dest.resolve().is_relative_to(out_dir.resolve()):
                 raise ValueError(f"Path traversal detected in attachment title: {att.title!r}")
-            self.download_attachment(att.id, dest)
+            self.download_attachment(att.id, dest, download_link=att.links.download if att.links else None)
             paths.append(dest)
         return paths
 

@@ -135,8 +135,7 @@ def page_search(
     try:
         client = _make_client(ctx.obj)
         result = client.search(cql, limit=limit)
-        data = [p.model_dump() for p in result.results]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(result.results, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -159,8 +158,7 @@ def page_children(
     try:
         client = _make_client(ctx.obj)
         pages = client.get_children(page_id, limit=limit)
-        data = [p.model_dump() for p in pages]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(pages, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -278,8 +276,7 @@ def comment_list(
     try:
         client = _make_client(ctx.obj)
         comments = client.list_comments(page_id)
-        data = [c.model_dump() for c in comments]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(comments, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -301,8 +298,7 @@ def label_list(
     try:
         client = _make_client(ctx.obj)
         labels = client.list_labels(page_id)
-        data = [lb.model_dump() for lb in labels]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(labels, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -325,8 +321,7 @@ def attachment_list(
     try:
         client = _make_client(ctx.obj)
         attachments = client.list_attachments(page_id, limit=limit)
-        data = [a.model_dump() for a in attachments]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(attachments, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
