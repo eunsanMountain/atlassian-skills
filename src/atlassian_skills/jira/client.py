@@ -31,8 +31,37 @@ class JiraClient(BaseClient):
     # User
     # ------------------------------------------------------------------
 
-    def get_user(self, username: str) -> User:
-        data = self.get("/rest/api/2/user", params={"username": username}).json()
+    def get_user(self, identifier: str) -> User:
+        """Get a Jira user. Auto-detects identifier type.
+
+        - Contains '@' → email: use /user/search (Server/DC doesn't support email in /user)
+        - Contains ':' → Cloud accountId (e.g. '557058:abcd...')
+        - Starts with 'JIRAUSER' or hex-only → Server/DC user key
+        - Otherwise → username
+        """
+        if "@" in identifier:
+            # /rest/api/2/user doesn't accept email; use /user/search
+            results = self.get("/rest/api/2/user/search", params={"username": identifier}).json()
+            if not results:
+                from atlassian_skills.core.errors import NotFoundError
+                raise NotFoundError(f"No Jira user matches email '{identifier}'")
+            return User.model_validate(results[0])
+        params: dict[str, Any]
+        if ":" in identifier:
+            # Cloud accountId format (e.g. 557058:abcd1234-...)
+            params = {"accountId": identifier}
+        elif identifier.startswith("JIRAUSER") or (
+            len(identifier) > 20 and all(c in "0123456789abcdef" for c in identifier.lower())
+        ):
+            params = {"key": identifier}
+        else:
+            params = {"username": identifier}
+        data = self.get("/rest/api/2/user", params=params).json()
+        return User.model_validate(data)
+
+    def get_myself(self) -> User:
+        """GET /rest/api/2/myself — current authenticated user."""
+        data = self.get("/rest/api/2/myself").json()
         return User.model_validate(data)
 
     # ------------------------------------------------------------------
@@ -53,6 +82,20 @@ class JiraClient(BaseClient):
         data = self.get(f"/rest/api/2/issue/{key}", params=params or None).json()
         return Issue.model_validate(data)
 
+    def get_issue_raw_text(
+        self,
+        key: str,
+        fields: list[str] | None = None,
+        expand: str | None = None,
+    ) -> str:
+        """Return verbatim response text (byte-preserving raw contract)."""
+        params: dict[str, Any] = {}
+        if fields:
+            params["fields"] = ",".join(fields)
+        if expand:
+            params["expand"] = expand
+        return self.get(f"/rest/api/2/issue/{key}", params=params or None).text
+
     def get_issue_raw(
         self,
         key: str,
@@ -67,15 +110,28 @@ class JiraClient(BaseClient):
         result: dict[str, Any] = self.get(f"/rest/api/2/issue/{key}", params=params or None).json()
         return result
 
+    _IMAGE_EXTENSIONS: frozenset[str] = frozenset(
+        {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".tiff"}
+    )
+
     def get_issue_images(self, key: str) -> list[dict[str, Any]]:
         data = self.get(f"/rest/api/2/issue/{key}", params={"fields": "attachment"}).json()
         attachments: list[dict[str, Any]] = (
             data.get("fields", {}).get("attachment", data.get("attachments", []))
         )
-        return [
-            a for a in attachments
-            if (a.get("mimeType", "") or a.get("mime_type", "")).startswith("image/")
-        ]
+        result: list[dict[str, Any]] = []
+        for a in attachments:
+            mime = (a.get("mimeType") or a.get("mime_type") or "").lower()
+            if mime.startswith("image/"):
+                result.append(a)
+                continue
+            # Extension fallback only when MIME is missing/ambiguous
+            # (not when server explicitly reports a non-image MIME like application/pdf)
+            if not mime or mime in ("application/octet-stream", "binary/octet-stream"):
+                filename = (a.get("filename") or "").lower()
+                if any(filename.endswith(ext) for ext in self._IMAGE_EXTENSIONS):
+                    result.append(a)
+        return result
 
     def get_issue_dates(self, key: str) -> dict[str, str | None]:
         data: dict[str, Any] = self.get(
@@ -230,17 +286,40 @@ class JiraClient(BaseClient):
     # Dev info
     # ------------------------------------------------------------------
 
+    def _resolve_issue_id(self, key_or_id: str) -> str:
+        """Return numeric issue ID. Accepts either a key (PROJ-123) or numeric ID."""
+        if key_or_id.isdigit():
+            return key_or_id
+        resp = self.get(f"/rest/api/2/issue/{key_or_id}", params={"fields": ""})
+        return str(resp.json()["id"])
+
     def get_dev_info(self, key: str) -> dict[str, Any]:
-        result: dict[str, Any] = self.get(
-            "/rest/dev-status/1.0/issue/detail",
-            params={"issueId": key, "applicationType": "stash", "dataType": "repository"},
-        ).json()
-        return result
+        issue_id = self._resolve_issue_id(key)
+        # Aggregate data from multiple app types and data types (mcp-atlassian pattern)
+        merged: dict[str, Any] = {"errors": [], "detail": []}
+        for app_type in ("stash", "bitbucket", "github", "gitlab"):
+            for data_type in ("repository", "pullrequest", "branch"):
+                try:
+                    resp = self.get(
+                        "/rest/dev-status/1.0/issue/detail",
+                        params={"issueId": issue_id, "applicationType": app_type, "dataType": data_type},
+                    ).json()
+                    detail = resp.get("detail", [])
+                    if detail:
+                        merged["detail"].extend(detail)
+                    errors = resp.get("errors", [])
+                    if errors:
+                        merged["errors"].extend(errors)
+                except Exception:  # noqa: BLE001
+                    continue
+        return merged
 
     def get_dev_info_many(self, keys: list[str]) -> dict[str, Any]:
+        # Convert any issue keys to numeric IDs (API requires numeric IDs)
+        issue_ids = [self._resolve_issue_id(k) for k in keys]
         result: dict[str, Any] = self.get(
             "/rest/dev-status/1.0/issue/summary",
-            params={"issueId": ",".join(str(k) for k in keys)},
+            params={"issueId": ",".join(issue_ids)},
         ).json()
         return result
 
@@ -391,6 +470,13 @@ class JiraClient(BaseClient):
             result: dict[str, Any] = resp.json()
             return result
         return None
+
+    def list_remote_issue_links(self, key: str) -> list[dict[str, Any]]:
+        """GET /rest/api/2/issue/{key}/remotelink."""
+        data = self.get(f"/rest/api/2/issue/{key}/remotelink").json()
+        if isinstance(data, list):
+            return data
+        return []
 
     def create_remote_issue_link(
         self,

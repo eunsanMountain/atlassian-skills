@@ -36,7 +36,7 @@ class TestInstall:
         assert "updated" in msg
         assert "backup" in msg
 
-    def test_install_noop_identical(self, tmp_path: Path) -> None:
+    def test_install_overwrites_identical(self, tmp_path: Path) -> None:
         content = "# Same content"
         source = tmp_path / "source.md"
         source.write_text(content, encoding="utf-8")
@@ -45,11 +45,11 @@ class TestInstall:
 
         msg = _install(source, target)
 
-        assert "up-to-date" in msg
-        assert "no-op" in msg
-        # no backup created
+        assert "updated" in msg
+        assert "backup" in msg
+        # backup is always created for existing files
         backup = target.with_suffix(target.suffix + ".bak")
-        assert not backup.exists()
+        assert backup.exists()
 
 
 class TestInjectClaudeMdBlock:
@@ -103,7 +103,7 @@ class TestInjectClaudeMdBlock:
         assert "# User stuff" in content  # user content preserved
         assert "updated" in msg
 
-    def test_noop_when_identical(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_updates_when_identical(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.cli.setup as setup_mod
         claude_md = tmp_path / ".claude" / "CLAUDE.md"
         claude_md.parent.mkdir(parents=True)
@@ -114,7 +114,7 @@ class TestInjectClaudeMdBlock:
 
         msg = _inject_claude_md_block()
 
-        assert "up-to-date" in msg or "no-op" in msg
+        assert "updated" in msg
 
 
 class TestInjectCodexAgentsBlock:

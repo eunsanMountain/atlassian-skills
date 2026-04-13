@@ -40,25 +40,25 @@ def _auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @respx.mock
 def test_cli_jira_issue_get_compact() -> None:
-    """atls jira issue get RLM-3 returns exit 0 and shows key."""
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
-        return_value=httpx.Response(200, json=_load("get-issue-rlm3.json"))
+    """atls jira issue get PROJ-3 returns exit 0 and shows key."""
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
+        return_value=httpx.Response(200, json=_load("get-issue-proj3.json"))
     )
-    result = runner.invoke(app, ["jira", "issue", "get", "RLM-3"])
+    result = runner.invoke(app, ["jira", "issue", "get", "PROJ-3"])
     assert result.exit_code == 0, result.output
-    assert "RLM-3" in result.output
+    assert "PROJ-3" in result.output
 
 
 @respx.mock
 def test_cli_jira_issue_get_json_format() -> None:
-    """atls --format json jira issue get RLM-3 returns valid JSON with key."""
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
-        return_value=httpx.Response(200, json=_load("get-issue-rlm3.json"))
+    """atls --format json jira issue get PROJ-3 returns valid JSON with key."""
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
+        return_value=httpx.Response(200, json=_load("get-issue-proj3.json"))
     )
-    result = runner.invoke(app, ["--format", "json", "jira", "issue", "get", "RLM-3"])
+    result = runner.invoke(app, ["--format", "json", "jira", "issue", "get", "PROJ-3"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
-    assert data["key"] == "RLM-3"
+    assert data["key"] == "PROJ-3"
 
 
 @respx.mock
@@ -74,55 +74,55 @@ def test_cli_jira_issue_get_not_found_exit_code() -> None:
 @respx.mock
 def test_cli_jira_issue_get_auth_error_exit_code() -> None:
     """401 response maps to exit code 6 (AUTH)."""
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
         return_value=httpx.Response(401, json={"message": "Unauthorized"})
     )
-    result = runner.invoke(app, ["jira", "issue", "get", "RLM-3"])
+    result = runner.invoke(app, ["jira", "issue", "get", "PROJ-3"])
     assert result.exit_code == ExitCode.AUTH
 
 
 @respx.mock
 def test_cli_jira_search_compact() -> None:
-    """atls jira issue search 'project=RLM' returns exit 0 and shows issue key."""
+    """atls jira issue search 'project=PROJ' returns exit 0 and shows issue key."""
     respx.get(f"{JIRA_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=_load("search-rlm.json"))
+        return_value=httpx.Response(200, json=_load("search-proj.json"))
     )
-    result = runner.invoke(app, ["jira", "issue", "search", "project=RLM"])
+    result = runner.invoke(app, ["jira", "issue", "search", "project=PROJ"])
     assert result.exit_code == 0, result.output
-    assert "RLM-3" in result.output
+    assert "PROJ-3" in result.output
 
 
 @respx.mock
 def test_cli_jira_issue_get_requested_customfield_in_json() -> None:
     """Explicitly requested customfield_* keys are preserved in JSON output."""
-    fixture = _load("get-issue-rlm3.json")
+    fixture = _load("get-issue-proj3.json")
     fixture.setdefault("fields", {})
-    fixture["fields"]["customfield_10100"] = "RLM-1"
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
+    fixture["fields"]["customfield_10100"] = "PROJ-1"
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
         return_value=httpx.Response(200, json=fixture)
     )
     result = runner.invoke(
         app,
-        ["jira", "issue", "get", "RLM-3", "--fields", "summary,customfield_10100", "--format", "json"],
+        ["jira", "issue", "get", "PROJ-3", "--fields", "summary,customfield_10100", "--format", "json"],
     )
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
-    assert data["customfield_10100"] == "RLM-1"
+    assert data["customfield_10100"] == "PROJ-1"
 
 
 @respx.mock
 def test_cli_jira_search_local_json_format_overrides_global() -> None:
     """Local -f json on issue search overrides the global format setting."""
     respx.get(f"{JIRA_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=_load("search-rlm.json"))
+        return_value=httpx.Response(200, json=_load("search-proj.json"))
     )
     result = runner.invoke(
         app,
-        ["--format", "compact", "jira", "issue", "search", "project=RLM", "-f", "json"],
+        ["--format", "compact", "jira", "issue", "search", "project=PROJ", "-f", "json"],
     )
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
-    assert data[0]["key"] == "RLM-3"
+    assert data[0]["key"] == "PROJ-3"
 
 
 @respx.mock
@@ -185,19 +185,19 @@ def test_cli_jira_issue_update_dry_run() -> None:
     """--dry-run on issue update shows PUT preview without calling update endpoint."""
     result = runner.invoke(
         app,
-        ["jira", "issue", "update", "RLM-3", "--fields-json", '{"summary": "new title"}', "--dry-run"],
+        ["jira", "issue", "update", "PROJ-3", "--fields-json", '{"summary": "new title"}', "--dry-run"],
     )
     assert result.exit_code == 0, result.output
     assert "PUT" in result.output
-    assert "RLM-3" in result.output
+    assert "PROJ-3" in result.output
 
 
 @respx.mock
 def test_cli_jira_issue_update_stale_check() -> None:
     """--if-updated mismatch exits with STALE (5)."""
-    issue_data = dict(_load("get-issue-rlm3.json"))
+    issue_data = dict(_load("get-issue-proj3.json"))
     issue_data["updated"] = "2026-04-10T18:21:25.303+0900"
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
         return_value=httpx.Response(200, json=issue_data)
     )
     result = runner.invoke(
@@ -206,7 +206,7 @@ def test_cli_jira_issue_update_stale_check() -> None:
             "jira",
             "issue",
             "update",
-            "RLM-3",
+            "PROJ-3",
             "--fields-json",
             '{"summary": "updated"}',
             "--if-updated",
@@ -220,7 +220,7 @@ def test_cli_jira_issue_update_invalid_fields_json() -> None:
     """Invalid --fields-json exits with VALIDATION (7)."""
     result = runner.invoke(
         app,
-        ["jira", "issue", "update", "RLM-3", "--fields-json", "not-json"],
+        ["jira", "issue", "update", "PROJ-3", "--fields-json", "not-json"],
     )
     assert result.exit_code == ExitCode.VALIDATION
 
@@ -228,16 +228,16 @@ def test_cli_jira_issue_update_invalid_fields_json() -> None:
 @respx.mock
 def test_cli_jira_issue_update_customfield_verification_success() -> None:
     """A verified customfield update exits 0 after the read-back check."""
-    respx.put(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(return_value=httpx.Response(204))
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
+    respx.put(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(204))
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
         return_value=httpx.Response(
             200,
-            json={"id": "629816", "key": "RLM-3", "fields": {"customfield_10100": "EPIC-1"}},
+            json={"id": "629816", "key": "PROJ-3", "fields": {"customfield_10100": "EPIC-1"}},
         )
     )
     result = runner.invoke(
         app,
-        ["jira", "issue", "update", "RLM-3", "--set-customfield", "customfield_10100=EPIC-1"],
+        ["jira", "issue", "update", "PROJ-3", "--set-customfield", "customfield_10100=EPIC-1"],
     )
     assert result.exit_code == 0, result.output
     assert "updated" in result.output
@@ -246,16 +246,16 @@ def test_cli_jira_issue_update_customfield_verification_success() -> None:
 @respx.mock
 def test_cli_jira_issue_update_customfield_verification_failure() -> None:
     """A silent Jira no-op becomes a validation error instead of fake success."""
-    respx.put(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(return_value=httpx.Response(204))
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
+    respx.put(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(204))
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
         return_value=httpx.Response(
             200,
-            json={"id": "629816", "key": "RLM-3", "fields": {"customfield_10100": None}},
+            json={"id": "629816", "key": "PROJ-3", "fields": {"customfield_10100": None}},
         )
     )
     result = runner.invoke(
         app,
-        ["jira", "issue", "update", "RLM-3", "--set-customfield", "customfield_10100=EPIC-1"],
+        ["jira", "issue", "update", "PROJ-3", "--set-customfield", "customfield_10100=EPIC-1"],
     )
     assert result.exit_code == ExitCode.VALIDATION
     assert "Custom field update was not applied" in result.output
@@ -264,12 +264,12 @@ def test_cli_jira_issue_update_customfield_verification_failure() -> None:
 @respx.mock
 def test_cli_jira_issue_transition() -> None:
     """issue transition POSTs to transitions endpoint and returns transitioned status."""
-    respx.post(f"{JIRA_URL}/rest/api/2/issue/RLM-3/transitions").mock(
+    respx.post(f"{JIRA_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
         return_value=httpx.Response(204)
     )
     result = runner.invoke(
         app,
-        ["jira", "issue", "transition", "RLM-3", "--transition-id", "11"],
+        ["jira", "issue", "transition", "PROJ-3", "--transition-id", "11"],
     )
     assert result.exit_code == 0, result.output
     assert "transitioned" in result.output
@@ -280,7 +280,7 @@ def test_cli_jira_issue_transition_dry_run() -> None:
     """--dry-run on transition shows POST preview without hitting API."""
     result = runner.invoke(
         app,
-        ["jira", "issue", "transition", "RLM-3", "--transition-id", "11", "--dry-run"],
+        ["jira", "issue", "transition", "PROJ-3", "--transition-id", "11", "--dry-run"],
     )
     assert result.exit_code == 0, result.output
     assert "POST" in result.output
@@ -290,10 +290,10 @@ def test_cli_jira_issue_transition_dry_run() -> None:
 @respx.mock
 def test_cli_jira_issue_delete() -> None:
     """issue delete DELETEs and returns deleted status."""
-    respx.delete(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
+    respx.delete(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
         return_value=httpx.Response(204)
     )
-    result = runner.invoke(app, ["jira", "issue", "delete", "RLM-3"])
+    result = runner.invoke(app, ["jira", "issue", "delete", "PROJ-3"])
     assert result.exit_code == 0, result.output
     assert "deleted" in result.output
 
@@ -301,10 +301,10 @@ def test_cli_jira_issue_delete() -> None:
 @respx.mock
 def test_cli_jira_issue_delete_dry_run() -> None:
     """--dry-run on delete shows DELETE preview without hitting API."""
-    result = runner.invoke(app, ["jira", "issue", "delete", "RLM-3", "--dry-run"])
+    result = runner.invoke(app, ["jira", "issue", "delete", "PROJ-3", "--dry-run"])
     assert result.exit_code == 0, result.output
     assert "DELETE" in result.output
-    assert "RLM-3" in result.output
+    assert "PROJ-3" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -326,8 +326,8 @@ def test_cli_jira_issue_delete_dry_run() -> None:
 @respx.mock
 def test_cli_jira_exit_codes(http_status: int, expected_exit: int) -> None:
     """HTTP status codes map to the correct CLI exit codes."""
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/RLM-3").mock(
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
         return_value=httpx.Response(http_status, json={"message": "error"})
     )
-    result = runner.invoke(app, ["jira", "issue", "get", "RLM-3"])
+    result = runner.invoke(app, ["jira", "issue", "get", "PROJ-3"])
     assert result.exit_code == expected_exit

@@ -3,10 +3,10 @@
   "id": "429140627",
   "type": "page",
   "status": "current",
-  "title": "[RLM-3] Navi Map 통합-경로 판단 개선",
+  "title": "[PROJ-3] Navi Map 통합-경로 판단 개선",
   "space": {
-    "key": "IVSL",
-    "name": "IVS Lab"
+    "key": "TESTSPACE",
+    "name": "Test Lab"
   },
   "version": {
     "number": 3,

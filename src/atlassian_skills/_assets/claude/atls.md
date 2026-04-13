@@ -17,21 +17,21 @@ atls
 │   ├── sprint       list, issues, create, update, add-issues
 │   ├── board        list, issues
 │   ├── field        search, options
-│   ├── link         list-types, create, remote-create, delete
+│   ├── link         list-types, create, remote-list, remote-create, delete
 │   ├── worklog      list, add
 │   ├── watcher      list, add, remove
 │   ├── attachment   list, upload, download, delete
 │   ├── dev-info     get, get-many
 │   ├── service-desk list, queues, queue-issues
 │   ├── project      list, issues, versions, components, versions-create
-│   └── user         get
+│   └── user         get, me
 └── confluence
     ├── page         get, search, children, history, diff, images, create, update, delete, move, push-md, pull-md, diff-local
     ├── space        tree
     ├── comment      list, add, reply
     ├── label        list, add
     ├── attachment   list, upload, upload-batch, download, download-all, delete
-    └── user         search
+    └── user         search, me
 ```
 
 When unsure, navigate with `--help`:
@@ -54,7 +54,8 @@ atls jira issue --help    # actions: get, search, create, ...
 |---|---|
 | List/scan | `atls jira issue search "..."` (compact is default) |
 | Parse/automate | `atls jira issue get KEY --format=json` |
-| Read body | `atls confluence page get ID --format=md` |
+| Read body (inline) | `atls confluence page get ID --format=md` (metadata header + body, quick view) |
+| Read body (workflow) | `atls confluence page pull-md ID -o page.md` (file output + asset resolution) |
 | Preserve body | `atls jira issue get KEY --format=raw` |
 
 ## page update vs push-md
@@ -82,7 +83,7 @@ atls jira issue --help    # actions: get, search, create, ...
 ## Jira body flags
 | Flag | Command | Effect |
 |---|---|---|
-| `--body-repr md\|raw\|wiki` | issue get, issue search | Control body representation (separate from `--format`) |
+| `--body-repr md\|raw\|wiki` | issue get | Control body representation (separate from `--format`) |
 | `--heading-promotion jira\|confluence` | issue update | Heading level adjustment for md→wiki conversion |
 | `--section "H2 Title"` | issue get, issue search | Extract specific H2 section from body |
 | `--drop-leading-notice "prefix"` | issue get, issue search | Strip auto-generated notice paragraphs |
@@ -93,8 +94,11 @@ atls jira issue --help    # actions: get, search, create, ...
 atls jira issue transitions KEY --format=json
 # → [{"id": "31", "name": "In Progress"}, ...]
 
-# Step 2: transition using the ID
+# Step 2a: transition using the ID
 atls jira issue transition KEY --transition-id 31
+
+# Step 2b: transition using the name (case-insensitive)
+atls jira issue transition KEY --transition-name "In Progress"
 ```
 
 ## JSON output parsing

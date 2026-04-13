@@ -11,17 +11,17 @@ MCP 응답을 캡처한 골든 파일. snapshot 테스트와 토큰 벤치마크
 fixtures/
 ├── jira/
 │   ├── get-all-projects.json          # 251개 프로젝트 (토큰 벤치마크 S1)
-│   ├── search-rlm.json                # RLM 프로젝트 검색 3건 (S2)
-│   ├── get-issue-rlm3.json            # RLM-3 단건 조회 (S3)
-│   ├── get-transitions-rlm3.json      # RLM-3 전이
+│   ├── search-proj.json                # PROJ 프로젝트 검색 3건 (S2)
+│   ├── get-issue-proj3.json            # PROJ-3 단건 조회 (S3)
+│   ├── get-transitions-rlm3.json      # PROJ-3 전이
 │   ├── search-fields-epic.json        # epic 필드 검색
-│   └── get-agile-boards-rlm.json      # RLM 보드 목록
+│   └── get-agile-boards-rlm.json      # PROJ 보드 목록
 ├── confluence/
-│   ├── search-rlm.json                # RLM 검색 3건 (S5)
-│   ├── get-page-429140627.json        # 페이지 (md 변환) (S4)
-│   ├── get-page-429140627-raw.json    # 페이지 (storage XHTML)
+│   ├── search-proj.json                # PROJ 검색 3건 (S5)
+│   ├── get-page-sample.json        # 페이지 (md 변환) (S4)
+│   ├── get-page-sample-raw.json    # 페이지 (storage XHTML)
 │   ├── get-page-history-v1.json       # 페이지 v1
-│   └── get-space-tree-ivsl.json       # IVSL 스페이스 트리
+│   └── get-space-tree-sample.json       # TESTSPACE 스페이스 트리
 └── private/                           # .gitignore — 사내 데이터
 ```
 

@@ -27,10 +27,10 @@ def load(filename: str) -> object:
 
 class TestIssueModel:
     def test_get_issue(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.id == "629816"
-        assert issue.key == "RLM-3"
+        assert issue.key == "PROJ-3"
         assert issue.summary == "Navi Map 통합-경로 판단 개선"
         assert issue.status.name == "To Do"
         assert issue.status.category == "To Do"
@@ -39,39 +39,39 @@ class TestIssueModel:
         assert issue.priority.name == "Medium"
 
     def test_issue_assignee(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.assignee is not None
-        assert issue.assignee.name == "seungmok.song"
-        assert issue.assignee.email == "seungmok.song@example.com"
+        assert issue.assignee.name == "testuser2"
+        assert issue.assignee.email == "testuser2@example.com"
 
     def test_issue_reporter(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.reporter is not None
-        assert issue.reporter.name == "eunsan.jo"
+        assert issue.reporter.name == "testuser"
         assert issue.reporter.key == "JIRAUSER14505"
 
     def test_issue_timestamps(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.created is not None
         assert issue.updated is not None
 
     def test_issue_extra_fields_ignored(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         assert isinstance(data, dict)
         data["unknown_field"] = "should be ignored"
         issue = Issue.model_validate(data)
-        assert issue.key == "RLM-3"
+        assert issue.key == "PROJ-3"
 
     def test_issue_customfield_extracted_for_json_output(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         assert isinstance(data, dict)
         data.setdefault("fields", {})
-        data["fields"]["customfield_10100"] = "RLM-1"
+        data["fields"]["customfield_10100"] = "PROJ-1"
         issue = Issue.model_validate(data)
-        assert issue.custom_fields["customfield_10100"] == "RLM-1"
+        assert issue.custom_fields["customfield_10100"] == "PROJ-1"
 
     def test_issue_optional_fields_default(self) -> None:
         minimal: dict = {
@@ -89,7 +89,7 @@ class TestIssueModel:
 
 class TestSearchResultModel:
     def test_search_result(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         assert result.total == 23
         assert result.start_at == 0
@@ -97,19 +97,19 @@ class TestSearchResultModel:
         assert len(result.issues) == 3
 
     def test_search_result_issue_keys(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         keys = [i.key for i in result.issues]
-        assert "RLM-3" in keys
-        assert "RLM-24" in keys
-        assert "RLM-23" in keys
+        assert "PROJ-3" in keys
+        assert "PROJ-24" in keys
+        assert "PROJ-23" in keys
 
     def test_search_result_issue_types(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
-        epic = next(i for i in result.issues if i.key == "RLM-3")
+        epic = next(i for i in result.issues if i.key == "PROJ-3")
         assert epic.issue_type.name == "Epic"
-        story = next(i for i in result.issues if i.key == "RLM-24")
+        story = next(i for i in result.issues if i.key == "PROJ-24")
         assert story.issue_type.name == "Story"
 
 
@@ -204,20 +204,20 @@ class TestWorklogListModel:
 
 class TestWatcherListModel:
     def test_watcher_list(self) -> None:
-        data = load("get-watchers-rlm3.json")
+        data = load("get-watchers-proj3.json")
         wl = WatcherList.model_validate(data)
-        assert wl.issue_key == "RLM-3"
+        assert wl.issue_key == "PROJ-3"
         assert wl.watcher_count == 1
         assert wl.is_watching is True
         assert len(wl.watchers) == 1
 
     def test_watcher_user_fields(self) -> None:
-        data = load("get-watchers-rlm3.json")
+        data = load("get-watchers-proj3.json")
         wl = WatcherList.model_validate(data)
         watcher = wl.watchers[0]
-        assert watcher.name == "eunsan.jo"
+        assert watcher.name == "testuser"
         assert watcher.key == "JIRAUSER14505"
-        assert watcher.email == "eunsan.jo@example.com"
+        assert watcher.email == "testuser@example.com"
 
 
 # ---------------------------------------------------------------------------

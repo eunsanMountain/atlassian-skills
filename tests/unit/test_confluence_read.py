@@ -51,10 +51,10 @@ def client(cred: Credential) -> ConfluenceClient:
 def test_get_page_returns_page(client: ConfluenceClient) -> None:
     fixture = {
         "id": "429140627",
-        "title": "[RLM-3] Navi Map 통합-경로 판단 개선",
+        "title": "[PROJ-3] Navi Map 통합-경로 판단 개선",
         "type": "page",
         "status": "current",
-        "space": {"key": "IVSL", "name": "IVS Lab"},
+        "space": {"key": "TESTSPACE", "name": "Test Lab"},
         "version": {"number": 2, "when": "2026-04-01T10:00:00.000+0900"},
         "body": {"storage": {"value": "<p>test</p>", "representation": "storage"}},
     }
@@ -66,9 +66,9 @@ def test_get_page_returns_page(client: ConfluenceClient) -> None:
 
     assert isinstance(page, Page)
     assert page.id == "429140627"
-    assert page.title == "[RLM-3] Navi Map 통합-경로 판단 개선"
+    assert page.title == "[PROJ-3] Navi Map 통합-경로 판단 개선"
     assert page.space is not None
-    assert page.space.key == "IVSL"
+    assert page.space.key == "TESTSPACE"
 
 
 # ---------------------------------------------------------------------------
@@ -306,21 +306,26 @@ def test_search_users_fuzzy_match(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_get_space_tree_returns_result(client: ConfluenceClient) -> None:
+    # Server/DC wraps page results under "page" key
     fixture = {
-        "results": [
-            {"id": "1", "title": "Root Page", "type": "page"},
-            {"id": "2", "title": "Child Page", "type": "page"},
-        ],
+        "page": {
+            "results": [
+                {"id": "1", "title": "Root Page", "type": "page", "ancestors": []},
+                {"id": "2", "title": "Child Page", "type": "page", "ancestors": [{"id": "1", "title": "Root Page", "type": "page"}]},
+            ],
+            "size": 2,
+            "_links": {},
+        },
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/space/IVSL/content").mock(
+    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(
         return_value=httpx.Response(200, json=fixture)
     )
 
-    result = client.get_space_tree("IVSL")
+    result = client.get_space_tree("TESTSPACE")
 
     assert isinstance(result, SpaceTreeResult)
-    assert result.space_key == "IVSL"
+    assert result.space_key == "TESTSPACE"
     assert result.total_pages == 2
     assert len(result.pages) == 2
 
@@ -501,21 +506,24 @@ def test_get_children_returns_correct_ids(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_get_space_tree_fixture(client: ConfluenceClient) -> None:
-    fixture = _load("get-space-tree-ivsl.json")
-    # get_space_tree uses get_paginated_links which expects "results" key in API response
-    # The fixture is pre-processed format; wrap its pages into the raw API envelope
+    fixture = _load("get-space-tree-sample.json")
+    # Server/DC wraps page results under "page" key
     api_response = {
-        "results": fixture["pages"],
+        "page": {
+            "results": fixture["pages"],
+            "size": len(fixture["pages"]),
+            "_links": {},
+        },
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/space/IVSL/content").mock(
+    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(
         return_value=httpx.Response(200, json=api_response)
     )
 
-    result = client.get_space_tree("IVSL")
+    result = client.get_space_tree("TESTSPACE")
 
     assert isinstance(result, SpaceTreeResult)
-    assert result.space_key == "IVSL"
+    assert result.space_key == "TESTSPACE"
     assert result.total_pages == len(fixture["pages"])
     assert len(result.pages) == len(fixture["pages"])
     assert result.pages[0].title == "01. [통합 인지] Sensor Fusion Architecture"

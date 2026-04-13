@@ -21,20 +21,20 @@ def load(filename: str) -> object:
 
 
 # ---------------------------------------------------------------------------
-# get-page-429140627.json → Page  (preprocessed fixture: wrapped in 'metadata')
+# get-page-sample.json → Page  (preprocessed fixture: wrapped in 'metadata')
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenPage:
     def test_golden_page_parses(self) -> None:
-        data = load("get-page-429140627.json")
+        data = load("get-page-sample.json")
         # Fixture wraps page data under 'metadata' key
         page = Page.model_validate(data["metadata"])
         assert page.id == "429140627"
         assert page.title
 
     def test_golden_page_body_storage_extracted(self) -> None:
-        data = load("get-page-429140627.json")
+        data = load("get-page-sample.json")
         page = Page.model_validate(data["metadata"])
         # body_storage may be None when 'body' envelope is absent;
         # the fixture stores content under 'content', not 'body'
@@ -43,62 +43,62 @@ class TestGoldenPage:
         assert len(page.content.value) > 0
 
     def test_golden_page_space_info(self) -> None:
-        data = load("get-page-429140627.json")
+        data = load("get-page-sample.json")
         page = Page.model_validate(data["metadata"])
         assert page.space is not None
-        assert page.space.key == "IVSL"
-        assert page.space.name == "IVS Lab"
+        assert page.space.key == "TESTSPACE"
+        assert page.space.name == "Test Lab"
 
     def test_golden_page_version(self) -> None:
-        data = load("get-page-429140627.json")
+        data = load("get-page-sample.json")
         page = Page.model_validate(data["metadata"])
         # version is stored as plain int in this fixture
         assert page.version is not None
         assert page.version == 2
 
     def test_golden_page_type(self) -> None:
-        data = load("get-page-429140627.json")
+        data = load("get-page-sample.json")
         page = Page.model_validate(data["metadata"])
         assert page.type == "page"
 
     def test_golden_page_url_accessible(self) -> None:
-        data = load("get-page-429140627.json")
+        data = load("get-page-sample.json")
         page = Page.model_validate(data["metadata"])
         assert page.url is not None
         assert "429140627" in page.url
 
 
 # ---------------------------------------------------------------------------
-# search-rlm.json → ConfluenceSearchResult  (fixture is a raw list of Pages)
+# search-proj.json → ConfluenceSearchResult  (fixture is a raw list of Pages)
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenConfluenceSearch:
     def test_golden_search_parses(self) -> None:
-        raw = load("search-rlm.json")
+        raw = load("search-proj.json")
         # Fixture is a list of page objects; wrap into ConfluenceSearchResult shape
         assert isinstance(raw, list)
         result = ConfluenceSearchResult.model_validate({"results": raw, "total": len(raw)})
         assert len(result.results) == 3
 
     def test_golden_search_results_count(self) -> None:
-        raw = load("search-rlm.json")
+        raw = load("search-proj.json")
         result = ConfluenceSearchResult.model_validate({"results": raw, "total": len(raw)})
         assert result.total == 3
 
     def test_golden_search_each_result_has_id_and_title(self) -> None:
-        raw = load("search-rlm.json")
+        raw = load("search-proj.json")
         result = ConfluenceSearchResult.model_validate({"results": raw, "total": len(raw)})
         for page in result.results:
             assert page.id
             assert page.title
 
     def test_golden_search_space_info(self) -> None:
-        raw = load("search-rlm.json")
+        raw = load("search-proj.json")
         result = ConfluenceSearchResult.model_validate({"results": raw, "total": len(raw)})
         for page in result.results:
             assert page.space is not None
-            assert page.space.key == "IVSL"
+            assert page.space.key == "TESTSPACE"
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ class TestGoldenPageHistory:
         data = load("get-page-history-v1.json")
         page = Page.model_validate(data)
         assert page.space is not None
-        assert page.space.key == "IVSL"
+        assert page.space.key == "TESTSPACE"
 
 
 # ---------------------------------------------------------------------------
@@ -186,29 +186,29 @@ class TestGoldenLabels:
 
 
 # ---------------------------------------------------------------------------
-# get-space-tree-ivsl.json → SpaceTreeResult
+# get-space-tree-sample.json → SpaceTreeResult
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenSpaceTree:
     def test_golden_space_tree_parses(self) -> None:
-        data = load("get-space-tree-ivsl.json")
+        data = load("get-space-tree-sample.json")
         result = SpaceTreeResult.model_validate(data)
-        assert result.space_key == "IVSL"
+        assert result.space_key == "TESTSPACE"
         assert result.total_pages == 10
 
     def test_golden_space_tree_pages_count(self) -> None:
-        data = load("get-space-tree-ivsl.json")
+        data = load("get-space-tree-sample.json")
         result = SpaceTreeResult.model_validate(data)
         assert len(result.pages) == 10
 
     def test_golden_space_tree_has_more(self) -> None:
-        data = load("get-space-tree-ivsl.json")
+        data = load("get-space-tree-sample.json")
         result = SpaceTreeResult.model_validate(data)
         assert result.has_more is True
 
     def test_golden_space_tree_page_fields(self) -> None:
-        data = load("get-space-tree-ivsl.json")
+        data = load("get-space-tree-sample.json")
         result = SpaceTreeResult.model_validate(data)
         first = result.pages[0]
         assert first.id == "191410941"

@@ -1,24 +1,31 @@
 # atlassian-skills
 
-Token-efficient CLI for Atlassian Server/DC (Jira, Confluence, Bitbucket, Bamboo).
+A token-efficient CLI that brings [mcp-atlassian](https://github.com/sooperset/mcp-atlassian) functionality to the command line — optimized for LLM agent workflows on Atlassian Server/DC.
 
-Designed as a drop-in replacement for mcp-atlassian MCP server with **>=50% token reduction** for LLM agent workflows.
+mcp-atlassian is great for Cloud setups, but on Server/DC its MCP protocol overhead and verbose JSON responses consume tokens fast. It also lacks lossless Confluence markup round-tripping — edits via MCP can silently alter page content.
+
+**atlassian-skills** re-implements the same Jira and Confluence operations as a lightweight CLI with compact output, achieving **≥50% token reduction**. It uses [cfxmark](https://github.com/eunsanMountain/cfxmark) for **lossless Confluence XHTML ↔ Markdown conversion**, enabling agents to pull a page as Markdown, edit it, and push it back without any content loss.
+
+First-class integration with **Claude Code** and **Codex**. `atls setup all` registers atls as the default Atlassian tool for both — a comprehensive usage guide (command tree, format decision rules, write safety) is loaded via Claude's `/atls` slash command or Codex's auto-loaded skill, while a short preference directive in `CLAUDE.md` / `AGENTS.md` keeps the routing rule active in every conversation. Your agent translates "read PROJ-123" or "update the API page" into the right CLI call without further configuration.
 
 ## Why atlassian-skills?
 
 | | mcp-atlassian (MCP) | atlassian-skills (CLI) |
 |---|---|---|
-| Token overhead (L2 schema) | ~15,000 tokens | <400 tokens |
-| Response size (L1 payload) | Full JSON | 7-34% of MCP |
-| Workflow (L3 end-to-end) | Baseline | 91% reduction |
+| Interface | MCP protocol (JSON-RPC) | Shell CLI (`atls`) |
+| Schema overhead per session | ~15,000 tokens | <400 tokens |
+| Response payload size | Full JSON | 7–34% of MCP |
+| Full workflow (end-to-end) | Baseline | 91% reduction |
+| Confluence markup round-trip | Lossy (XHTML re-serialization) | Lossless via cfxmark (XHTML ↔ Markdown) |
 | Jira body preservation | Drops special chars | Byte-preserving |
 | Server/DC support | Partial | Full (primary target) |
-| Bitbucket/Bamboo | No | Planned (0.2.0) |
+| AI agent setup | Manual MCP config | One-line `atls setup all` for Claude Code + Codex |
+| Bitbucket/Bamboo | Not supported | Planned (0.2.0) |
 
 ## Installation
 
 ```bash
-# After publishing to PyPI: install as a CLI tool
+# Install as a CLI tool (after PyPI publish)
 uv tool install atlassian-skills
 
 # Or via pip
@@ -26,32 +33,20 @@ pip install atlassian-skills
 
 # Verify
 atls --version
+
+# Upgrade the CLI and refresh assistant setup assets
+atls upgrade
 ```
-
-### Local install before PyPI publish
-
-```bash
-# From the repo root
-uv tool install -e .
-
-# Or from anywhere
-uv tool install -e /path/to/atlassian-skills
-
-# Reinstall after entrypoint/metadata changes
-uv tool install --force -e .
-```
-
-`uv tool install atlassian-skills` only works after the package is available from a package index (for example PyPI). Before publish, install from the local path.
 
 ## Authentication
 
-Server/DC only. PAT (Bearer) is default.
+Server/DC only. Personal Access Token (PAT / Bearer) is the default auth method.
 
 ### 1. Create Personal Access Tokens
 
 Generate PATs from your Atlassian instance:
-- Jira: `https://your-jira.example.com` -> Profile -> Personal Access Tokens -> Create
-- Confluence: `https://your-confluence.example.com` -> Profile -> Personal Access Tokens -> Create
+- Jira: `https://your-jira.example.com` → Profile → Personal Access Tokens → Create
+- Confluence: `https://your-confluence.example.com` → Profile → Personal Access Tokens → Create
 
 ### 2. Configure server URLs
 
@@ -60,11 +55,18 @@ atls config set profiles.default.jira_url https://your-jira.example.com
 atls config set profiles.default.confluence_url https://your-confluence.example.com
 ```
 
+Or via environment variables:
+
+```bash
+export ATLS_DEFAULT_JIRA_URL="https://your-jira.example.com"
+export ATLS_DEFAULT_CONFLUENCE_URL="https://your-confluence.example.com"
+```
+
+For non-default profiles, use `ATLS_<PROFILE>_JIRA_URL` and `ATLS_<PROFILE>_CONFLUENCE_URL`.
+
 ### 3. Set tokens
 
-Choose one of:
-
-**Option A: Environment variables (recommended)**
+**Environment variables (recommended)**
 
 Add to `~/.zshrc` or `~/.bashrc`:
 
@@ -80,7 +82,8 @@ export ATLS_CORP_JIRA_TOKEN="..."
 export ATLS_CORP_CONFLUENCE_TOKEN="..."
 ```
 
-**Option B: Secure file storage**
+<details>
+<summary>Secure file-based storage (alternative to plain env vars)</summary>
 
 ```bash
 mkdir -p ~/.secrets && chmod 700 ~/.secrets
@@ -92,6 +95,7 @@ chmod 600 ~/.secrets/jira_pat ~/.secrets/confluence_pat
 [ -f ~/.secrets/jira_pat ]       && export JIRA_PERSONAL_TOKEN="$(cat ~/.secrets/jira_pat)"
 [ -f ~/.secrets/confluence_pat ] && export CONFLUENCE_PERSONAL_TOKEN="$(cat ~/.secrets/confluence_pat)"
 ```
+</details>
 
 **Priority**: CLI flags > `ATLS_*` vars > `JIRA_PERSONAL_TOKEN`/`CONFLUENCE_PERSONAL_TOKEN` > config file
 
@@ -101,57 +105,93 @@ chmod 600 ~/.secrets/jira_pat ~/.secrets/confluence_pat
 atls auth status
 ```
 
-## AI Agent Integration
+## Quick Start
 
-atls is a CLI replacement for the MCP server. To let your AI agent discover and use atls automatically, run the setup command.
-
-### Setup
+### 1. Set up your AI agent
 
 ```bash
-# Install for both Claude Code and Codex
+atls setup all        # installs atls skill for Claude Code + Codex
+atls auth status      # verify connection
+```
+
+**What gets installed:**
+- **Claude Code**: `~/.claude/commands/atls.md` (full usage guide, load with `/atls`) + preference directive in `~/.claude/CLAUDE.md` (active every conversation, tells Claude to route Atlassian work through atls and navigate with `--help`).
+- **Codex**: `~/.agents/skills/atls/SKILL.md` (auto-loaded skill with command tree, format rules, write-safety protocol) + routing directive in `~/.codex/AGENTS.md`.
+- Run `atls setup status` to check what is installed.
+- Run `atls setup paths` to see every resolved install path for your platform.
+
+**Install paths (Windows / macOS / Linux):**
+
+`atls` resolves install paths in this order — interactive override → environment variable → platform default. No extra configuration is required on any OS; `Path.home()` expands to `%USERPROFILE%` on Windows and `$HOME` on macOS/Linux.
+
+| Target | Env var override | Default (Windows) | Default (macOS / Linux) |
+|---|---|---|---|
+| Claude config dir | `CLAUDE_CONFIG_DIR` | `C:\Users\<you>\.claude` | `~/.claude` |
+| Codex config dir | `CODEX_HOME` | `C:\Users\<you>\.codex` | `~/.codex` |
+| Agents skill dir | `AGENTS_HOME` | `C:\Users\<you>\.agents` | `~/.agents` |
+
+To customize at install time, run any setup command with `--interactive` (or `-i`):
+
+```bash
+atls setup all --interactive
+# Detected platform: windows
+# Claude config dir: C:\Users\you\.claude  (source: default)
+#   Press Enter to accept, or paste a custom path: D:\Tools\Claude
+#   → using: D:\Tools\Claude
+# Codex config dir: C:\Users\you\.codex  (source: default)
+#   ...
+```
+
+Alternatively, export environment variables before running setup:
+
+```bash
+# Windows (PowerShell)
+$env:CLAUDE_CONFIG_DIR = "D:\Tools\Claude"
+$env:CODEX_HOME = "D:\Tools\Codex"
 atls setup all
 
-# Or install individually
-atls setup claude   # → ~/.claude/commands/atls.md (slash command) + CLAUDE.md block
-atls setup codex    # → ~/.agents/skills/atls/ + ~/.codex/AGENTS.md block
-
-# Check installation status
-atls setup status
+# macOS / Linux
+export CLAUDE_CONFIG_DIR=~/work/claude
+atls setup all
 ```
 
-### Claude Code
+**Codex users note:** the Codex skill installs to `<AGENTS_HOME>/skills/atls/` (primary) and `<CODEX_HOME>/skills/atls/` (legacy compatibility). The routing directive in `AGENTS.md` keeps `atls` as the default Atlassian tool across conversations. Codex's session-start mechanism auto-loads `SKILL.md` — no manual load required.
 
-`atls setup claude` installs the `/atls` slash command and injects a directive block into `~/.claude/CLAUDE.md`. Two ways to use it:
+### 2. Talk to your agent in natural language
 
-**Option 1: Slash command (manual)**
+Once set up, your AI agent knows how to use atls automatically. Just ask:
 
-Type `/atls` during a conversation to load the full atls usage guide into context. Run it once before starting Atlassian work.
+> "Read PROJ-123 and summarize the acceptance criteria."
+>
+> "Search for open bugs in the PLATFORM project assigned to me."
+>
+> "Pull the API Overview page from Confluence, add a rate-limiting section, and push it back."
+>
+> "Create a Story in PROJ: title 'Add retry logic to payment service', and paste the description from desc.md."
+>
+> "What changed on the Release Notes page since last week?"
 
-**Option 2: CLAUDE.md directive (automatic, recommended)**
+The agent translates these into `atls` CLI calls, picks the right output format, and handles pagination and error codes for you.
 
-`atls setup claude` automatically adds a block to `~/.claude/CLAUDE.md` so Claude recognizes atls in every conversation. You can also add a project-level directive to your project's `CLAUDE.md`:
+### 3. Or use the CLI directly
 
-```markdown
-## Atlassian
-- Use `atls` CLI for all Atlassian (Jira, Confluence) operations instead of mcp-atlassian MCP.
-- Reference: `/atls` command or `atls <command> --help`.
-- Always run `--dry-run` before write operations.
+```bash
+# Jira
+atls jira issue get PROJ-1
+atls jira issue search "project=PROJ AND status=Open" --limit=20
+atls jira issue create --project PROJ --type Story --summary "New feature" --body-file=story.md --body-format=md
+
+# Confluence
+atls confluence page get 12345
+atls confluence page search "space=DOCS AND title=API"
+atls confluence page push-md 12345 --md-file=page.md --if-version 15
+atls confluence page pull-md 12345 --output=page.md --resolve-assets=sidecar --asset-dir=assets/
+
+# Jira description from markdown
+atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-promotion=jira
 ```
 
-### Codex
-
-`atls setup codex` installs the skill at `~/.agents/skills/atls/SKILL.md` and injects a short routing block into `~/.codex/AGENTS.md`.
-For compatibility with older OMX/Codex setups, it also refreshes `~/.codex/skills/atls/SKILL.md`.
-The injected global rule keeps AGENTS short and lets the full workflow live in the skill:
-
-```markdown
-## Atlassian via atls
-- Use `atls` CLI for Jira/Confluence work before Atlassian MCP tools.
-- Use `$atls` when you need the full format-selection and write-safety workflow.
-- Always run `--dry-run` before write operations.
-```
-
-### Agent Usage Tips
+### Agent usage tips
 
 ```bash
 # 1. Token-efficient: compact format is the default (no extra flags needed)
@@ -173,51 +213,6 @@ atls confluence page push-md PAGE_ID --md-file page.md --if-version 15
 # 0=OK, 2=not found, 5=stale version, 6=auth failure, 11=rate limited
 ```
 
-## Format Placement
-
-`--format` can be set either globally before the subcommand or locally on Jira/Confluence commands:
-
-```bash
-# Global placement
-atls --format=json jira issue get PROJ-1
-
-# Local placement
-atls jira issue get PROJ-1 --format=json
-atls confluence page search "space=DOCS" --format=json
-```
-
-Prefer the long local form `--format=...` after the subcommand for readability.
-
-Some commands already use `-f` for file input, so after the subcommand you should use the long form instead of `-f`:
-
-```bash
-# `-f` is global here, before the subcommand
-atls -f json jira issue get PROJ-1
-
-# After the subcommand, use the long flag on commands that reserve -f for files
-atls confluence page push-md 12345 --md-file page.md --format=json
-atls confluence page create --body-file=- --format=json
-```
-
-## Quick Start
-
-```bash
-# Jira
-atls jira issue get PROJ-1
-atls jira issue search "project=PROJ AND status=Open" --limit=20
-atls jira issue create --project PROJ --type Story --summary "New feature" --body-file=story.md --body-format=md
-
-# Confluence
-atls confluence page get 12345
-atls confluence page search "space=DOCS AND title=API"
-atls confluence page push-md 12345 --md-file=page.md --if-version 15
-atls confluence page pull-md 12345 --output=page.md --resolve-assets=sidecar --asset-dir=assets/
-atls confluence page diff-local 12345 local.md --passthrough-prefix workflow:
-
-# Jira description from markdown
-atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-promotion=jira
-```
-
 ## Output Formats
 
 | Format | Flag | Use case |
@@ -227,18 +222,17 @@ atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-pro
 | md | `--format=md` | Body/description reading |
 | raw | `--format=raw` | Byte-preserving body access |
 
-## Passthrough Prefix Support
+`--format` can be placed globally or locally on subcommands:
 
-`--passthrough-prefix` is only supported on Confluence markdown round-trip commands:
+```bash
+# Global placement
+atls --format=json jira issue get PROJ-1
 
-| Command | Supports `--passthrough-prefix` |
-|---|---|
-| `confluence page push-md` | yes |
-| `confluence page pull-md` | yes |
-| `confluence page diff-local` | yes |
-| `confluence page get` | no |
-| `confluence page create` | no |
-| `confluence page update` | no |
+# Local placement (preferred for readability)
+atls jira issue get PROJ-1 --format=json
+```
+
+> Some commands use `-f` for file input (e.g. `push-md`). After the subcommand, always use the long form `--format=` to avoid ambiguity.
 
 ## Command Reference
 
@@ -249,7 +243,7 @@ atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-pro
 - `jira project list|issues|versions|components|versions-create`
 - `jira board list|issues`
 - `jira sprint list|issues|create|update|add-issues`
-- `jira link list-types|create|remote-create|delete`
+- `jira link list-types|create|remote-list|remote-create|delete`
 - `jira epic link`
 - `jira watcher list|add|remove`
 - `jira worklog list|add`
@@ -266,10 +260,13 @@ atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-pro
 - `confluence attachment list|download|download-all|upload|upload-batch|delete`
 - `confluence user search`
 
+> `--passthrough-prefix` is supported on Confluence markdown round-trip commands only: `push-md`, `pull-md`, `diff-local`.
+
 ### Utility
 - `auth login|status|list`
 - `config get|set|path`
-- `setup codex|claude|all|status`
+- `setup codex|claude|all|status|paths` (add `--interactive` to customize install paths per-platform)
+- `upgrade`
 
 ## Write Safety
 
@@ -281,10 +278,6 @@ All write commands support:
 - `--attachment-if-exists skip|replace`: Duplicate attachment handling (push-md)
 - `--asset-dir DIR`: Batch upload all files in a directory (push-md)
 
-Additional convenience behavior:
-- `confluence page push-md --md-file=-`: read markdown from stdin
-- `confluence page push-md --asset-dir DIR`: if `DIR` does not exist, it is treated as an empty attachment set
-
 ## Jira Custom Fields
 
 For scripting, explicitly requested `customfield_*` keys are preserved in JSON output:
@@ -294,7 +287,7 @@ atls jira issue get PROJ-1 --fields=summary,customfield_10100 --format=json
 atls jira issue search "project=PROJ" --fields=summary,customfield_10100 --format=json
 ```
 
-For writes, `--set-customfield` now verifies the result with a read-back check and exits with a validation error if Jira accepts the request but does not apply the value:
+For writes, `--set-customfield` verifies the result with a read-back check and exits with a validation error if Jira accepts the request but does not apply the value:
 
 ```bash
 atls jira issue update PROJ-1 --set-customfield customfield_10100=EPIC-1
@@ -302,12 +295,29 @@ atls jira issue update PROJ-1 --set-customfield customfield_10100=EPIC-1
 
 If the field expects a structured payload instead of a plain string/key, use `--fields-json` instead of `--set-customfield`.
 
+## Migrating from mcp-atlassian
+
+atlassian-skills is a CLI re-implementation of mcp-atlassian's Jira and Confluence operations. If you are currently using mcp-atlassian, here is what changes:
+
+| mcp-atlassian | atlassian-skills |
+|---|---|
+| MCP protocol (JSON-RPC over stdio) | Shell CLI (`atls <command>`) |
+| Full JSON responses every call | `compact` by default, `json`/`md`/`raw` on demand |
+| ~15k token schema overhead per session | <400 tokens (CLI help only when needed) |
+| `JIRA_PERSONAL_TOKEN` env var | Same env var works, plus `ATLS_*` for multi-profile |
+| Cloud + Server/DC | Server/DC only (primary target) |
+| Separate Jira wiki / Confluence XHTML handling | Unified via `cfxmark` — single dependency for all markup |
+| Confluence edits can silently alter content | Lossless XHTML ↔ Markdown round-trip via cfxmark |
+| Silent character dropping in Jira descriptions | Byte-preserving `--format=raw` mode |
+
+**Token-compatible auth**: If you already have `JIRA_PERSONAL_TOKEN` and `CONFLUENCE_PERSONAL_TOKEN` set for mcp-atlassian, atls picks them up automatically — no reconfiguration needed.
+
 ## Architecture
 
-- **CLI-first**: All functionality accessible via `atls` CLI. Skills are thin wrappers.
-- **Single HTTP client**: `httpx`-based `BaseClient` with retry (429/5xx), pagination, auth.
-- **cfxmark integration**: Jira wiki <-> Markdown <-> Confluence storage via single dependency.
-- **Pydantic v2 models**: Strict response parsing for stable fields, with Jira `customfield_*` passthrough in JSON issue output.
+- **CLI-first**: All functionality accessible via the `atls` binary. AI agent skills are thin wrappers that invoke CLI commands.
+- **Single HTTP client**: `httpx`-based `BaseClient` with retry (429/5xx), pagination, and auth.
+- **cfxmark integration**: Lossless Confluence XHTML ↔ Markdown ↔ Jira wiki conversion via a single dependency. Pages survive unlimited round-trips (`pull-md` → edit → `push-md`) with zero content drift.
+- **Pydantic v2 models**: Strict response parsing for stable fields, with Jira `customfield_*` passthrough in JSON output.
 
 ## Key Dependencies
 
@@ -316,23 +326,18 @@ If the field expects a structured payload instead of a plain string/key, use `--
 | httpx | REST client (sync) |
 | typer + rich | CLI framework |
 | pydantic | Response models |
-| cfxmark >= 0.4 | Markup conversion (Jira wiki + Confluence XHTML) |
+| cfxmark ≥ 0.4 | Markup conversion (Jira wiki + Confluence XHTML) |
 | platformdirs | Config path resolution |
-
-## Differences from mcp-atlassian
-
-1. **CLI, not MCP**: Invoked via shell, not MCP protocol. Zero schema overhead per call.
-2. **Token-efficient by default**: `compact` format strips non-essential fields. Body fetched only when requested.
-3. **Byte-preserving raw mode**: `--format=raw` returns server response verbatim. No silent character dropping.
-4. **Server/DC primary**: Optimized for on-premise Atlassian. Cloud is non-goal.
-5. **Unified client**: Single `httpx` client for all products vs. separate adapters.
-6. **cfxmark for all markup**: Both Jira wiki and Confluence XHTML via one dependency.
 
 ## Development
 
 ```bash
 # Setup
 uv sync
+
+# Local install (editable)
+uv tool install -e .              # from repo root
+uv tool install --force -e .      # reinstall after entrypoint changes
 
 # Test
 uv run pytest
@@ -353,4 +358,4 @@ uv build
 
 ## License
 
-MIT
+[MIT](./LICENSE)

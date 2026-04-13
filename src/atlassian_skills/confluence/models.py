@@ -50,6 +50,21 @@ class Attachment(BaseModel):
     file_size: int | None = Field(default=None, alias="fileSize")
     links: PageLinks | None = Field(default=None, alias="_links")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_extensions(cls, data: Any) -> Any:
+        """Extract mediaType/fileSize from nested extensions (Confluence Server/DC)."""
+        if isinstance(data, dict):
+            extensions = data.get("extensions")
+            if isinstance(extensions, dict):
+                if not data.get("mediaType") and extensions.get("mediaType"):
+                    data["mediaType"] = extensions["mediaType"]
+                if data.get("fileSize") in (None, 0) and extensions.get("fileSize") is not None:
+                    import contextlib
+                    with contextlib.suppress(TypeError, ValueError):
+                        data["fileSize"] = int(extensions["fileSize"])
+        return data
+
 
 class Page(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
@@ -86,6 +101,26 @@ class Page(BaseModel):
                     data["body_storage"] = storage.get("value", "")
         return data
 
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_history_timestamps(cls, data: Any) -> Any:
+        """Extract created/updated from nested history and version.when fallback."""
+        if isinstance(data, dict):
+            history = data.get("history")
+            if isinstance(history, dict):
+                if not data.get("created") and history.get("createdDate"):
+                    data["created"] = history["createdDate"]
+                if not data.get("updated"):
+                    last_updated = history.get("lastUpdated")
+                    if isinstance(last_updated, dict) and last_updated.get("when"):
+                        data["updated"] = last_updated["when"]
+            # Fallback: version.when is the last-modified timestamp
+            if not data.get("updated"):
+                version = data.get("version")
+                if isinstance(version, dict) and version.get("when"):
+                    data["updated"] = version["when"]
+        return data
+
 
 # Required for self-referential model
 Page.model_rebuild()
@@ -109,6 +144,18 @@ class Comment(BaseModel):
     body_view: str | None = None
     version: PageVersion | None = None
     ancestors: list[Comment] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _extract_body_view(cls, data: Any) -> Any:
+        """Extract body_view from nested body.view.value (Confluence Server/DC response)."""
+        if isinstance(data, dict) and "body_view" not in data:
+            body = data.get("body", {})
+            if isinstance(body, dict):
+                view = body.get("view", {})
+                if isinstance(view, dict) and "value" in view:
+                    data["body_view"] = view["value"]
+        return data
 
 
 Comment.model_rebuild()

@@ -26,7 +26,7 @@ FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 def test_jira_wiki_roundtrip_converges() -> None:
     """wiki → md → wiki should converge within 2 iterations."""
-    fixture = json.loads((FIXTURES / "jira/get-issue-rlm3.json").read_text())
+    fixture = json.loads((FIXTURES / "jira/get-issue-proj3.json").read_text())
     original_wiki = fixture.get("description", "")
     if not original_wiki:
         return  # skip if description is empty/None
@@ -119,13 +119,13 @@ def test_preprocess_jira_text_no_special_markup() -> None:
 
 def test_preprocess_jira_text_multiple_mentions_and_smart_links() -> None:
     text = (
-        "[~accountid:alice] opened [Issue|http://jira/RLM-1|smart-link] "
+        "[~accountid:alice] opened [Issue|http://jira/PROJ-1|smart-link] "
         "and [~accountid:bob] closed [PR|http://bb/pr/1|smart-link]."
     )
     result = preprocess_jira_text(text)
     assert "@user-alice" in result
     assert "@user-bob" in result
-    assert "[Issue|http://jira/RLM-1]" in result
+    assert "[Issue|http://jira/PROJ-1]" in result
     assert "[PR|http://bb/pr/1]" in result
     assert "smart-link" not in result.lower()
 

@@ -15,9 +15,9 @@ pytestmark = pytest.mark.benchmark
 
 def test_l3_workflow_scenario_5() -> None:
     """L3: Issue get + transitions + watchers + worklog workflow achieves >= 60% token reduction vs MCP."""
-    issue_fixture = load_fixture("jira/get-issue-rlm3.json")
+    issue_fixture = load_fixture("jira/get-issue-proj3.json")
     transitions_fixture = load_fixture("jira/get-transitions-rlm3.json")
-    watchers_fixture = load_fixture("jira/get-watchers-rlm3.json")
+    watchers_fixture = load_fixture("jira/get-watchers-proj3.json")
     worklog_fixture = load_fixture("jira/get-worklog-rlm3.json")
 
     # MCP total tokens: sum of all tool responses as raw JSON

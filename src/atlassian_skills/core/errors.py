@@ -107,7 +107,14 @@ def _safe_server_message(body: Any, max_len: int = 500) -> str:
     if body is None:
         return ""
     if isinstance(body, dict):
-        msg = body.get("message", "") or (body.get("errorMessages", [""])[0] if body.get("errorMessages") else "")
+        msg = body.get("message", "")
+        if not msg:
+            error_messages = body.get("errorMessages", [])
+            msg = error_messages[0] if error_messages else ""
+        if not msg:
+            errors = body.get("errors", {})
+            if errors:
+                msg = "; ".join(f"{k}: {v}" for k, v in errors.items())
         text = str(msg)
     else:
         text = str(body)

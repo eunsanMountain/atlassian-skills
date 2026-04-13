@@ -18,6 +18,12 @@ JIRA_CODE_LANGUAGE_MAP: dict[str, str] = {
 }
 
 
+def format_page_md_header(title: str, space_key: str, version: Any) -> str:
+    """Build a Markdown metadata header for a Confluence page."""
+    ver = version if isinstance(version, int) else (version.number if version else "")
+    return f"# {title}\n\n**Space:** {space_key}  **Version:** {ver}\n\n"
+
+
 def _lossy_footer(warnings: tuple[str, ...] | list[str]) -> str:
     """Return a lossy conversion footer if there are warnings, else empty string."""
     if warnings:
@@ -74,24 +80,30 @@ def jira_wiki_to_md_with_options(
     section: str | None = None,
     heading_promotion: str | None = None,
     drop_leading_notice: list[str] | None = None,
+    skip_conversion: bool = False,
 ) -> str:
     """Convert Jira wiki to md with output control options.
 
     - section: extract content under the given H2 heading (post-processing)
     - heading_promotion: documented for future use; not yet implemented in cfxmark
     - drop_leading_notice: strip lines matching any of the given prefix strings (post-processing)
+    - skip_conversion: if True, skip wiki→md conversion but still apply section/notice extraction
+      (useful when body_repr already converted the body)
     """
     if not wiki_text:
         return ""
-    try:
-        result = cfxmark.from_jira_wiki(wiki_text)
-        md = result.markdown or ""
-        md += _lossy_footer(result.warnings)
-    except Exception as e:
-        import sys
+    if skip_conversion:
+        md = wiki_text
+    else:
+        try:
+            result = cfxmark.from_jira_wiki(wiki_text)
+            md = result.markdown or ""
+            md += _lossy_footer(result.warnings)
+        except Exception as e:
+            import sys
 
-        print(f"[atls] warning: cfxmark conversion failed: {e}", file=sys.stderr)
-        md = wiki_text  # fallback to raw
+            print(f"[atls] warning: cfxmark conversion failed: {e}", file=sys.stderr)
+            md = wiki_text  # fallback to raw
 
     if drop_leading_notice:
         md = _drop_notice_lines(md, drop_leading_notice)
@@ -162,12 +174,16 @@ def _extract_name(value: Any) -> str:
     if isinstance(value, str):
         return value
     if isinstance(value, dict):
-        return value.get("display_name", value.get("displayName", value.get("name", "")))
+        return str(value.get("display_name", value.get("displayName", value.get("name", ""))))
     return str(value)
 
 
-def format_md_issue(issue: dict[str, Any]) -> str:
-    """Format a Jira issue dict as Markdown with description converted from wiki markup."""
+def format_md_issue(issue: dict[str, Any], *, skip_body_conversion: bool = False) -> str:
+    """Format a Jira issue dict as Markdown with description converted from wiki markup.
+
+    When *skip_body_conversion* is True, the description is used as-is (already
+    converted or intentionally kept in its original representation by --body-repr).
+    """
     key = issue.get("key", "")
     summary = issue.get("summary", "")
     status = _extract_name(issue.get("status"))
@@ -175,7 +191,10 @@ def format_md_issue(issue: dict[str, Any]) -> str:
     priority = _extract_name(issue.get("priority"))
     assignee = _extract_name(issue.get("assignee"))
     description_raw = issue.get("description", "")
-    description_md = jira_wiki_to_md(description_raw) if description_raw else ""
+    if skip_body_conversion:
+        description_md = description_raw
+    else:
+        description_md = jira_wiki_to_md(description_raw) if description_raw else ""
 
     lines = [
         f"# {key}: {summary}",

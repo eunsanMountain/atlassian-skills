@@ -368,7 +368,7 @@ def test_get_children_empty_returns_empty_list(client: ConfluenceClient) -> None
 @respx.mock
 def test_get_space_tree_empty_space(client: ConfluenceClient) -> None:
     respx.get(f"{BASE_URL}/rest/api/space/EMPTY/content").mock(
-        return_value=httpx.Response(200, json={"results": [], "_links": {}})
+        return_value=httpx.Response(200, json={"page": {"results": [], "size": 0, "_links": {}}, "_links": {}})
     )
 
     result = client.get_space_tree("EMPTY")

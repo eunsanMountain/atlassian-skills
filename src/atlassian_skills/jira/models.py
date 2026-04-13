@@ -12,7 +12,14 @@ class User(BaseModel):
     name: str | None = None
     email: str | None = Field(default=None, alias="emailAddress")
     avatar_url: str | None = Field(default=None, alias="avatarUrl")
-    key: str | None = None
+    key: str | None = Field(default=None, alias="userKey")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_key(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "key" in data and "userKey" not in data:
+            data["userKey"] = data["key"]
+        return data
 
 
 class Status(BaseModel):
@@ -46,7 +53,7 @@ class Project(BaseModel):
     key: str
     name: str
     description: str | None = None
-    project_type_key: str | None = None
+    project_type_key: str | None = Field(default=None, alias="projectTypeKey")
     lead: User | None = None
 
 
@@ -58,7 +65,7 @@ class ProjectVersion(BaseModel):
     description: str | None = None
     released: bool = False
     archived: bool = False
-    release_date: str | None = None
+    release_date: str | None = Field(default=None, alias="releaseDate")
 
 
 class ProjectComponent(BaseModel):
@@ -76,10 +83,10 @@ class Sprint(BaseModel):
     id: int
     name: str
     state: str | None = None
-    start_date: str | None = None
-    end_date: str | None = None
-    complete_date: str | None = None
-    board_id: int | None = None
+    start_date: str | None = Field(default=None, alias="startDate")
+    end_date: str | None = Field(default=None, alias="endDate")
+    complete_date: str | None = Field(default=None, alias="completeDate")
+    board_id: int | None = Field(default=None, alias="originBoardId")
 
 
 class LinkType(BaseModel):
@@ -149,7 +156,7 @@ class Transition(BaseModel):
 
     id: int
     name: str
-    to_status: Status | None = None
+    to_status: Status | None = Field(default=None, alias="to")
 
 
 class FieldSchema(BaseModel):
@@ -190,6 +197,7 @@ class JiraAttachment(BaseModel):
     mime_type: str | None = Field(default=None, alias="mimeType")
     author: User | None = None
     created: str | None = None
+    content: str | None = None  # Download URL for the attachment
 
 
 class JiraComment(BaseModel):
@@ -212,8 +220,8 @@ class Worklog(BaseModel):
     created: str | None = None
     updated: str | None = None
     started: str | None = None
-    time_spent: str | None = None
-    time_spent_seconds: int | None = None
+    time_spent: str | None = Field(default=None, alias="timeSpent")
+    time_spent_seconds: int | None = Field(default=None, alias="timeSpentSeconds")
 
 
 class WorklogList(BaseModel):
@@ -221,14 +229,24 @@ class WorklogList(BaseModel):
 
     worklogs: list[Worklog] = Field(default_factory=list)
     total: int | None = None
-    start_at: int | None = None
-    max_results: int | None = None
+    start_at: int | None = Field(default=None, alias="startAt")
+    max_results: int | None = Field(default=None, alias="maxResults")
+
+
+class IssueDates(BaseModel):
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    key: str
+    created: str | None = None
+    updated: str | None = None
+    due_date: str | None = Field(default=None, alias="dueDate")
+    resolution_date: str | None = Field(default=None, alias="resolutionDate")
 
 
 class WatcherList(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
-    issue_key: str | None = None
-    watcher_count: int = 0
-    is_watching: bool = False
+    issue_key: str | None = Field(default=None, alias="issueKey")
+    watcher_count: int = Field(default=0, alias="watchCount")
+    is_watching: bool = Field(default=False, alias="isWatching")
     watchers: list[User] = Field(default_factory=list)

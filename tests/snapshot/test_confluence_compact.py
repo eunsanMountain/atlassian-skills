@@ -33,7 +33,7 @@ def _auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_confluence_page_compact(snapshot: SnapshotAssertion) -> None:
     """atls confluence page get 429140627 --format=compact matches snapshot."""
     respx.get(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(200, json=_load("get-page-429140627.json")["metadata"])
+        return_value=httpx.Response(200, json=_load("get-page-sample.json")["metadata"])
     )
     result = runner.invoke(app, ["confluence", "page", "get", "429140627", "--format", "compact"])
     assert result.exit_code == 0, result.output
@@ -44,7 +44,7 @@ def test_confluence_page_compact(snapshot: SnapshotAssertion) -> None:
 def test_confluence_page_json_format(snapshot: SnapshotAssertion) -> None:
     """atls --format=json confluence page get 429140627 matches snapshot."""
     respx.get(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(200, json=_load("get-page-429140627.json")["metadata"])
+        return_value=httpx.Response(200, json=_load("get-page-sample.json")["metadata"])
     )
     result = runner.invoke(app, ["--format", "json", "confluence", "page", "get", "429140627"])
     assert result.exit_code == 0, result.output
@@ -53,8 +53,8 @@ def test_confluence_page_json_format(snapshot: SnapshotAssertion) -> None:
 
 @respx.mock
 def test_confluence_search_compact(snapshot: SnapshotAssertion) -> None:
-    """atls confluence page search 'space=IVSL' --format=compact matches snapshot."""
-    fixture = _load("search-rlm.json")
+    """atls confluence page search 'space=TESTSPACE' --format=compact matches snapshot."""
+    fixture = _load("search-proj.json")
     respx.get(f"{CONFLUENCE_URL}/rest/api/search").mock(
         return_value=httpx.Response(
             200,
@@ -67,15 +67,15 @@ def test_confluence_search_compact(snapshot: SnapshotAssertion) -> None:
             },
         )
     )
-    result = runner.invoke(app, ["--format", "compact", "confluence", "page", "search", "space=IVSL"])
+    result = runner.invoke(app, ["--format", "compact", "confluence", "page", "search", "space=TESTSPACE"])
     assert result.exit_code == 0, result.output
     assert result.output == snapshot
 
 
 @respx.mock
 def test_confluence_search_json_format(snapshot: SnapshotAssertion) -> None:
-    """atls --format=json confluence page search 'space=IVSL' matches snapshot."""
-    fixture = _load("search-rlm.json")
+    """atls --format=json confluence page search 'space=TESTSPACE' matches snapshot."""
+    fixture = _load("search-proj.json")
     respx.get(f"{CONFLUENCE_URL}/rest/api/search").mock(
         return_value=httpx.Response(
             200,
@@ -88,7 +88,7 @@ def test_confluence_search_json_format(snapshot: SnapshotAssertion) -> None:
             },
         )
     )
-    result = runner.invoke(app, ["--format", "json", "confluence", "page", "search", "space=IVSL"])
+    result = runner.invoke(app, ["--format", "json", "confluence", "page", "search", "space=TESTSPACE"])
     assert result.exit_code == 0, result.output
     assert result.output == snapshot
 

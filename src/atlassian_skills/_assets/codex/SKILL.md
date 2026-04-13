@@ -21,21 +21,21 @@ atls
 │   ├── sprint       list, issues, create, update, add-issues
 │   ├── board        list, issues
 │   ├── field        search, options
-│   ├── link         list-types, create, remote-create, delete
+│   ├── link         list-types, create, remote-list, remote-create, delete
 │   ├── worklog      list, add
 │   ├── watcher      list, add, remove
 │   ├── attachment   list, upload, download, delete
 │   ├── dev-info     get, get-many
 │   ├── service-desk list, queues, queue-issues
 │   ├── project      list, issues, versions, components, versions-create
-│   └── user         get
+│   └── user         get, me
 └── confluence
     ├── page         get, search, children, history, diff, images, create, update, delete, move, push-md, pull-md, diff-local
     ├── space        tree
     ├── comment      list, add, reply
     ├── label        list, add
     ├── attachment   list, upload, upload-batch, download, download-all, delete
-    └── user         search
+    └── user         search, me
 ```
 
 When unsure, navigate with `--help`:
@@ -69,6 +69,8 @@ atls jira issue update KEY --body-file=- --body-format=md --heading-promotion=ji
 # Jira transition (2-step: discover ID, then transition)
 atls jira issue transitions KEY --format=json   # → [{"id":"31","name":"In Progress"},...]
 atls jira issue transition KEY --transition-id 31
+# Or by name (case-insensitive):
+atls jira issue transition KEY --transition-name "In Progress"
 
 # Confluence
 atls confluence page get ID                # compact view
@@ -94,7 +96,7 @@ atls confluence page diff-local ID page.md --passthrough-prefix workflow:
 | `--resolve-assets=sidecar` | pull-md | Download attachments, rewrite image links |
 | `--passthrough-prefix P` | push-md, pull-md, diff-local, issue update | Preserve `<!-- P:... -->` comments |
 | `--md-file -` | push-md | Read markdown from stdin |
-| `--body-repr md\|raw\|wiki` | issue get, issue search | Control body representation (separate from `--format`) |
+| `--body-repr md\|raw\|wiki` | issue get | Control body representation (separate from `--format`) |
 | `--heading-promotion jira` | issue update, issue get, issue search | Heading level adjust for md↔wiki |
 | `--section "H2 Title"` | issue get, issue search | Extract specific H2 section from body |
 

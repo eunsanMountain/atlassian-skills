@@ -38,7 +38,8 @@ def main(
     try:
         fmt = OutputFormat(format)
     except ValueError:
-        typer.echo(f"Unknown format: {format!r}. Use: compact | json | md | raw", err=True)
+        valid = ", ".join(f.value for f in OutputFormat)
+        typer.echo(f"Error: Invalid format {format!r}. Valid: {valid}", err=True)
         raise typer.Exit(1) from None
     ctx.obj["profile"] = profile
     ctx.obj["format"] = fmt
@@ -55,12 +56,14 @@ def _register_sub_apps() -> None:
     from atlassian_skills.cli.confluence import confluence_app
     from atlassian_skills.cli.jira import jira_app
     from atlassian_skills.cli.setup import setup_app
+    from atlassian_skills.cli.upgrade import upgrade
 
     app.add_typer(auth_app, name="auth")
     app.add_typer(config_app, name="config")
     app.add_typer(confluence_app, name="confluence")
     app.add_typer(jira_app, name="jira")
     app.add_typer(setup_app, name="setup")
+    app.command("upgrade")(upgrade)
 
 
 _register_sub_apps()

@@ -25,26 +25,26 @@ def load(filename: str) -> object:
 class TestPageModel:
     def test_get_page_preprocessed(self) -> None:
         """Validate the preprocessed MCP-captured page fixture."""
-        raw = load("get-page-429140627.json")
+        raw = load("get-page-sample.json")
         assert isinstance(raw, dict)
         data = raw.get("metadata", raw)
         page = Page.model_validate(data)
         assert page.id == "429140627"
-        assert page.title == "[RLM-3] Navi Map 통합-경로 판단 개선"
+        assert page.title == "[PROJ-3] Navi Map 통합-경로 판단 개선"
         assert page.type == "page"
         assert page.space is not None
-        assert page.space.key == "IVSL"
-        assert page.space.name == "IVS Lab"
+        assert page.space.key == "TESTSPACE"
+        assert page.space.name == "Test Lab"
 
     def test_get_page_version(self) -> None:
-        raw = load("get-page-429140627.json")
+        raw = load("get-page-sample.json")
         assert isinstance(raw, dict)
         data = raw.get("metadata", raw)
         page = Page.model_validate(data)
         assert page.version == 2
 
     def test_get_page_content(self) -> None:
-        raw = load("get-page-429140627.json")
+        raw = load("get-page-sample.json")
         assert isinstance(raw, dict)
         data = raw.get("metadata", raw)
         page = Page.model_validate(data)
@@ -52,7 +52,7 @@ class TestPageModel:
         assert page.content.format == "markdown"
 
     def test_get_page_raw_format(self) -> None:
-        raw = load("get-page-429140627-raw.json")
+        raw = load("get-page-sample-raw.json")
         assert isinstance(raw, dict)
         data = raw.get("metadata", raw)
         page = Page.model_validate(data)
@@ -79,7 +79,7 @@ class TestPageModel:
         assert page.children == []
 
     def test_space_id_accepts_integer_from_server(self) -> None:
-        space = Space.model_validate({"id": 12345, "key": "IVSL", "name": "IVS Lab"})
+        space = Space.model_validate({"id": 12345, "key": "TESTSPACE", "name": "Test Lab"})
         assert space.id == 12345
 
 
@@ -90,7 +90,7 @@ class TestPageHistoryFixture:
         page = Page.model_validate(raw)
         assert page.id == "429140627"
         assert page.version == 1
-        assert page.title == "[RLM-3] 분기점/합류점 경로 판단 개선"
+        assert page.title == "[PROJ-3] 분기점/합류점 경로 판단 개선"
 
     def test_history_content(self) -> None:
         raw = load("get-page-history-v1.json")
@@ -103,17 +103,17 @@ class TestPageHistoryFixture:
 class TestSearchFixture:
     def test_search_results_list(self) -> None:
         """The search fixture is a plain list of pages."""
-        raw = load("search-rlm.json")
+        raw = load("search-proj.json")
         assert isinstance(raw, list)
         pages = [Page.model_validate(item) for item in raw]
         assert len(pages) == 3
         assert pages[0].id == "429148294"
-        assert pages[0].title == "[RLM-23] Multi-Dataset 학습 인프라"
+        assert pages[0].title == "[PROJ-23] Multi-Dataset 학습 인프라"
         assert pages[0].space is not None
-        assert pages[0].space.key == "IVSL"
+        assert pages[0].space.key == "TESTSPACE"
 
     def test_search_result_types(self) -> None:
-        raw = load("search-rlm.json")
+        raw = load("search-proj.json")
         assert isinstance(raw, list)
         pages = [Page.model_validate(item) for item in raw]
         for p in pages:
@@ -122,16 +122,16 @@ class TestSearchFixture:
 
 class TestSpaceTreeFixture:
     def test_space_tree_result(self) -> None:
-        raw = load("get-space-tree-ivsl.json")
+        raw = load("get-space-tree-sample.json")
         assert isinstance(raw, dict)
         result = SpaceTreeResult.model_validate(raw)
-        assert result.space_key == "IVSL"
+        assert result.space_key == "TESTSPACE"
         assert result.total_pages == 10
         assert result.has_more is True
         assert len(result.pages) == 10
 
     def test_space_tree_node_attributes(self) -> None:
-        raw = load("get-space-tree-ivsl.json")
+        raw = load("get-space-tree-sample.json")
         assert isinstance(raw, dict)
         result = SpaceTreeResult.model_validate(raw)
         node = result.pages[0]
@@ -141,7 +141,7 @@ class TestSpaceTreeFixture:
         assert node.parent_id == "330432916"
 
     def test_space_tree_depths(self) -> None:
-        raw = load("get-space-tree-ivsl.json")
+        raw = load("get-space-tree-sample.json")
         assert isinstance(raw, dict)
         result = SpaceTreeResult.model_validate(raw)
         depths = {n.depth for n in result.pages}
@@ -215,9 +215,13 @@ class TestCommentNestedBody:
         }
         comment = Comment.model_validate(data)
         assert comment.id == "comment-1"
-        # body_view is None since it isn't in the nested body structure for Comment
-        # (Comment uses body_view as a direct field, not extracted)
         assert comment.title == "Re: page"
+        assert comment.body_view == "<p>Hello</p>"
+
+    def test_comment_without_body(self) -> None:
+        data: dict = {"id": "comment-2", "title": "Plain"}
+        comment = Comment.model_validate(data)
+        assert comment.body_view is None
 
 
 class TestAttachmentMediaType:

@@ -36,16 +36,39 @@ class ConfluenceClient(BaseClient):
     # Page read
     # ------------------------------------------------------------------
 
+    def get_page_raw_text(
+        self,
+        page_id: str,
+        expand: str = "body.storage,version,space,history",
+    ) -> str:
+        """Return verbatim response text (byte-preserving raw contract)."""
+        return self.get(
+            f"/rest/api/content/{page_id}",
+            params={"expand": expand},
+        ).text
+
+    def get_page_raw(
+        self,
+        page_id: str,
+        expand: str = "body.storage,version,space,history",
+    ) -> dict[str, Any]:
+        """Return the verbatim server JSON response (byte-preserving raw contract)."""
+        result: dict[str, Any] = self.get(
+            f"/rest/api/content/{page_id}",
+            params={"expand": expand},
+        ).json()
+        return result
+
     def get_page(
         self,
         page_id: str,
-        expand: str = "body.storage,version,space",
+        expand: str = "body.storage,version,space,history",
         include_body: bool = True,
     ) -> Page:
         # Task 2: Expand minimization — omit body.storage when not needed.
         if not include_body:
             parts = [p.strip() for p in expand.split(",") if not p.strip().startswith("body")]
-            expand = ",".join(parts) if parts else "version,space"
+            expand = ",".join(parts) if parts else "version,space,history"
         data = self.get(
             f"/rest/api/content/{page_id}",
             params={"expand": expand},
@@ -106,10 +129,25 @@ class ConfluenceClient(BaseClient):
             body = data.get("content", {}).get("value", "") if isinstance(data.get("content"), dict) else ""
         return str(body)
 
+    _IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".tiff"})
+
     def get_page_images(self, page_id: str) -> list[Attachment]:
-        """List image attachments on a page."""
+        """List image attachments on a page.
+
+        Extension fallback applies only when media_type is missing or ambiguous,
+        not when the server explicitly reports a non-image MIME type.
+        """
         attachments = self.list_attachments(page_id)
-        return [a for a in attachments if (a.media_type or "").startswith("image/")]
+        result: list[Attachment] = []
+        for a in attachments:
+            mime = (a.media_type or "").lower()
+            if mime.startswith("image/"):
+                result.append(a)
+                continue
+            if not mime or mime in ("application/octet-stream", "binary/octet-stream"):
+                if any(a.title.lower().endswith(ext) for ext in self._IMAGE_EXTENSIONS):
+                    result.append(a)
+        return result
 
     # ------------------------------------------------------------------
     # Search
@@ -120,12 +158,20 @@ class ConfluenceClient(BaseClient):
         cql: str,
         limit: int = 25,
     ) -> ConfluenceSearchResult:
-        items = self.get_paginated_links(
+        # Peek at first page to capture server-side totalSize before delegating to paginator
+        first_resp = self.get(
             "/rest/api/search",
             params={"cql": cql, "limit": limit},
-            items_key="results",
-            limit=limit,
-        )
+        ).json()
+        total_size = first_resp.get("totalSize", first_resp.get("size", 0))
+        items: list[Any] = list(first_resp.get("results", []))
+        # Follow _links.next if present and we haven't hit the limit
+        next_url = first_resp.get("_links", {}).get("next")
+        while next_url and len(items) < limit:
+            next_page = self.get(next_url).json()
+            items.extend(next_page.get("results", []))
+            next_url = next_page.get("_links", {}).get("next")
+        items = items[:limit]
         # /rest/api/search on Server/DC wraps page data inside a "content"
         # key that has {id, title, …}.  Unwrap only when "content" looks like
         # a page object (has "id"), not when it is body content (has "value").
@@ -138,7 +184,7 @@ class ConfluenceClient(BaseClient):
             pages.append(Page.model_validate(i))
         return ConfluenceSearchResult(
             results=pages,
-            total=len(items),
+            total=total_size,
             limit=limit,
         )
 
@@ -168,17 +214,25 @@ class ConfluenceClient(BaseClient):
         space_key: str,
         limit: int = 200,
     ) -> SpaceTreeResult:
-        items = self.get_paginated_links(
+        # /rest/api/space/{key}/content nests pages under "page.results",
+        # not top-level "results", so we can't use get_paginated_links directly.
+        resp = self.get(
             f"/rest/api/space/{space_key}/content",
-            params={"expand": "ancestors", "limit": limit},
-            items_key="results",
-            limit=limit,
-        )
-        nodes = [SpaceTreeNode.model_validate(i) for i in items]
+            params={"type": "page", "expand": "ancestors", "limit": limit},
+        ).json()
+        page_section = resp.get("page", {})
+        raw_items: list[dict[str, Any]] = page_section.get("results", [])
+        nodes = [SpaceTreeNode.model_validate(i) for i in raw_items]
+        # Derive depth from ancestors list
+        for node in nodes:
+            if node.ancestors:
+                node.depth = len(node.ancestors)
+                node.parent_id = node.ancestors[-1].id
         return SpaceTreeResult(
             space_key=space_key,
             total_pages=len(nodes),
-            pages=nodes,
+            has_more=bool(page_section.get("_links", {}).get("next")),
+            pages=sorted(nodes, key=lambda n: (n.depth, n.title)),
         )
 
     # ------------------------------------------------------------------
@@ -216,10 +270,11 @@ class ConfluenceClient(BaseClient):
     ) -> list[Attachment]:
         items = self.get_paginated_links(
             f"/rest/api/content/{page_id}/child/attachment",
-            params={"limit": limit},
+            params={"limit": limit, "expand": "version,extensions.mediaType,extensions.fileSize"},
             items_key="results",
             limit=limit,
         )
+        # Attachment.model_validator extracts extensions.mediaType/fileSize automatically
         return [Attachment.model_validate(i) for i in items]
 
     def download_attachment(
@@ -267,6 +322,15 @@ class ConfluenceClient(BaseClient):
         return paths
 
     # ------------------------------------------------------------------
+    # User
+    # ------------------------------------------------------------------
+
+    def get_current_user(self) -> User:
+        """GET /rest/api/user/current — current authenticated user."""
+        data = self.get("/rest/api/user/current").json()
+        return User.model_validate(data)
+
+    # ------------------------------------------------------------------
     # User search (group member + fuzzy match)
     # ------------------------------------------------------------------
 
@@ -276,8 +340,11 @@ class ConfluenceClient(BaseClient):
         group_name: str = "confluence-users",
         limit: int = 200,
     ) -> list[User]:
+        from urllib.parse import quote
+
+        encoded_group = quote(group_name, safe="")
         items = self.get_paginated_links(
-            f"/rest/api/group/{group_name}/member",
+            f"/rest/api/group/{encoded_group}/member",
             params={"limit": limit},
             items_key="results",
             limit=limit,

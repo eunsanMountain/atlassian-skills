@@ -26,6 +26,16 @@ def format_output(data: Any, fmt: OutputFormat) -> str:
 
         return format_raw(data)
     if fmt == OutputFormat.MD:
+        # Confluence Page → cfxmark conversion
+        from atlassian_skills.confluence.models import Page
+
+        if isinstance(data, Page) and data.body_storage:
+            from atlassian_skills.core.format.markdown import confluence_storage_to_md, format_page_md_header
+
+            space_key = data.space.key if data.space else ""
+            header = format_page_md_header(data.title, space_key, data.version)
+            return header + confluence_storage_to_md(data.body_storage)
+
         from atlassian_skills.core.format.markdown import format_md_issue
 
         # Single issue dict with "key" → markdown rendering

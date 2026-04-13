@@ -267,6 +267,16 @@ class TestSafeServerMessage:
         result = _safe_server_message({"errorMessages": [], "errors": {}})
         assert result == ""
 
+    def test_errors_dict_single(self) -> None:
+        body = {"errorMessages": [], "errors": {"assignee": "Field 'assignee' cannot be set."}}
+        result = _safe_server_message(body)
+        assert "assignee" in result
+
+    def test_errors_dict_multiple(self) -> None:
+        body = {"errorMessages": [], "errors": {"assignee": "required", "priority": "invalid"}}
+        result = _safe_server_message(body)
+        assert "assignee" in result and "priority" in result
+
     def test_truncation_at_500_chars(self) -> None:
         long_body = "x" * 600
         result = _safe_server_message(long_body)

@@ -25,25 +25,25 @@ def load(filename: str) -> object:
 
 
 # ---------------------------------------------------------------------------
-# get-issue-rlm3.json → Issue
+# get-issue-proj3.json → Issue
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenIssue:
     def test_golden_issue_parses(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.key
         assert issue.summary
         assert issue.status is not None
 
     def test_golden_issue_key_format(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert re.match(r"^[A-Z]+-\d+$", issue.key), f"Key {issue.key!r} does not match PROJECT-NUMBER pattern"
 
     def test_golden_issue_fields_accessible(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.assignee is not None
         assert issue.reporter is not None
@@ -53,97 +53,97 @@ class TestGoldenIssue:
         assert issue.updated is not None
 
     def test_golden_issue_id_and_key(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.id == "629816"
-        assert issue.key == "RLM-3"
+        assert issue.key == "PROJ-3"
 
     def test_golden_issue_summary_is_str(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert isinstance(issue.summary, str)
         assert len(issue.summary) > 0
 
     def test_golden_issue_status_name(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.status is not None
         assert issue.status.name == "To Do"
 
     def test_golden_issue_issue_type_name(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.issue_type is not None
         assert issue.issue_type.name == "Epic"
 
     def test_golden_issue_priority_name(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.priority is not None
         assert issue.priority.name == "Medium"
 
     def test_golden_issue_assignee_name(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.assignee is not None
-        assert issue.assignee.name == "seungmok.song"
+        assert issue.assignee.name == "testuser2"
 
     def test_golden_issue_reporter_name(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.reporter is not None
-        assert issue.reporter.name == "eunsan.jo"
+        assert issue.reporter.name == "testuser"
 
     def test_golden_issue_description_is_str_or_none(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert issue.description is None or isinstance(issue.description, str)
 
     def test_golden_issue_labels_is_list(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert isinstance(issue.labels, list)
 
     def test_golden_issue_components_is_list(self) -> None:
-        data = load("get-issue-rlm3.json")
+        data = load("get-issue-proj3.json")
         issue = Issue.model_validate(data)
         assert isinstance(issue.components, list)
 
 
 # ---------------------------------------------------------------------------
-# search-rlm.json → SearchResult
+# search-proj.json → SearchResult
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenSearchResult:
     def test_golden_search_result_parses(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         assert result.total == 23
         assert isinstance(result.issues, list)
 
     def test_golden_search_total_matches_pagination(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         assert result.total >= len(result.issues)
 
     def test_golden_search_issues_count(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         assert len(result.issues) == 3
 
     def test_golden_search_start_at(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         assert result.start_at == 0
 
     def test_golden_search_max_results(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         assert result.max_results == 3
 
     def test_golden_search_each_issue_has_key(self) -> None:
-        data = load("search-rlm.json")
+        data = load("search-proj.json")
         result = SearchResult.model_validate(data)
         for issue in result.issues:
             assert re.match(r"^[A-Z]+-\d+$", issue.key)
@@ -230,29 +230,29 @@ class TestGoldenJiraComments:
 
 
 # ---------------------------------------------------------------------------
-# get-watchers-rlm3.json → WatcherList
+# get-watchers-proj3.json → WatcherList
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenWatchers:
     def test_golden_watchers_parse(self) -> None:
-        data = load("get-watchers-rlm3.json")
+        data = load("get-watchers-proj3.json")
         wl = WatcherList.model_validate(data)
-        assert wl.issue_key == "RLM-3"
+        assert wl.issue_key == "PROJ-3"
         assert wl.watcher_count == 1
 
     def test_golden_watchers_is_watching(self) -> None:
-        data = load("get-watchers-rlm3.json")
+        data = load("get-watchers-proj3.json")
         wl = WatcherList.model_validate(data)
         assert wl.is_watching is True
 
     def test_golden_watchers_user_fields(self) -> None:
-        data = load("get-watchers-rlm3.json")
+        data = load("get-watchers-proj3.json")
         wl = WatcherList.model_validate(data)
         assert len(wl.watchers) == 1
         watcher = wl.watchers[0]
-        assert watcher.name == "eunsan.jo"
-        assert watcher.email == "eunsan.jo@example.com"
+        assert watcher.name == "testuser"
+        assert watcher.email == "testuser@example.com"
         assert watcher.key == "JIRAUSER14505"
 
 

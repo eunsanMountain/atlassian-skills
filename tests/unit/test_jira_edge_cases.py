@@ -225,12 +225,23 @@ def test_get_field_options_passes_project_key_param(client: JiraClient) -> None:
 
 @respx.mock
 def test_get_dev_info_many_multiple_keys(client: JiraClient) -> None:
+    # The dev-status API requires numeric issue IDs, so get_dev_info_many
+    # should resolve each key to its numeric ID via GET /issue/{key}?fields=.
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(
+        return_value=httpx.Response(200, json={"id": "10001", "key": "PROJ-1"})
+    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-2").mock(
+        return_value=httpx.Response(200, json={"id": "10002", "key": "PROJ-2"})
+    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
+        return_value=httpx.Response(200, json={"id": "10003", "key": "PROJ-3"})
+    )
     resp_json: dict[str, Any] = {
-        "issueOrPullRequestIDs": ["PROJ-1", "PROJ-2", "PROJ-3"],
+        "issueOrPullRequestIDs": ["10001", "10002", "10003"],
         "detail": [
-            {"issueId": "PROJ-1", "pullRequests": [], "branches": []},
-            {"issueId": "PROJ-2", "pullRequests": [{"id": "pr1"}], "branches": []},
-            {"issueId": "PROJ-3", "pullRequests": [], "branches": [{"name": "feature-x"}]},
+            {"issueId": "10001", "pullRequests": [], "branches": []},
+            {"issueId": "10002", "pullRequests": [{"id": "pr1"}], "branches": []},
+            {"issueId": "10003", "pullRequests": [], "branches": [{"name": "feature-x"}]},
         ],
     }
     route = respx.get(f"{BASE_URL}/rest/dev-status/1.0/issue/summary").mock(
@@ -240,9 +251,10 @@ def test_get_dev_info_many_multiple_keys(client: JiraClient) -> None:
     result = client.get_dev_info_many(["PROJ-1", "PROJ-2", "PROJ-3"])
 
     req = route.calls[0].request
-    assert "PROJ-1" in req.url.params["issueId"]
-    assert "PROJ-2" in req.url.params["issueId"]
-    assert "PROJ-3" in req.url.params["issueId"]
+    # Numeric IDs should be used, not issue keys
+    assert "10001" in req.url.params["issueId"]
+    assert "10002" in req.url.params["issueId"]
+    assert "10003" in req.url.params["issueId"]
     assert len(result["detail"]) == 3
 
 

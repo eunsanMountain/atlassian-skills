@@ -15,7 +15,7 @@ pytestmark = pytest.mark.benchmark
 
 
 def test_scenario_1_jira_issue_get() -> None:
-    fixture = load_fixture("jira/get-issue-rlm3.json")
+    fixture = load_fixture("jira/get-issue-proj3.json")
     mcp_tokens = count_tokens(json.dumps(fixture, ensure_ascii=False))
 
     issue = Issue.model_validate(fixture)
@@ -29,7 +29,7 @@ def test_scenario_1_jira_issue_get() -> None:
 
 
 def test_scenario_2_jira_search() -> None:
-    fixture = load_fixture("jira/search-rlm.json")
+    fixture = load_fixture("jira/search-proj.json")
     mcp_tokens = count_tokens(json.dumps(fixture, ensure_ascii=False))
 
     result = SearchResult.model_validate(fixture)
@@ -44,7 +44,7 @@ def test_scenario_2_jira_search() -> None:
 
 def test_scenario_3_confluence_page_get() -> None:
     # Fixture has a {"metadata": {...}} wrapper — unwrap to get the page dict
-    raw = load_fixture("confluence/get-page-429140627.json")
+    raw = load_fixture("confluence/get-page-sample.json")
     assert isinstance(raw, dict)
     page_data = raw.get("metadata", raw)
 
@@ -62,7 +62,7 @@ def test_scenario_3_confluence_page_get() -> None:
 
 def test_scenario_4_confluence_search() -> None:
     # Fixture is a list of page dicts — wrap into ConfluenceSearchResult
-    raw = load_fixture("confluence/search-rlm.json")
+    raw = load_fixture("confluence/search-proj.json")
     assert isinstance(raw, list)
     mcp_tokens = count_tokens(json.dumps(raw, ensure_ascii=False))
 

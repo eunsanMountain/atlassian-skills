@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -9,15 +10,23 @@ if TYPE_CHECKING:
         ConfluenceSearchResult,
         Label,
         Page,
+        SpaceTreeResult,
     )
     from atlassian_skills.jira.models import (
         Board,
         Issue,
+        IssueDates,
         JiraAttachment,
         JiraComment,
+        JiraField,
+        LinkType,
+        Project,
+        ProjectComponent,
+        ProjectVersion,
         SearchResult,
         Sprint,
         Transition,
+        User,
         WatcherList,
         WorklogList,
     )
@@ -37,6 +46,28 @@ def _format_issue_row(issue: dict[str, Any]) -> str:
     summary = issue.get("summary", "")
     updated = issue.get("updated", "")
     return f"{key} | {status} | {issuetype} | {priority} | {assignee} | {summary} | {updated}"
+
+
+def _format_dev_info(data: dict[str, Any]) -> str:
+    """Format dev-info response as compact summary (repos, commits, PRs, branches)."""
+    detail = data.get("detail", [])
+    parts: list[str] = []
+    for d in detail:
+        for repo in d.get("repositories", []):
+            name = repo.get("name", "")
+            commits = len(repo.get("commits", []))
+            prs = len(repo.get("pullRequests", []))
+            branches = len(repo.get("branches", []))
+            parts.append(f"{name}: {commits} commits, {prs} PRs, {branches} branches")
+    return "\n".join(parts) if parts else "(no dev info)"
+
+
+def _format_write_result(result: Any) -> str:
+    """Format a WriteResult as 'key | action [| summary]'."""
+    parts = [str(result.key), result.action]
+    if result.summary:
+        parts.append(result.summary)
+    return " | ".join(parts)
 
 
 def _format_jira_issue(issue: Issue) -> str:
@@ -158,6 +189,49 @@ def _format_confluence_attachment(attachment: Attachment) -> str:
     return f"{attachment.id} | {attachment.title} | {media} | {size}B"
 
 
+def _format_project(project: Project) -> str:
+    return f"{project.key} | {project.name} | {project.project_type_key or ''}"
+
+
+def _format_user(user: User) -> str:
+    return f"{user.key or ''} | {user.display_name} | {user.email or ''}"
+
+
+def _format_link_type(lt: LinkType) -> str:
+    return f"{lt.id} | {lt.name} | {lt.inward or ''} | {lt.outward or ''}"
+
+
+def _format_jira_field(field: JiraField) -> str:
+    custom = "custom" if field.custom else "system"
+    schema_type = field.field_schema.type if field.field_schema else ""
+    return f"{field.id} | {field.name} | {custom} | {schema_type}"
+
+
+def _format_project_version(v: ProjectVersion) -> str:
+    released = "released" if v.released else "unreleased"
+    return f"{v.id} | {v.name} | {released} | {v.release_date or ''}"
+
+
+def _format_project_component(c: ProjectComponent) -> str:
+    lead = c.lead.display_name if c.lead else ""
+    return f"{c.id} | {c.name} | {lead}"
+
+
+def _format_issue_dates(dates: IssueDates) -> str:
+    return (
+        f"{dates.key} | created:{dates.created or ''} | updated:{dates.updated or ''}"
+        f" | due:{dates.due_date or ''} | resolved:{dates.resolution_date or ''}"
+    )
+
+
+def _format_space_tree_result(result: SpaceTreeResult) -> str:
+    lines = [f"space:{result.space_key} total:{result.total_pages}"]
+    for node in result.pages:
+        indent = "  " * node.depth
+        lines.append(f"{indent}{node.id} | {node.title}")
+    return "\n".join(lines)
+
+
 def format_compact(data: Any) -> str:
     """Return a compact, pipe-separated string representation.
 
@@ -172,19 +246,30 @@ def format_compact(data: Any) -> str:
         ConfluenceSearchResult,
         Label,
         Page,
+        SpaceTreeResult,
     )
+    from atlassian_skills.core.models import WriteResult
     from atlassian_skills.jira.models import (
         Board,
         Issue,
+        IssueDates,
         JiraAttachment,
         JiraComment,
+        JiraField,
+        LinkType,
+        Project,
+        ProjectComponent,
+        ProjectVersion,
         SearchResult,
         Sprint,
         Transition,
+        User,
         WatcherList,
         WorklogList,
     )
 
+    if isinstance(data, WriteResult):
+        return _format_write_result(data)
     if isinstance(data, Issue):
         return _format_jira_issue(data)
     if isinstance(data, SearchResult):
@@ -213,8 +298,31 @@ def format_compact(data: Any) -> str:
         return _format_confluence_comment(data)
     if isinstance(data, Attachment):
         return _format_confluence_attachment(data)
+    if isinstance(data, Project):
+        return _format_project(data)
+    if isinstance(data, User):
+        return _format_user(data)
+    if isinstance(data, LinkType):
+        return _format_link_type(data)
+    if isinstance(data, JiraField):
+        return _format_jira_field(data)
+    if isinstance(data, ProjectVersion):
+        return _format_project_version(data)
+    if isinstance(data, ProjectComponent):
+        return _format_project_component(data)
+    if isinstance(data, IssueDates):
+        return _format_issue_dates(data)
+    if isinstance(data, SpaceTreeResult):
+        return _format_space_tree_result(data)
     if isinstance(data, list):
         return "\n".join(format_compact(item) for item in data)
     if isinstance(data, dict):
-        return _format_issue_row(data)
+        # 1. dev-info-like dict (detail is always a list in dev-info responses)
+        if "detail" in data and isinstance(data.get("detail"), list):
+            return _format_dev_info(data)
+        # 2. issue-like dict
+        if "key" in data:
+            return _format_issue_row(data)
+        # 3. unknown dict → JSON fallback (better than empty pipes)
+        return json.dumps(data, ensure_ascii=False, default=str)
     return str(data)

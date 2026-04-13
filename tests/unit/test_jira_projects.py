@@ -135,12 +135,12 @@ def test_list_projects_http_error(client: JiraClient) -> None:
 
 @respx.mock
 def test_get_project_issues_returns_search_result(client: JiraClient) -> None:
-    fixture = _load("search-rlm.json")
+    fixture = _load("search-proj.json")
     respx.get(f"{BASE_URL}/rest/api/2/search").mock(
         return_value=httpx.Response(200, json=fixture)
     )
 
-    result = client.get_project_issues("RLM")
+    result = client.get_project_issues("PROJ")
 
     assert isinstance(result, SearchResult)
     assert result.total == 23

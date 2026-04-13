@@ -1,13 +1,14 @@
 # serializer version: 1
 # name: test_confluence_page_compact
   '''
-   | None | page |  |  |  | 
+  429140627 | [PROJ-3] Navi Map 통합-경로 판단 개선 | page | space:TESTSPACE | v2
+  url:https://confluence.example.com/pages/viewpage.action?pageId=429140627
   
   '''
 # ---
 # name: test_confluence_page_json_format
   '''
-  {"id":"429140627","title":"[RLM-3] Navi Map 통합-경로 판단 개선","type":"page","status":null,"space":{"id":null,"key":"IVSL","name":"IVS Lab","type":null},"version":2,"body_storage":null,"body_view":null,"ancestors":[],"children":[],"links":null,"url":"https://confluence.example.com/pages/viewpage.action?pageId=429140627","content":{"value":"Jiraissuekey,summary,description,reporter,statuskey,summary,description,reporter,status20key = RLM-3ad65ca34-634b-332b-9309-b0ad222a1be6\n\n연결된 Story\n---------\n\nJiraissuekey,summary,issuetype,created,updated,assignee,reporter,priority,statuskey,summary,issuetype,created,updated,assignee,reporter,priority,status50\"Epic Link\" = RLM-3 ORDER BY status, updated DESCad65ca34-634b-332b-9309-b0ad222a1be6","format":"markdown"},"attachments":[],"created":"","updated":"","emoji":"1f3af"}
+  {"id":"429140627","title":"[PROJ-3] Navi Map 통합-경로 판단 개선","type":"page","space":{"key":"TESTSPACE","name":"Test Lab"},"version":2,"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429140627","content":{"value":"Jiraissuekey,summary,description,reporter,statuskey,summary,description,reporter,status20key = PROJ-3ad65ca34-634b-332b-9309-b0ad222a1be6\n\n연결된 Story\n---------\n\nJiraissuekey,summary,issuetype,created,updated,assignee,reporter,priority,statuskey,summary,issuetype,created,updated,assignee,reporter,priority,status50\"Epic Link\" = PROJ-3 ORDER BY status, updated DESCad65ca34-634b-332b-9309-b0ad222a1be6","format":"markdown"},"attachments":[],"created":"","updated":"","emoji":"1f3af"}
   
   '''
 # ---
@@ -19,18 +20,18 @@
 # ---
 # name: test_confluence_search_compact
   '''
-  429148294 | [RLM-23] Multi-Dataset 학습 인프라 | page | space:IVSL | v
+  429148294 | [PROJ-23] Multi-Dataset 학습 인프라 | page | space:TESTSPACE | v
   url:https://confluence.example.com/pages/viewpage.action?pageId=429148294
-  429148028 | [RLM-20] Navi 정보 기반 쿼리 생성 모델 구현 | page | space:IVSL | v
+  429148028 | [PROJ-20] Navi 정보 기반 쿼리 생성 모델 구현 | page | space:TESTSPACE | v
   url:https://confluence.example.com/pages/viewpage.action?pageId=429148028
-  429148293 | [RLM-22] 4-Dataset Subset 재구축 + SSD 용량 산정 | page | space:IVSL | v
+  429148293 | [PROJ-22] 4-Dataset Subset 재구축 + SSD 용량 산정 | page | space:TESTSPACE | v
   url:https://confluence.example.com/pages/viewpage.action?pageId=429148293
   
   '''
 # ---
 # name: test_confluence_search_json_format
   '''
-  [{"id":"429148294","title":"[RLM-23] Multi-Dataset 학습 인프라","type":"page","space":{"key":"IVSL","name":"Space IVSL"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148294","content":{"value":"Story Summary\nBehavior\n@@@hl@@@RLM@@@endhl@@@ 학습 파이프라인이 4개 데이터셋(av2\\_sensor, nuscenes, nuplan, av2\\_motion)을 하나의 학습 루프에서 사용할 수 있게 된다 …","format":"view"},"attachments":[],"created":"","updated":""},{"id":"429148028","title":"[RLM-20] Navi 정보 기반 쿼리 생성 모델 구현","type":"page","space":{"key":"IVSL","name":"Space IVSL"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148028","content":{"value":".\nWhy\n@@@hl@@@RLM@@@endhl@@@ 모델은 BEV Grid Map만으로 경로를 예측하므로, 전방 분기점 방향/거리, 도로 등급/차로수 등 글로벌 경로 정보가 부재하다.","format":"view"},"attachments":[],"created":"","updated":""},{"id":"429148293","title":"[RLM-22] 4-Dataset Subset 재구축 + SSD 용량 산정","type":"page","space":{"key":"IVSL","name":"Space IVSL"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148293","content":{"value":"+ ring\\_front\\_center(portrait) 기준이다. @@@hl@@@RLM@@@endhl@@@-13에서 정의한 2-stage normalize를 적용하려면 subset 자체를 재구축해야 한다.","format":"view"},"attachments":[],"created":"","updated":""}]
+  [{"id":"429148294","title":"[PROJ-23] Multi-Dataset 학습 인프라","type":"page","space":{"key":"TESTSPACE","name":"Space TESTSPACE"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148294","content":{"value":"Story Summary\nBehavior\n@@@hl@@@PROJ@@@endhl@@@ 학습 파이프라인이 4개 데이터셋(av2\\_sensor, nuscenes, nuplan, av2\\_motion)을 하나의 학습 루프에서 사용할 수 있게 된다 …","format":"view"},"attachments":[],"created":"","updated":""},{"id":"429148028","title":"[PROJ-20] Navi 정보 기반 쿼리 생성 모델 구현","type":"page","space":{"key":"TESTSPACE","name":"Space TESTSPACE"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148028","content":{"value":".\nWhy\n@@@hl@@@PROJ@@@endhl@@@ 모델은 BEV Grid Map만으로 경로를 예측하므로, 전방 분기점 방향/거리, 도로 등급/차로수 등 글로벌 경로 정보가 부재하다.","format":"view"},"attachments":[],"created":"","updated":""},{"id":"429148293","title":"[PROJ-22] 4-Dataset Subset 재구축 + SSD 용량 산정","type":"page","space":{"key":"TESTSPACE","name":"Space TESTSPACE"},"ancestors":[],"children":[],"url":"https://confluence.example.com/pages/viewpage.action?pageId=429148293","content":{"value":"+ ring\\_front\\_center(portrait) 기준이다. @@@hl@@@PROJ@@@endhl@@@-13에서 정의한 2-stage normalize를 적용하려면 subset 자체를 재구축해야 한다.","format":"view"},"attachments":[],"created":"","updated":""}]
   
   '''
 # ---

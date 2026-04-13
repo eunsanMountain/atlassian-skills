@@ -53,7 +53,7 @@ def test_get_page_default_expand(client: ConfluenceClient) -> None:
         "type": "page",
         "status": "current",
         "version": {"number": 1},
-        "space": {"key": "IVSL", "name": "IVS Lab"},
+        "space": {"key": "TESTSPACE", "name": "Test Lab"},
         "body": {"storage": {"value": "<p>content</p>", "representation": "storage"}},
     }
     route = respx.get(f"{BASE_URL}/rest/api/content/429140627").mock(
@@ -265,52 +265,53 @@ def test_get_children_empty(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_get_space_tree_returns_result(client: ConfluenceClient) -> None:
-    # Use raw API format with results key (the fixture file is preprocessed format)
+    # Server/DC wraps page results under "page" key
     fixture = {
-        "results": [
-            {"id": "1", "title": "Root Page", "type": "page"},
-            {"id": "2", "title": "Child Page", "type": "page"},
-            {"id": "3", "title": "Another Page", "type": "page"},
-        ],
+        "page": {
+            "results": [
+                {"id": "1", "title": "Root Page", "type": "page", "ancestors": []},
+                {"id": "2", "title": "Child Page", "type": "page", "ancestors": [{"id": "1", "title": "Root Page", "type": "page"}]},
+                {"id": "3", "title": "Another Page", "type": "page", "ancestors": []},
+            ],
+            "size": 3,
+            "_links": {},
+        },
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/space/IVSL/content").mock(
+    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(
         return_value=httpx.Response(200, json=fixture)
     )
 
-    result = client.get_space_tree("IVSL")
+    result = client.get_space_tree("TESTSPACE")
 
     assert isinstance(result, SpaceTreeResult)
-    assert result.space_key == "IVSL"
+    assert result.space_key == "TESTSPACE"
     assert result.total_pages == 3
     assert len(result.pages) == 3
+    # Child Page has 1 ancestor → depth=1
+    child = [n for n in result.pages if n.title == "Child Page"][0]
+    assert child.depth == 1
+    assert child.parent_id == "1"
 
 
 @respx.mock
-def test_get_space_tree_pagination(client: ConfluenceClient) -> None:
-    page1: dict = {
-        "results": [
-            {"id": "1", "title": "Page 1", "type": "page"},
-            {"id": "2", "title": "Page 2", "type": "page"},
-        ],
-        "_links": {"next": "/rest/api/space/TEST/content?limit=2&start=2"},
-    }
-    page2: dict = {
-        "results": [
-            {"id": "3", "title": "Page 3", "type": "page"},
-        ],
+def test_get_space_tree_empty(client: ConfluenceClient) -> None:
+    fixture = {
+        "page": {
+            "results": [],
+            "size": 0,
+            "_links": {},
+        },
         "_links": {},
     }
     respx.get(f"{BASE_URL}/rest/api/space/TEST/content").mock(
-        side_effect=[
-            httpx.Response(200, json=page1),
-            httpx.Response(200, json=page2),
-        ]
+        return_value=httpx.Response(200, json=fixture)
     )
 
     result = client.get_space_tree("TEST")
 
-    assert result.total_pages == 3
+    assert result.total_pages == 0
+    assert result.pages == []
 
 
 # ---------------------------------------------------------------------------

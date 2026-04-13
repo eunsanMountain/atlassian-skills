@@ -15,6 +15,7 @@ from atlassian_skills.core.dryrun import format_dry_run
 from atlassian_skills.core.errors import AtlasError, ExitCode
 from atlassian_skills.core.format import OutputFormat, format_output
 from atlassian_skills.core.format.markdown import confluence_storage_to_md, md_to_confluence_storage
+from atlassian_skills.core.models import WriteResult
 from atlassian_skills.core.stdin import read_body
 
 confluence_app = typer.Typer(help="Confluence commands", no_args_is_help=True)
@@ -67,7 +68,14 @@ def _fmt(ctx_obj: dict[str, Any]) -> OutputFormat:
 
 
 def _resolve_fmt(ctx_obj: dict[str, Any], local_format: str | None) -> OutputFormat:
-    return OutputFormat(local_format) if local_format else _fmt(ctx_obj)
+    if local_format:
+        try:
+            return OutputFormat(local_format)
+        except ValueError:
+            valid = ", ".join(f.value for f in OutputFormat)
+            typer.echo(f"Error: Invalid format '{local_format}'. Valid: {valid}", err=True)
+            raise typer.Exit(1)  # noqa: B904
+    return _fmt(ctx_obj)
 
 
 def _handle_error(err: AtlasError, fmt: OutputFormat) -> None:
@@ -102,17 +110,27 @@ def page_get(
 
     try:
         client = _make_client(ctx.obj)
-        page = client.get_page(page_id, include_body=include_body)
-        data = page.model_dump()
 
-        # Task 1: --body-repr conversion on body content.
-        if body_repr == "md":
-            body_value = data.get("body_storage", "")
-            if body_value:
-                data["body_storage"] = confluence_storage_to_md(body_value)
+        # RAW format: return server response text verbatim (byte-preserving contract)
+        if fmt == OutputFormat.RAW:
+            typer.echo(client.get_page_raw_text(page_id))
+            return
+
+        page = client.get_page(page_id, include_body=include_body)
+
+        if body_repr == "md" and page.body_storage:
+            page.body_storage = confluence_storage_to_md(page.body_storage)
         # "raw" and "storage" keep the storage XHTML as-is
 
-        typer.echo(format_output(data, fmt))
+        # When body_repr is specified and fmt=MD, bypass format_output to prevent
+        # double conversion (body_repr already set the body representation).
+        if fmt == OutputFormat.MD and body_repr:
+            from atlassian_skills.core.format.markdown import format_page_md_header
+            space_key = page.space.key if page.space else ""
+            header = format_page_md_header(page.title, space_key, page.version)
+            typer.echo(header + (page.body_storage or ""))
+        else:
+            typer.echo(format_output(page, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -181,7 +199,7 @@ def page_history(
     try:
         client = _make_client(ctx.obj)
         page = client.get_page_history(page_id, version)
-        typer.echo(format_output(page.model_dump(), fmt))
+        typer.echo(format_output(page, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -230,8 +248,7 @@ def page_images(
     try:
         client = _make_client(ctx.obj)
         images = client.get_page_images(page_id)
-        data = [a.model_dump() for a in images]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(images, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -254,7 +271,7 @@ def space_tree(
     try:
         client = _make_client(ctx.obj)
         result = client.get_space_tree(space_key, limit=limit)
-        typer.echo(format_output(result.model_dump(), fmt))
+        typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -392,8 +409,23 @@ def user_search(
     try:
         client = _make_client(ctx.obj)
         users = client.search_users(query, group_name=group, limit=limit)
-        data = [u.model_dump() for u in users]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(users, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@user_app.command("me")
+def user_me(
+    ctx: typer.Context,
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Get the current authenticated user."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        user = client.get_current_user()
+        typer.echo(format_output(user, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -451,7 +483,11 @@ def page_create(
             return
 
         result = client.create_page(space, title, body, ancestor_id=parent_id, body_format="storage")
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            page_id = result.id if hasattr(result, "id") else result.get("id", "") if isinstance(result, dict) else ""
+            typer.echo(format_output(WriteResult(action="created", key=str(page_id), summary=title), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -513,7 +549,10 @@ def page_update(
             return
 
         result = client.update_page(page_id, new_title, body, new_version, body_format="storage")
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="updated", key=page_id), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -541,7 +580,10 @@ def page_delete(
             return
 
         client.delete_page(page_id)
-        typer.echo(format_output({"deleted": page_id}, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="deleted", key=page_id), fmt))
+        else:
+            typer.echo(format_output({"deleted": page_id}, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -604,7 +646,10 @@ def comment_add(
             return
 
         result = client.add_comment(page_id, body, body_format="storage")
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="commented", key=page_id), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 

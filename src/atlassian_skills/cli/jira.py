@@ -11,10 +11,16 @@ from atlassian_skills.core.config import get_profile, load_config
 from atlassian_skills.core.dryrun import format_dry_run
 from atlassian_skills.core.errors import AtlasError, ExitCode, ValidationError
 from atlassian_skills.core.format import OutputFormat, format_output
-from atlassian_skills.core.format.markdown import _SectionNotFoundError, jira_wiki_to_md, jira_wiki_to_md_with_options
+from atlassian_skills.core.format.markdown import (
+    _SectionNotFoundError,
+    format_md_issue,
+    jira_wiki_to_md,
+    jira_wiki_to_md_with_options,
+)
+from atlassian_skills.core.models import WriteResult
 from atlassian_skills.core.stdin import read_body
 from atlassian_skills.jira.client import JiraClient
-from atlassian_skills.jira.models import Issue
+from atlassian_skills.jira.models import Issue, IssueDates, JiraAttachment
 
 jira_app = typer.Typer(help="Jira commands", no_args_is_help=True)
 
@@ -82,7 +88,14 @@ def _fmt(ctx_obj: dict[str, Any]) -> OutputFormat:
 
 
 def _resolve_fmt(ctx_obj: dict[str, Any], local_format: str | None) -> OutputFormat:
-    return OutputFormat(local_format) if local_format else _fmt(ctx_obj)
+    if local_format:
+        try:
+            return OutputFormat(local_format)
+        except ValueError:
+            valid = ", ".join(f.value for f in OutputFormat)
+            typer.echo(f"Error: Invalid format '{local_format}'. Valid: {valid}", err=True)
+            raise typer.Exit(1)  # noqa: B904
+    return _fmt(ctx_obj)
 
 
 def _handle_error(err: AtlasError, fmt: OutputFormat) -> None:
@@ -189,7 +202,23 @@ def user_get(
     try:
         client = _make_client(ctx.obj)
         user = client.get_user(username)
-        typer.echo(format_output(user.model_dump(), fmt))
+        typer.echo(format_output(user, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@user_app.command("me")
+def user_me(
+    ctx: typer.Context,
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Get the current authenticated user."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        user = client.get_myself()
+        typer.echo(format_output(user, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -227,6 +256,12 @@ def issue_get(
 
     try:
         client = _make_client(ctx.obj)
+
+        # RAW format: return server response text verbatim (byte-preserving contract)
+        if fmt == OutputFormat.RAW:
+            typer.echo(client.get_issue_raw_text(key, fields=field_list))
+            return
+
         issue = client.get_issue(key, fields=field_list)
 
         # Task 1: --body-repr conversion on the description field.
@@ -237,16 +272,27 @@ def issue_get(
 
         if fmt == OutputFormat.MD and (section or heading_promotion or notice_prefixes):
             description_raw = issue.description or ""
-            try:
-                body_md = jira_wiki_to_md_with_options(
-                    description_raw,
-                    section=section,
-                    heading_promotion=heading_promotion,
-                    drop_leading_notice=notice_prefixes,
-                )
-            except _SectionNotFoundError as exc:
-                raise ValidationError(f"Section '{exc.section}' not found in issue body") from exc
+            if not body_repr or body_repr == "md":
+                # body_repr=md: already converted, but section/notice extraction still works on md text
+                # body_repr unset: full wiki→md conversion + section extraction
+                try:
+                    body_md = jira_wiki_to_md_with_options(
+                        description_raw,
+                        section=section,
+                        heading_promotion=heading_promotion,
+                        drop_leading_notice=notice_prefixes,
+                        skip_conversion=bool(body_repr),
+                    )
+                except _SectionNotFoundError as exc:
+                    raise ValidationError(f"Section '{exc.section}' not found in issue body") from exc
+            else:
+                # body_repr=raw/wiki: keep as-is, section extraction not meaningful on wiki markup
+                body_md = description_raw
             typer.echo(body_md)
+        elif fmt == OutputFormat.MD and body_repr:
+            # body_repr already set the body representation → skip format_md_issue's wiki→md conversion
+            data = issue.model_dump()
+            typer.echo(format_md_issue(data, skip_body_conversion=True))
         else:
             typer.echo(_render_issue(issue, fmt))
     except AtlasError as e:
@@ -309,8 +355,7 @@ def issue_transitions(
     try:
         client = _make_client(ctx.obj)
         transitions = client.get_transitions(key)
-        data = [t.model_dump() for t in transitions]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(transitions, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -327,7 +372,7 @@ def issue_dates(
     try:
         client = _make_client(ctx.obj)
         dates = client.get_issue_dates(key)
-        typer.echo(format_output(dates, fmt))
+        typer.echo(format_output(IssueDates.model_validate(dates), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -360,7 +405,8 @@ def issue_images(
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         client = _make_client(ctx.obj)
-        images = client.get_issue_images(key)
+        raw_images = client.get_issue_images(key)
+        images = [JiraAttachment.model_validate(a) for a in raw_images]
         typer.echo(format_output(images, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
@@ -383,8 +429,7 @@ def field_search(
     try:
         client = _make_client(ctx.obj)
         fields = client.search_fields(keyword)
-        data = [f.model_dump() for f in fields]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(fields, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -424,8 +469,7 @@ def project_list(
     try:
         client = _make_client(ctx.obj)
         projects = client.list_projects()
-        data = [p.model_dump() for p in projects]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(projects, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -460,8 +504,7 @@ def project_versions(
     try:
         client = _make_client(ctx.obj)
         versions = client.get_project_versions(key)
-        data = [v.model_dump() for v in versions]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(versions, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -478,8 +521,7 @@ def project_components(
     try:
         client = _make_client(ctx.obj)
         components = client.get_project_components(key)
-        data = [c.model_dump() for c in components]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(components, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -621,8 +663,7 @@ def link_list_types(
     try:
         client = _make_client(ctx.obj)
         link_types = client.list_link_types()
-        data = [lt.model_dump() for lt in link_types]
-        typer.echo(format_output(data, fmt))
+        typer.echo(format_output(link_types, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -644,7 +685,7 @@ def worklog_list(
     try:
         client = _make_client(ctx.obj)
         wl = client.list_worklogs(key)
-        typer.echo(format_output(wl.model_dump(), fmt))
+        typer.echo(format_output(wl, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -666,7 +707,7 @@ def watcher_list(
     try:
         client = _make_client(ctx.obj)
         wl = client.list_watchers(key)
-        typer.echo(format_output(wl.model_dump(), fmt))
+        typer.echo(format_output(wl, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -825,7 +866,10 @@ def issue_create(
 
         client = _make_client(ctx.obj)
         result = client.create_issue(fields)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="created", key=result.get("key", ""), summary=summary), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -857,14 +901,15 @@ def issue_update(
 
         # Stale check: compare --if-updated with the issue's updated field
         if if_updated is not None:
+            from atlassian_skills.core.errors import StaleError
+
             issue = client.get_issue(key)
             server_updated = issue.updated or ""
             if server_updated != if_updated:
-                typer.echo(
-                    f"Error: stale issue (expected updated={if_updated}, got {server_updated})",
-                    err=True,
+                raise StaleError(
+                    f"Stale issue: expected updated={if_updated}, server has {server_updated}",
+                    context={"server_updated": server_updated, "expected_updated": if_updated},
                 )
-                raise typer.Exit(ExitCode.STALE)
 
         fields: dict[str, Any] = {}
         if body_file:
@@ -894,7 +939,10 @@ def issue_update(
 
         result = client.update_issue(key, fields=fields or None)
         _verify_customfield_updates(client, key, customfield_updates)
-        typer.echo(format_output(result or {"status": "updated", "key": key}, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="updated", key=key), fmt))
+        else:
+            typer.echo(format_output(result or {"status": "updated", "key": key}, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -920,7 +968,10 @@ def issue_delete(
             typer.echo(format_dry_run("DELETE", f"{client.base_url}/rest/api/2/issue/{key}"))
             return
         client.delete_issue(key)
-        typer.echo(format_output({"status": "deleted", "key": key}, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="deleted", key=key), fmt))
+        else:
+            typer.echo(format_output({"status": "deleted", "key": key}, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -934,7 +985,8 @@ def issue_delete(
 def issue_transition(
     ctx: typer.Context,
     key: str = typer.Argument(..., help="Issue key"),
-    transition_id: str = typer.Option(..., "--transition-id", help="Transition ID"),
+    transition_id: str | None = typer.Option(None, "--transition-id", help="Transition ID"),
+    transition_name: str | None = typer.Option(None, "--transition-name", help="Transition name (alternative to --transition-id)"),
     comment: str | None = typer.Option(None, "--comment", help="Transition comment"),
     fields_json: str | None = typer.Option(None, "--fields-json", help="Transition fields as JSON"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be sent"),
@@ -944,13 +996,27 @@ def issue_transition(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        if not transition_id and not transition_name:
+            raise ValidationError("Either --transition-id or --transition-name is required")
+        if transition_id and transition_name:
+            raise ValidationError("Use either --transition-id or --transition-name, not both")
+
         try:
             extra_fields = json.loads(fields_json) if fields_json else None
         except json.JSONDecodeError as exc:
             raise ValidationError(f"Invalid --fields-json: {exc}") from exc
 
+        client = _make_client(ctx.obj)
+
+        if transition_name:
+            transitions = client.get_transitions(key)
+            match = [t for t in transitions if t.name.lower() == transition_name.lower()]
+            if not match:
+                avail = "\n".join(f"  {t.id} | {t.name}" for t in transitions)
+                raise ValidationError(f"No transition '{transition_name}'.\nAvailable:\n{avail}")
+            transition_id = str(match[0].id)
+
         if dry_run:
-            client = _make_client(ctx.obj)
             body: dict[str, Any] = {"transition": {"id": transition_id}}
             if extra_fields:
                 body["fields"] = extra_fields
@@ -961,9 +1027,13 @@ def issue_transition(
             )
             return
 
-        client = _make_client(ctx.obj)
+        if transition_id is None:
+            raise typer.BadParameter("Either --transition-id or --transition-name is required")
         client.transition_issue(key, transition_id, fields=extra_fields, comment=comment)
-        typer.echo(format_output({"status": "transitioned", "key": key, "transition_id": transition_id}, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="transitioned", key=key), fmt))
+        else:
+            typer.echo(format_output({"status": "transitioned", "key": key, "transition_id": transition_id}, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1012,7 +1082,10 @@ def comment_add(
             return
         client = _make_client(ctx.obj)
         result = client.add_comment(key, text)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="commented", key=key, id=result.get("id")), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1091,7 +1164,7 @@ def worklog_add(
 
 
 # ---------------------------------------------------------------------------
-# link create / remote-create / delete
+# link create / remote-list / remote-create / delete
 # ---------------------------------------------------------------------------
 
 
@@ -1116,6 +1189,23 @@ def link_create(
         client = _make_client(ctx.obj)
         result = client.create_issue_link(type, inward, outward)
         typer.echo(format_output(result or {"status": "linked"}, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@link_app.command("remote-list")
+def link_remote_list(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """List remote issue links."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        result = client.list_remote_issue_links(key)
+        typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 

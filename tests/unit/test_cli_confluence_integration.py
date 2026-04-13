@@ -19,10 +19,10 @@ runner = CliRunner()
 # Raw Confluence REST API format for a Page (what the server actually returns)
 _RAW_PAGE = {
     "id": "429140627",
-    "title": "[RLM-3] Navi Map 통합-경로 판단 개선",
+    "title": "[PROJ-3] Navi Map 통합-경로 판단 개선",
     "type": "page",
     "status": "current",
-    "space": {"key": "IVSL", "name": "IVS Lab", "type": "global"},
+    "space": {"key": "TESTSPACE", "name": "Test Lab", "type": "global"},
     "version": {"number": 2, "when": "2024-01-01T00:00:00.000Z"},
     "_links": {"webui": "/pages/viewpage.action?pageId=429140627"},
     "body": {
@@ -38,7 +38,7 @@ _RAW_PAGE_CREATED = {
     "title": "Test Page",
     "type": "page",
     "status": "current",
-    "space": {"key": "IVSL", "name": "IVS Lab", "type": "global"},
+    "space": {"key": "TESTSPACE", "name": "Test Lab", "type": "global"},
     "version": {"number": 1},
     "_links": {"webui": "/pages/viewpage.action?pageId=123456789"},
 }
@@ -122,7 +122,7 @@ def test_cli_confluence_page_search() -> None:
     respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/search").mock(
         return_value=httpx.Response(200, json=search_response)
     )
-    result = runner.invoke(app, ["confluence", "page", "search", "space=IVSL"])
+    result = runner.invoke(app, ["confluence", "page", "search", "space=TESTSPACE"])
     assert result.exit_code == 0, result.output
 
 
@@ -140,7 +140,7 @@ def test_cli_confluence_page_search_local_json_format() -> None:
     respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/search").mock(
         return_value=httpx.Response(200, json=search_response)
     )
-    result = runner.invoke(app, ["confluence", "page", "search", "space=IVSL", "--format", "json"])
+    result = runner.invoke(app, ["confluence", "page", "search", "space=TESTSPACE", "--format", "json"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
     assert data[0]["id"] == "429140627"
@@ -186,7 +186,7 @@ def test_cli_confluence_page_create_dry_run(tmp_path: Path) -> None:
             "page",
             "create",
             "--space",
-            "IVSL",
+            "TESTSPACE",
             "--title",
             "Test Page",
             "--body-file",
@@ -196,7 +196,7 @@ def test_cli_confluence_page_create_dry_run(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert "POST" in result.output
-    assert "IVSL" in result.output
+    assert "TESTSPACE" in result.output
 
 
 @respx.mock
@@ -216,7 +216,7 @@ def test_cli_confluence_page_create_success(tmp_path: Path) -> None:
             "page",
             "create",
             "--space",
-            "IVSL",
+            "TESTSPACE",
             "--title",
             "Test Page",
             "--body-file",
