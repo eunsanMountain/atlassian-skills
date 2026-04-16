@@ -26,8 +26,8 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install dependencies (ignore local sources)
-        run: uv sync --no-sources --all-extras
+      - name: Install dependencies
+        run: uv sync --all-extras
 
       - name: Ruff lint
         run: uv run ruff check src/ tests/
@@ -56,8 +56,8 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
-      - name: Install dependencies (ignore local sources)
-        run: uv sync --no-sources --all-extras --python ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --all-extras --python ${{ matrix.python-version }}
 
       - name: Run unit & snapshot tests
         run: uv run --python ${{ matrix.python-version }} pytest -m "not integration"

@@ -37,7 +37,7 @@ dependencies = [
     "pydantic>=2.5",
     "tomli; python_version < '3.11'",
     "tomli-w",
-    "cfxmark>=0.4",  # Jira wiki renderer R1-R7 보강 포함 (local: ../cfxmark)
+    "cfxmark>=0.4",
     "platformdirs",
 ]
 
@@ -83,9 +83,6 @@ exclude = [
     "/.omx",
     "/references",
 ]
-
-[tool.uv.sources]
-cfxmark = { path = "../cfxmark", editable = true }
 
 [tool.ruff]
 line-length = 120

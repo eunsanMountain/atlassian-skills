@@ -28,7 +28,7 @@ jobs:
       - name: Verify tag matches pyproject version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(uv run --no-sources --with tomli python -c "import tomli, pathlib; print(tomli.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          PKG_VERSION=$(uv run --with tomli python -c "import tomli, pathlib; print(tomli.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Tag version ($TAG_VERSION) does not match pyproject.toml version ($PKG_VERSION)"
             exit 1
@@ -37,11 +37,11 @@ jobs:
 
       - name: Run tests
         run: |
-          uv sync --no-sources --all-extras
+          uv sync --all-extras
           uv run pytest -m "not integration"
 
       - name: Build distribution
-        run: uv build --no-sources
+        run: uv build
 
       - name: Publish to PyPI
         env:

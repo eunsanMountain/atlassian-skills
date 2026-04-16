@@ -67,7 +67,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cfxmark", editable = "../cfxmark" },
+    { name = "cfxmark", specifier = ">=0.4" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
     { name = "platformdirs" },
@@ -173,24 +173,15 @@ wheels = [
 [[package]]
 name = "cfxmark"
 version = "0.4.0"
-source = { editable = "../cfxmark" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lxml" },
     { name = "mistletoe" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.100" },
-    { name = "lxml", specifier = ">=5.0" },
-    { name = "lxml-stubs", marker = "extra == 'dev'", specifier = ">=0.5" },
-    { name = "mistletoe", specifier = ">=1.3" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
+sdist = { url = "https://files.pythonhosted.org/packages/8d/eb/10961f2c6d6e005c81f6c8cb3d11c21dc7574da46e724bb3fa18c79b8bb4/cfxmark-0.4.0.tar.gz", hash = "sha256:cfa5e8b09190fe95d5323bdb676d1883d07110efccc98314c6e8aa31c750be50", size = 155899, upload-time = "2026-04-13T06:15:19.071Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/d6/a81694dc3e5d768c4469fb47f25138c2f6136601c5597f493cea948e9e64/cfxmark-0.4.0-py3-none-any.whl", hash = "sha256:6363e40fe86baacb1549080d477caaa158c7648c698db199dbb9a15c61d82f14", size = 111272, upload-time = "2026-04-13T06:15:16.679Z" },
 ]
-provides-extras = ["confluence", "dev"]
 
 [[package]]
 name = "charset-normalizer"
