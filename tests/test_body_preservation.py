@@ -10,7 +10,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_raw_preserves_jira_special_chars() -> None:
     """--format=raw must preserve ~ + - * {} [] without any escape/unescape."""
-    # Test cases from PROJ failure: "2~3 스프린트" was dropped by MCP
+    # Test cases from a real PROJ failure where "2~3 스프린트" was dropped by MCP
     test_cases = [
         "2~3 스프린트",
         "test+value",

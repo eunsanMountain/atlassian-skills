@@ -14,7 +14,7 @@ def normalize_smart_links(text: str) -> str:
 
 
 def preprocess_jira_text(text: str) -> str:
-    """Read 경로 전처리: 서버 wiki markup → cfxmark 호출 전."""
+    """Read-path preprocessing for server wiki markup before calling cfxmark."""
     text = replace_mentions(text)
     text = normalize_smart_links(text)
     return text
