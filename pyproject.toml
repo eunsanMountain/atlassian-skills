@@ -53,6 +53,7 @@ dev = [
     "tiktoken",
     "ruff>=0.5",
     "mypy>=1.10",
+    "tomli",  # needed by mypy (python_version=3.10) to check the tomli fallback branch in core/config.py
 ]
 
 [project.scripts]

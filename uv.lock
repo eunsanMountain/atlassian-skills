@@ -63,6 +63,7 @@ dev = [
     { name = "ruff" },
     { name = "syrupy" },
     { name = "tiktoken" },
+    { name = "tomli" },
 ]
 
 [package.metadata]
@@ -88,6 +89,7 @@ dev = [
     { name = "ruff", specifier = ">=0.5" },
     { name = "syrupy", specifier = ">=4" },
     { name = "tiktoken" },
+    { name = "tomli" },
 ]
 
 [[package]]
