@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish to PyPI & Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Verify tag matches pyproject version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(uv run --no-sources --with tomli python -c "import tomli, pathlib; print(tomli.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match pyproject.toml version ($PKG_VERSION)"
+            exit 1
+          fi
+          echo "Version match: $TAG_VERSION"
+
+      - name: Run tests
+        run: |
+          uv sync --no-sources --all-extras
+          uv run pytest -m "not integration"
+
+      - name: Build distribution
+        run: uv build --no-sources
+
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if uv run --with requests python -c "import requests,sys; r=requests.get(f'https://pypi.org/pypi/atlassian-skills/${VERSION}/json'); sys.exit(0 if r.status_code==200 else 1)"; then
+            echo "::warning::Version ${VERSION} already on PyPI, skipping publish"
+          else
+            uv publish
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES_FILE=release-notes.md
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+            flag && /^## \[/ { exit }
+            flag { print }
+          ' CHANGELOG.md > section.md
+
+          if [ -s section.md ]; then
+            echo "Using CHANGELOG section for ${VERSION}"
+            cp section.md "$NOTES_FILE"
+          else
+            echo "No CHANGELOG section found, generating fallback"
+            echo "## atlassian-skills v${VERSION}" > "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+            echo "### Install" >> "$NOTES_FILE"
+            echo '```bash' >> "$NOTES_FILE"
+            echo "uv tool install atlassian-skills==${VERSION}" >> "$NOTES_FILE"
+            echo '```' >> "$NOTES_FILE"
+          fi
+
+          echo "" >> "$NOTES_FILE"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${GITHUB_REF_NAME}" >> "$NOTES_FILE"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,12 @@
 # atlassian-skills
 
+[![PyPI version](https://img.shields.io/pypi/v/atlassian-skills?color=blue)](https://pypi.org/project/atlassian-skills/)
+[![Python versions](https://img.shields.io/pypi/pyversions/atlassian-skills)](https://pypi.org/project/atlassian-skills/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/atlassian-skills)](https://pypi.org/project/atlassian-skills/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/eunsanMountain/atlassian-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/eunsanMountain/atlassian-skills/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/eunsanMountain/atlassian-skills?style=flat&color=yellow)](https://github.com/eunsanMountain/atlassian-skills/stargazers)
+
 A token-efficient CLI that brings [mcp-atlassian](https://github.com/sooperset/mcp-atlassian) functionality to the command line — optimized for LLM agent workflows on Atlassian Server/DC.
 
 mcp-atlassian is great for Cloud setups, but on Server/DC its MCP protocol overhead and verbose JSON responses consume tokens fast. It also lacks lossless Confluence markup round-tripping — edits via MCP can silently alter page content.
