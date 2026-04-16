@@ -6,7 +6,7 @@
 
 - **바이너리**: `atls`
 - **패키지**: `atlassian-skills`
-- **현재 버전**: 0.1.0 (Jira/Confluence read+write, MCP 완전 대체)
+- **현재 버전**: 0.1.2 (Jira/Confluence read+write, MCP 완전 대체)
 
 ## 빌드 & 실행
 
@@ -120,6 +120,31 @@ export ATLS_CORP_CONFLUENCE_TOKEN="your-pat"
 ```
 
 우선순위: CLI 플래그 > 환경변수 > keyring > config 평문
+
+## 릴리즈 프로세스
+
+CI와 PyPI 배포가 GitHub Actions로 자동화됨 — 수동 `uv build` / `twine upload` 불필요.
+
+```bash
+# 1. CHANGELOG.md 상단에 ## [X.Y.Z] - YYYY-MM-DD 섹션 추가
+# 2. pyproject.toml version = "X.Y.Z"
+# 3. uv sync --all-extras  (uv.lock 갱신)
+# 4. 커밋 & push (CI가 ruff + mypy + pytest 3.10-3.13 검증)
+git commit -am "chore: release vX.Y.Z"
+git push origin main
+
+# 5. 태그 push → release.yml 자동 트리거
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+**release.yml이 자동 수행**:
+1. 태그 버전 ↔ `pyproject.toml` version 일치 검증
+2. 테스트 재실행
+3. `uv build` → PyPI publish (`PYPI_TOKEN` secret)
+4. CHANGELOG에서 해당 버전 섹션 추출해 GitHub Release 본문으로 사용
+5. wheel + sdist를 Release 에셋으로 첨부
+
+**워크플로우 파일**: `.github/workflows/{ci,release}.yml`
 
 ## 참고 문서
 
