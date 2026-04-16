@@ -55,9 +55,7 @@ class TestLoadConfig:
 
     def test_load_profile_from_toml(self, tmp_path: Path) -> None:
         toml_file = tmp_path / "config.toml"
-        toml_file.write_text(
-            '[profiles.corp]\njira_url = "https://jira.corp.example.com"\n'
-        )
+        toml_file.write_text('[profiles.corp]\njira_url = "https://jira.corp.example.com"\n')
         config = load_config(toml_file)
         assert "corp" in config.profiles
         assert config.profiles["corp"].jira_url == "https://jira.corp.example.com"
@@ -194,7 +192,7 @@ class TestLoadConfigExpanded:
         toml_file = tmp_path / "config.toml"
         toml_file.write_bytes(
             b'default_profile = "corp"\n'
-            b'[profiles.corp]\n'
+            b"[profiles.corp]\n"
             b'jira_url = "https://jira.example.com"\n'
             b'confluence_url = "https://confluence.example.com"\n'
             b'storage = "keyring"\n'
@@ -225,9 +223,9 @@ class TestLoadConfigExpanded:
         toml_file = tmp_path / "config.toml"
         toml_file.write_bytes(
             b'default_profile = "work"\n'
-            b'[profiles.work]\n'
+            b"[profiles.work]\n"
             b'jira_url = "https://jira.work.com"\n'
-            b'[profiles.personal]\n'
+            b"[profiles.personal]\n"
             b'jira_url = "https://jira.personal.com"\n'
             b'confluence_url = "https://confluence.personal.com"\n'
         )

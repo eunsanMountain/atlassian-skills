@@ -283,9 +283,7 @@ class TestConfluenceModelDump:
         assert d["id"] == "1"
 
     def test_confluence_search_result_model_dump(self) -> None:
-        result = ConfluenceSearchResult.model_validate(
-            {"results": [], "start": 0, "limit": 25, "total": 0}
-        )
+        result = ConfluenceSearchResult.model_validate({"results": [], "start": 0, "limit": 25, "total": 0})
         d = result.model_dump()
         assert isinstance(d, dict)
         assert d["total"] == 0

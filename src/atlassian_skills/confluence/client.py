@@ -129,7 +129,9 @@ class ConfluenceClient(BaseClient):
             body = data.get("content", {}).get("value", "") if isinstance(data.get("content"), dict) else ""
         return str(body)
 
-    _IMAGE_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".tiff"})
+    _IMAGE_EXTENSIONS: frozenset[str] = frozenset(
+        {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".tiff"}
+    )
 
     def get_page_images(self, page_id: str) -> list[Attachment]:
         """List image attachments on a page.

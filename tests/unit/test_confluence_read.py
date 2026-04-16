@@ -58,9 +58,7 @@ def test_get_page_returns_page(client: ConfluenceClient) -> None:
         "version": {"number": 2, "when": "2026-04-01T10:00:00.000+0900"},
         "body": {"storage": {"value": "<p>test</p>", "representation": "storage"}},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/429140627").mock(return_value=httpx.Response(200, json=fixture))
 
     page = client.get_page("429140627")
 
@@ -88,9 +86,7 @@ def test_search_returns_results(client: ConfluenceClient) -> None:
         "size": 2,
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/search").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/search").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.search("type=page AND text~'test'")
 
@@ -114,9 +110,7 @@ def test_get_children_returns_pages(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/100/child/page").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/page").mock(return_value=httpx.Response(200, json=fixture))
 
     children = client.get_children("100")
 
@@ -143,9 +137,7 @@ def test_list_comments_returns_comments(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/100/child/comment").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/comment").mock(return_value=httpx.Response(200, json=fixture))
 
     comments = client.list_comments("100")
 
@@ -167,9 +159,7 @@ def test_list_labels_returns_labels(client: ConfluenceClient) -> None:
             {"id": "2", "name": "draft", "prefix": "global"},
         ],
     }
-    respx.get(f"{BASE_URL}/rest/api/content/100/label").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/100/label").mock(return_value=httpx.Response(200, json=fixture))
 
     labels = client.list_labels("100")
 
@@ -197,9 +187,7 @@ def test_list_attachments_returns_attachments(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(return_value=httpx.Response(200, json=fixture))
 
     attachments = client.list_attachments("100")
 
@@ -225,9 +213,7 @@ def test_get_page_images_filters_images(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(return_value=httpx.Response(200, json=fixture))
 
     images = client.get_page_images("100")
 
@@ -287,9 +273,7 @@ def test_search_users_fuzzy_match(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/group/confluence-users/member").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/group/confluence-users/member").mock(return_value=httpx.Response(200, json=fixture))
 
     users = client.search_users("alice")
 
@@ -311,16 +295,19 @@ def test_get_space_tree_returns_result(client: ConfluenceClient) -> None:
         "page": {
             "results": [
                 {"id": "1", "title": "Root Page", "type": "page", "ancestors": []},
-                {"id": "2", "title": "Child Page", "type": "page", "ancestors": [{"id": "1", "title": "Root Page", "type": "page"}]},
+                {
+                    "id": "2",
+                    "title": "Child Page",
+                    "type": "page",
+                    "ancestors": [{"id": "1", "title": "Root Page", "type": "page"}],
+                },
             ],
             "size": 2,
             "_links": {},
         },
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.get_space_tree("TESTSPACE")
 
@@ -340,14 +327,16 @@ def test_download_attachment(client: ConfluenceClient, tmp_path: Path) -> None:
     content = b"file-content-bytes"
     dl_path = "/download/attachments/99/test.bin?api=v2"
     respx.get(f"{BASE_URL}/rest/api/content/att100").mock(
-        return_value=httpx.Response(200, json={
-            "id": "att100", "title": "test.bin",
-            "_links": {"download": dl_path},
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "att100",
+                "title": "test.bin",
+                "_links": {"download": dl_path},
+            },
+        )
     )
-    respx.get(f"{BASE_URL}/download/attachments/99/test.bin").mock(
-        return_value=httpx.Response(200, content=content)
-    )
+    respx.get(f"{BASE_URL}/download/attachments/99/test.bin").mock(return_value=httpx.Response(200, content=content))
 
     out = client.download_attachment("att100", tmp_path / "test.bin")
 
@@ -365,10 +354,20 @@ def test_download_all_attachments(client: ConfluenceClient, tmp_path: Path) -> N
     # Mock list attachments
     list_fixture = {
         "results": [
-            {"id": "att1", "title": "file1.txt", "mediaType": "text/plain", "fileSize": 100,
-             "_links": {"download": "/download/attachments/100/file1.txt?api=v2"}},
-            {"id": "att2", "title": "file2.txt", "mediaType": "text/plain", "fileSize": 200,
-             "_links": {"download": "/download/attachments/100/file2.txt?api=v2"}},
+            {
+                "id": "att1",
+                "title": "file1.txt",
+                "mediaType": "text/plain",
+                "fileSize": 100,
+                "_links": {"download": "/download/attachments/100/file1.txt?api=v2"},
+            },
+            {
+                "id": "att2",
+                "title": "file2.txt",
+                "mediaType": "text/plain",
+                "fileSize": 200,
+                "_links": {"download": "/download/attachments/100/file2.txt?api=v2"},
+            },
         ],
         "_links": {},
     }
@@ -397,9 +396,7 @@ def test_download_all_attachments(client: ConfluenceClient, tmp_path: Path) -> N
 @respx.mock
 def test_get_page_history_returns_page(client: ConfluenceClient) -> None:
     fixture = _load("get-page-history-v1.json")
-    route = respx.get(f"{BASE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/content/429140627").mock(return_value=httpx.Response(200, json=fixture))
 
     page = client.get_page_history("429140627", version=1)
 
@@ -420,9 +417,7 @@ def test_get_page_history_specific_version(client: ConfluenceClient) -> None:
         "version": {"number": 3, "when": "2024-03-01T00:00:00.000Z"},
         "body": {"storage": {"value": "<p>Version 3 content</p>", "representation": "storage"}},
     }
-    route = respx.get(f"{BASE_URL}/rest/api/content/100").mock(
-        return_value=httpx.Response(200, json=page_data)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/content/100").mock(return_value=httpx.Response(200, json=page_data))
 
     page = client.get_page_history("100", version=3)
 
@@ -448,9 +443,7 @@ def test_get_page_images_only_image_types(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/200/child/attachment").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/200/child/attachment").mock(return_value=httpx.Response(200, json=fixture))
 
     images = client.get_page_images("200")
 
@@ -487,9 +480,7 @@ def test_get_children_returns_correct_ids(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/300/child/page").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/300/child/page").mock(return_value=httpx.Response(200, json=fixture))
 
     children = client.get_children("300")
 
@@ -516,9 +507,7 @@ def test_get_space_tree_fixture(client: ConfluenceClient) -> None:
         },
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(
-        return_value=httpx.Response(200, json=api_response)
-    )
+    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(return_value=httpx.Response(200, json=api_response))
 
     result = client.get_space_tree("TESTSPACE")
 
@@ -551,13 +540,16 @@ def test_list_attachments_multiple_types(client: ConfluenceClient) -> None:
         "results": [
             {"id": "att20", "title": "spec.pdf", "mediaType": "application/pdf", "fileSize": 102400},
             {"id": "att21", "title": "screenshot.png", "mediaType": "image/png", "fileSize": 4096},
-            {"id": "att22", "title": "data.xlsx", "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "fileSize": 8192},
+            {
+                "id": "att22",
+                "title": "data.xlsx",
+                "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "fileSize": 8192,
+            },
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/500/child/attachment").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/500/child/attachment").mock(return_value=httpx.Response(200, json=fixture))
 
     attachments = client.list_attachments("500")
 
@@ -577,14 +569,16 @@ def test_download_attachment_returns_correct_path(client: ConfluenceClient, tmp_
     content = b"binary file content here"
     dl_path = "/download/attachments/99/output.bin?api=v2"
     respx.get(f"{BASE_URL}/rest/api/content/att500").mock(
-        return_value=httpx.Response(200, json={
-            "id": "att500", "title": "output.bin",
-            "_links": {"download": dl_path},
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "att500",
+                "title": "output.bin",
+                "_links": {"download": dl_path},
+            },
+        )
     )
-    respx.get(f"{BASE_URL}/download/attachments/99/output.bin").mock(
-        return_value=httpx.Response(200, content=content)
-    )
+    respx.get(f"{BASE_URL}/download/attachments/99/output.bin").mock(return_value=httpx.Response(200, content=content))
 
     out = client.download_attachment("att500", tmp_path / "output.bin")
 
@@ -597,14 +591,16 @@ def test_download_attachment_creates_parent_dirs(client: ConfluenceClient, tmp_p
     content = b"file content"
     dl_path = "/download/attachments/99/file.txt?api=v2"
     respx.get(f"{BASE_URL}/rest/api/content/att600").mock(
-        return_value=httpx.Response(200, json={
-            "id": "att600", "title": "file.txt",
-            "_links": {"download": dl_path},
-        })
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "att600",
+                "title": "file.txt",
+                "_links": {"download": dl_path},
+            },
+        )
     )
-    respx.get(f"{BASE_URL}/download/attachments/99/file.txt").mock(
-        return_value=httpx.Response(200, content=content)
-    )
+    respx.get(f"{BASE_URL}/download/attachments/99/file.txt").mock(return_value=httpx.Response(200, content=content))
 
     nested_path = tmp_path / "a" / "b" / "c" / "file.txt"
     out = client.download_attachment("att600", nested_path)
@@ -642,9 +638,7 @@ def test_search_users_returns_empty_when_no_match(client: ConfluenceClient) -> N
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/group/confluence-users/member").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/group/confluence-users/member").mock(return_value=httpx.Response(200, json=fixture))
 
     users = client.search_users("zzz_no_such_user")
 
@@ -660,9 +654,7 @@ def test_search_users_matches_by_email(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/group/confluence-users/member").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/group/confluence-users/member").mock(return_value=httpx.Response(200, json=fixture))
 
     users = client.search_users("bob@corp.com")
 

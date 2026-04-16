@@ -16,10 +16,12 @@ _ATLS_CLAUDE_BLOCK_END = "<!-- ATLS-CLAUDE:END -->"
 _ATLS_CODEX_BLOCK_START = "<!-- ATLS-CODEX:START -->"
 _ATLS_CODEX_BLOCK_END = "<!-- ATLS-CODEX:END -->"
 
+
 # Version is read from the package at runtime
 def _get_version() -> str:
     try:
         from atlassian_skills import __version__
+
         return __version__
     except Exception:
         return "0.1.0"
@@ -177,7 +179,9 @@ def _inject_marked_block(*, path: Path, start_marker: str, end_marker: str, bloc
         path.write_text(new_content, encoding="utf-8")
         return f"  {path}: {label} updated"
 
-    separator = "\n\n" if content and not content.endswith("\n\n") else ("\n" if content and not content.endswith("\n") else "")
+    separator = (
+        "\n\n" if content and not content.endswith("\n\n") else ("\n" if content and not content.endswith("\n") else "")
+    )
     path.write_text(content + separator + block + "\n", encoding="utf-8")
     return f"  {path}: {label} appended"
 
@@ -206,12 +210,20 @@ def _inject_codex_agents_block() -> str:
 
 def _prompt_override(label: str, key: str, current: Path) -> None:
     """Ask the user to accept or override a detected path."""
-    source = "override" if key in _OVERRIDES else (
-        "env" if os.environ.get({
-            "claude": "CLAUDE_CONFIG_DIR",
-            "codex": "CODEX_HOME",
-            "agents": "AGENTS_HOME",
-        }[key]) else "default"
+    source = (
+        "override"
+        if key in _OVERRIDES
+        else (
+            "env"
+            if os.environ.get(
+                {
+                    "claude": "CLAUDE_CONFIG_DIR",
+                    "codex": "CODEX_HOME",
+                    "agents": "AGENTS_HOME",
+                }[key]
+            )
+            else "default"
+        )
     )
     typer.echo(f"\n{label}: {current}  (source: {source})")
     entered = typer.prompt(

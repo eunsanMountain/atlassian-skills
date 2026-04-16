@@ -68,6 +68,7 @@ def config_set(
     node[parts[-1]] = value
 
     from atlassian_skills.core.config import Config
+
     updated = Config.model_validate(data)
     save_config(updated)
     typer.echo(f"Set {key} = {value}")

@@ -263,10 +263,12 @@ class TestResolveCredentialTokenPriority:
         "cli_token,env_token,expected",
         [
             ("cli-tok", "env-tok", "cli-tok"),  # CLI wins
-            (None, "env-tok", "env-tok"),        # env fallback
+            (None, "env-tok", "env-tok"),  # env fallback
         ],
     )
-    def test_token_priority(self, monkeypatch: pytest.MonkeyPatch, cli_token: str | None, env_token: str, expected: str) -> None:
+    def test_token_priority(
+        self, monkeypatch: pytest.MonkeyPatch, cli_token: str | None, env_token: str, expected: str
+    ) -> None:
         monkeypatch.setenv("ATLS_CORP_JIRA_TOKEN", env_token)
         profile = Profile()
         cred = resolve_credential("corp", "jira", profile, cli_token=cli_token)
@@ -288,11 +290,11 @@ class TestResolveCredentialMethodPriority:
     @pytest.mark.parametrize(
         "cli_auth,env_auth,config_auth,expected",
         [
-            ("basic", None, "pat", "basic"),   # CLI > env > config
-            (None, "basic", "pat", "basic"),    # env > config
-            (None, None, "basic", "basic"),     # config
+            ("basic", None, "pat", "basic"),  # CLI > env > config
+            (None, "basic", "pat", "basic"),  # env > config
+            (None, None, "basic", "basic"),  # config
             (None, None, "pat", "pat"),
-            (None, None, None, "pat"),          # default
+            (None, None, None, "pat"),  # default
         ],
     )
     def test_method_priority(
@@ -310,6 +312,7 @@ class TestResolveCredentialMethodPriority:
             monkeypatch.setenv("ATLS_CORP_JIRA_AUTH", env_auth)
 
         from atlassian_skills.core.config import AuthConfig
+
         auth_cfg = AuthConfig(jira=config_auth) if config_auth else AuthConfig()  # type: ignore[arg-type]
         profile = Profile(auth=auth_cfg)
 

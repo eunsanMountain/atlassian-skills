@@ -61,6 +61,7 @@ class Attachment(BaseModel):
                     data["mediaType"] = extensions["mediaType"]
                 if data.get("fileSize") in (None, 0) and extensions.get("fileSize") is not None:
                     import contextlib
+
                     with contextlib.suppress(TypeError, ValueError):
                         data["fileSize"] = int(extensions["fileSize"])
         return data

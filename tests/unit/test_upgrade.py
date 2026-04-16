@@ -24,7 +24,9 @@ class TestUpgrade:
                 "atls": "/usr/local/bin/atls",
             }.get(name)
 
-        def fake_run(command: list[str], *, text: bool, capture_output: bool, check: bool) -> subprocess.CompletedProcess[str]:
+        def fake_run(
+            command: list[str], *, text: bool, capture_output: bool, check: bool
+        ) -> subprocess.CompletedProcess[str]:
             assert text is True
             assert capture_output is True
             assert check is False
@@ -59,7 +61,9 @@ class TestUpgrade:
                 return "/usr/bin/uv"
             return None
 
-        def fake_run(command: list[str], *, text: bool, capture_output: bool, check: bool) -> subprocess.CompletedProcess[str]:
+        def fake_run(
+            command: list[str], *, text: bool, capture_output: bool, check: bool
+        ) -> subprocess.CompletedProcess[str]:
             commands.append(command)
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 

@@ -42,9 +42,7 @@ def client(cred: Credential) -> JiraClient:
 @respx.mock
 def test_list_projects_returns_list(client: JiraClient) -> None:
     fixture = _load("get-projects-sample.json")
-    respx.get(f"{BASE_URL}/rest/api/2/project").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project").mock(return_value=httpx.Response(200, json=fixture))
 
     projects = client.list_projects()
 
@@ -69,9 +67,7 @@ def test_list_projects_parses_project_fields(client: JiraClient) -> None:
             "lead": {"displayName": "Test Lead", "name": "test.lead"},
         }
     ]
-    respx.get(f"{BASE_URL}/rest/api/2/project").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project").mock(return_value=httpx.Response(200, json=payload))
 
     projects = client.list_projects()
 
@@ -95,9 +91,7 @@ def test_list_projects_wrapped_values(client: JiraClient) -> None:
         "startAt": 0,
         "total": 1,
     }
-    respx.get(f"{BASE_URL}/rest/api/2/project").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project").mock(return_value=httpx.Response(200, json=payload))
 
     projects = client.list_projects()
 
@@ -107,9 +101,7 @@ def test_list_projects_wrapped_values(client: JiraClient) -> None:
 
 @respx.mock
 def test_list_projects_empty(client: JiraClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/project").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project").mock(return_value=httpx.Response(200, json=[]))
 
     projects = client.list_projects()
 
@@ -136,9 +128,7 @@ def test_list_projects_http_error(client: JiraClient) -> None:
 @respx.mock
 def test_get_project_issues_returns_search_result(client: JiraClient) -> None:
     fixture = _load("search-proj.json")
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.get_project_issues("PROJ")
 
@@ -150,9 +140,7 @@ def test_get_project_issues_returns_search_result(client: JiraClient) -> None:
 @respx.mock
 def test_get_project_issues_uses_project_jql(client: JiraClient) -> None:
     payload: dict = {"total": 0, "start_at": 0, "max_results": 50, "issues": []}
-    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=payload))
 
     client.get_project_issues("DEMO")
 
@@ -163,9 +151,7 @@ def test_get_project_issues_uses_project_jql(client: JiraClient) -> None:
 @respx.mock
 def test_get_project_issues_with_jql_extra(client: JiraClient) -> None:
     payload: dict = {"total": 5, "start_at": 0, "max_results": 50, "issues": []}
-    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=payload))
 
     client.get_project_issues("TEST", jql_extra="status=Open")
 
@@ -176,9 +162,7 @@ def test_get_project_issues_with_jql_extra(client: JiraClient) -> None:
 @respx.mock
 def test_get_project_issues_empty(client: JiraClient) -> None:
     payload: dict = {"total": 0, "start_at": 0, "max_results": 50, "issues": []}
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=payload))
 
     result = client.get_project_issues("EMPTY")
 
@@ -190,9 +174,7 @@ def test_get_project_issues_empty(client: JiraClient) -> None:
 @respx.mock
 def test_get_project_issues_respects_limit(client: JiraClient) -> None:
     payload: dict = {"total": 100, "start_at": 0, "max_results": 10, "issues": []}
-    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=payload))
 
     client.get_project_issues("BIG", limit=10)
 
@@ -211,9 +193,7 @@ def test_get_project_versions_returns_list(client: JiraClient) -> None:
         {"id": "10000", "name": "1.0", "released": True, "archived": False},
         {"id": "10001", "name": "2.0", "released": False, "archived": False},
     ]
-    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/versions").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/versions").mock(return_value=httpx.Response(200, json=payload))
 
     versions = client.get_project_versions("TEST")
 
@@ -227,9 +207,7 @@ def test_get_project_versions_returns_list(client: JiraClient) -> None:
 
 @respx.mock
 def test_get_project_versions_empty(client: JiraClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/versions").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/versions").mock(return_value=httpx.Response(200, json=[]))
 
     versions = client.get_project_versions("TEST")
 
@@ -240,9 +218,7 @@ def test_get_project_versions_empty(client: JiraClient) -> None:
 def test_get_project_versions_http_error(client: JiraClient) -> None:
     from atlassian_skills.core.errors import NotFoundError
 
-    respx.get(f"{BASE_URL}/rest/api/2/project/NOPE/versions").mock(
-        return_value=httpx.Response(404, text="Not found")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/NOPE/versions").mock(return_value=httpx.Response(404, text="Not found"))
 
     with pytest.raises(NotFoundError):
         client.get_project_versions("NOPE")
@@ -260,9 +236,7 @@ def test_get_project_versions_model_fields(client: JiraClient) -> None:
             "release_date": "2024-06-01",
         }
     ]
-    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/versions").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/versions").mock(return_value=httpx.Response(200, json=payload))
 
     versions = client.get_project_versions("TEST")
 
@@ -282,9 +256,7 @@ def test_get_project_components_returns_list(client: JiraClient) -> None:
         {"id": "10000", "name": "Backend"},
         {"id": "10001", "name": "Frontend"},
     ]
-    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/components").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/components").mock(return_value=httpx.Response(200, json=payload))
 
     components = client.get_project_components("TEST")
 
@@ -296,9 +268,7 @@ def test_get_project_components_returns_list(client: JiraClient) -> None:
 
 @respx.mock
 def test_get_project_components_empty(client: JiraClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/components").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/components").mock(return_value=httpx.Response(200, json=[]))
 
     components = client.get_project_components("TEST")
 
@@ -309,9 +279,7 @@ def test_get_project_components_empty(client: JiraClient) -> None:
 def test_get_project_components_http_error(client: JiraClient) -> None:
     from atlassian_skills.core.errors import AtlasError
 
-    respx.get(f"{BASE_URL}/rest/api/2/project/NOPE/components").mock(
-        return_value=httpx.Response(403, text="Forbidden")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/NOPE/components").mock(return_value=httpx.Response(403, text="Forbidden"))
 
     with pytest.raises(AtlasError):
         client.get_project_components("NOPE")
@@ -327,9 +295,7 @@ def test_get_project_components_model_fields(client: JiraClient) -> None:
             "lead": {"displayName": "Lead Dev", "name": "lead.dev"},
         }
     ]
-    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/components").mock(
-        return_value=httpx.Response(200, json=payload)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/TEST/components").mock(return_value=httpx.Response(200, json=payload))
 
     components = client.get_project_components("TEST")
 

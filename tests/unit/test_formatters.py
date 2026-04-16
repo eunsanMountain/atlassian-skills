@@ -71,6 +71,7 @@ class TestCompactFormat:
 # json
 # ---------------------------------------------------------------------------
 
+
 class SampleModel(BaseModel):
     key: str
     value: int
@@ -114,6 +115,7 @@ class TestJsonFormat:
 # raw
 # ---------------------------------------------------------------------------
 
+
 class TestRawFormat:
     def test_string_passthrough(self) -> None:
         s = "hello\nworld\t특수문자"
@@ -141,6 +143,7 @@ class TestRawFormat:
 # ---------------------------------------------------------------------------
 # markdown (cfxmark wrappers)
 # ---------------------------------------------------------------------------
+
 
 class TestMarkdownFormat:
     def test_jira_wiki_to_md_empty(self) -> None:
@@ -187,6 +190,7 @@ class TestMarkdownFormat:
 # ---------------------------------------------------------------------------
 # format_output dispatcher
 # ---------------------------------------------------------------------------
+
 
 class TestFormatOutputDispatcher:
     def test_compact_dispatch(self) -> None:
@@ -251,9 +255,7 @@ class TestCompactFormatExtended:
 
     def test_empty_search_result_compact(self) -> None:
         """SearchResult with 0 issues → header line with total:0."""
-        result = SearchResult.model_validate(
-            {"total": 0, "start_at": 0, "max_results": 50, "issues": []}
-        )
+        result = SearchResult.model_validate({"total": 0, "start_at": 0, "max_results": 50, "issues": []})
         output = format_compact(result)
         assert "total:0" in output
 
@@ -324,15 +326,17 @@ def test_format_output_with_issue_model(fmt: OutputFormat) -> None:
 
 def test_compact_jira_issue() -> None:
     """format_compact on Issue model returns key and summary."""
-    issue = Issue.model_validate({
-        "id": "5",
-        "key": "TEST-5",
-        "summary": "compact issue test",
-        "status": {"name": "Done"},
-        "issuetype": {"name": "Story"},
-        "priority": {"name": "Low"},
-        "assignee": {"displayName": "Alice"},
-    })
+    issue = Issue.model_validate(
+        {
+            "id": "5",
+            "key": "TEST-5",
+            "summary": "compact issue test",
+            "status": {"name": "Done"},
+            "issuetype": {"name": "Story"},
+            "priority": {"name": "Low"},
+            "assignee": {"displayName": "Alice"},
+        }
+    )
     result = format_compact(issue)
     assert "TEST-5" in result
     assert "compact issue test" in result
@@ -344,15 +348,17 @@ def test_compact_jira_issue() -> None:
 
 def test_compact_jira_search_result() -> None:
     """format_compact on SearchResult returns header and issue rows."""
-    result = SearchResult.model_validate({
-        "total": 2,
-        "startAt": 0,
-        "maxResults": 50,
-        "issues": [
-            {"id": "1", "key": "SR-1", "summary": "first"},
-            {"id": "2", "key": "SR-2", "summary": "second"},
-        ],
-    })
+    result = SearchResult.model_validate(
+        {
+            "total": 2,
+            "startAt": 0,
+            "maxResults": 50,
+            "issues": [
+                {"id": "1", "key": "SR-1", "summary": "first"},
+                {"id": "2", "key": "SR-2", "summary": "second"},
+            ],
+        }
+    )
     output = format_compact(result)
     assert "total:2" in output
     assert "SR-1" in output
@@ -361,13 +367,15 @@ def test_compact_jira_search_result() -> None:
 
 def test_compact_confluence_page() -> None:
     """format_compact on Page model returns id and title."""
-    page = Page.model_validate({
-        "id": "123456",
-        "title": "My Confluence Page",
-        "type": "page",
-        "space": {"key": "MYSPACE", "name": "My Space"},
-        "version": {"number": 3},
-    })
+    page = Page.model_validate(
+        {
+            "id": "123456",
+            "title": "My Confluence Page",
+            "type": "page",
+            "space": {"key": "MYSPACE", "name": "My Space"},
+            "version": {"number": 3},
+        }
+    )
     output = format_compact(page)
     assert "123456" in output
     assert "My Confluence Page" in output
@@ -376,19 +384,21 @@ def test_compact_confluence_page() -> None:
 
 def test_compact_confluence_search_result() -> None:
     """format_compact on ConfluenceSearchResult returns header and page rows."""
-    search = ConfluenceSearchResult.model_validate({
-        "total": 1,
-        "start": 0,
-        "limit": 25,
-        "results": [
-            {
-                "id": "999",
-                "title": "Found Page",
-                "type": "page",
-                "space": {"key": "TS", "name": "Test Space"},
-            }
-        ],
-    })
+    search = ConfluenceSearchResult.model_validate(
+        {
+            "total": 1,
+            "start": 0,
+            "limit": 25,
+            "results": [
+                {
+                    "id": "999",
+                    "title": "Found Page",
+                    "type": "page",
+                    "space": {"key": "TS", "name": "Test Space"},
+                }
+            ],
+        }
+    )
     output = format_compact(search)
     assert "total:1" in output
     assert "Found Page" in output
@@ -409,11 +419,13 @@ def test_compact_transition_list() -> None:
 
 def test_compact_watcher_list() -> None:
     """format_compact on WatcherList returns issue key and count."""
-    watchers = WatcherList.model_validate({
-        "issue_key": "WATCH-1",
-        "watcher_count": 3,
-        "watchers": [],
-    })
+    watchers = WatcherList.model_validate(
+        {
+            "issue_key": "WATCH-1",
+            "watcher_count": 3,
+            "watchers": [],
+        }
+    )
     output = format_compact(watchers)
     assert "WATCH-1" in output
     assert "3" in output
@@ -421,13 +433,15 @@ def test_compact_watcher_list() -> None:
 
 def test_compact_worklog_list() -> None:
     """format_compact on WorklogList returns total and worklog lines."""
-    worklogs = WorklogList.model_validate({
-        "total": 2,
-        "worklogs": [
-            {"id": "10", "author": {"displayName": "Bob"}, "started": "2026-01-01", "time_spent": "1h"},
-            {"id": "11", "author": {"displayName": "Carol"}, "started": "2026-01-02", "time_spent": "2h"},
-        ],
-    })
+    worklogs = WorklogList.model_validate(
+        {
+            "total": 2,
+            "worklogs": [
+                {"id": "10", "author": {"displayName": "Bob"}, "started": "2026-01-01", "time_spent": "1h"},
+                {"id": "11", "author": {"displayName": "Carol"}, "started": "2026-01-02", "time_spent": "2h"},
+            ],
+        }
+    )
     output = format_compact(worklogs)
     assert "2 worklogs" in output
     assert "Bob" in output
@@ -436,8 +450,15 @@ def test_compact_worklog_list() -> None:
 
 def test_compact_generic_dict() -> None:
     """format_compact on a plain dict uses _format_issue_row."""
-    d = {"key": "DICT-1", "status": "Active", "issuetype": "Task", "priority": "High",
-         "assignee": "dev", "summary": "dict compact", "updated": "2026-04-13"}
+    d = {
+        "key": "DICT-1",
+        "status": "Active",
+        "issuetype": "Task",
+        "priority": "High",
+        "assignee": "dev",
+        "summary": "dict compact",
+        "updated": "2026-04-13",
+    }
     result = format_compact(d)
     assert "DICT-1" in result
     assert "dict compact" in result

@@ -1,4 +1,5 @@
 """L1 token budget benchmarks: compact output must use >=50% fewer tokens than MCP JSON."""
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,9 @@ def test_scenario_1_jira_issue_get() -> None:
     compact_output = format_compact(issue)
     compact_tokens = count_tokens(compact_output)
 
-    print(f"\nScenario 1 - Jira Issue GET: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens/mcp_tokens:.2%}")
+    print(
+        f"\nScenario 1 - Jira Issue GET: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens / mcp_tokens:.2%}"
+    )
     assert compact_tokens < mcp_tokens * 0.5, (
         f"L1 fail: compact={compact_tokens} >= threshold={mcp_tokens * 0.5:.0f} (mcp={mcp_tokens})"
     )
@@ -36,7 +39,9 @@ def test_scenario_2_jira_search() -> None:
     compact_output = format_compact(result)
     compact_tokens = count_tokens(compact_output)
 
-    print(f"\nScenario 2 - Jira Search: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens/mcp_tokens:.2%}")
+    print(
+        f"\nScenario 2 - Jira Search: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens / mcp_tokens:.2%}"
+    )
     assert compact_tokens < mcp_tokens * 0.5, (
         f"L1 fail: compact={compact_tokens} >= threshold={mcp_tokens * 0.5:.0f} (mcp={mcp_tokens})"
     )
@@ -54,7 +59,9 @@ def test_scenario_3_confluence_page_get() -> None:
     compact_output = format_compact(page)
     compact_tokens = count_tokens(compact_output)
 
-    print(f"\nScenario 3 - Confluence Page GET: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens/mcp_tokens:.2%}")
+    print(
+        f"\nScenario 3 - Confluence Page GET: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens / mcp_tokens:.2%}"
+    )
     assert compact_tokens < mcp_tokens * 0.5, (
         f"L1 fail: compact={compact_tokens} >= threshold={mcp_tokens * 0.5:.0f} (mcp={mcp_tokens})"
     )
@@ -71,7 +78,9 @@ def test_scenario_4_confluence_search() -> None:
     compact_output = format_compact(result)
     compact_tokens = count_tokens(compact_output)
 
-    print(f"\nScenario 4 - Confluence Search: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens/mcp_tokens:.2%}")
+    print(
+        f"\nScenario 4 - Confluence Search: mcp={mcp_tokens} compact={compact_tokens} ratio={compact_tokens / mcp_tokens:.2%}"
+    )
     assert compact_tokens < mcp_tokens * 0.5, (
         f"L1 fail: compact={compact_tokens} >= threshold={mcp_tokens * 0.5:.0f} (mcp={mcp_tokens})"
     )

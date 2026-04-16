@@ -95,9 +95,7 @@ class TestDiffPassthrough:
         local_file = tmp_path / "page.md"
         local_file.write_text(md_local, encoding="utf-8")
 
-        exit_code, diff_output = diff_local(
-            client, "12345", local_file, passthrough_prefixes=["workflow:"]
-        )
+        exit_code, diff_output = diff_local(client, "12345", local_file, passthrough_prefixes=["workflow:"])
 
         assert exit_code == 0
         assert diff_output == ""

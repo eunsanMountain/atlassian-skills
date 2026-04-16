@@ -11,6 +11,7 @@ def _version_callback(value: bool) -> None:
         typer.echo(f"atls {__version__}")
         raise typer.Exit()
 
+
 app = typer.Typer(
     name="atls",
     help="Token-efficient CLI for Atlassian Server/DC. Use --format globally before a subcommand or locally as --format on Jira/Confluence commands.",
@@ -22,7 +23,9 @@ app = typer.Typer(
 def main(
     ctx: typer.Context,
     profile: str = typer.Option("default", "--profile", "-p", help="Config profile name"),
-    version: bool = typer.Option(False, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version"),
+    version: bool = typer.Option(
+        False, "--version", "-V", callback=_version_callback, is_eager=True, help="Show version"
+    ),
     format: str = typer.Option(
         "compact",
         "--format",

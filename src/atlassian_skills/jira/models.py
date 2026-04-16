@@ -131,9 +131,7 @@ class Issue(BaseModel):
             if isinstance(fields, dict):
                 flat = {k: v for k, v in data.items() if k != "fields"}
                 flat.update(fields)
-                flat["custom_fields"] = {
-                    key: value for key, value in fields.items() if key.startswith("customfield_")
-                }
+                flat["custom_fields"] = {key: value for key, value in fields.items() if key.startswith("customfield_")}
                 return flat
         return data
 

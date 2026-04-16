@@ -496,17 +496,13 @@ class TestModelDumpMethods:
         assert parsed["key"] == "PROJ-1"
 
     def test_search_result_model_dump(self) -> None:
-        result = SearchResult.model_validate(
-            {"total": 0, "start_at": 0, "max_results": 10, "issues": []}
-        )
+        result = SearchResult.model_validate({"total": 0, "start_at": 0, "max_results": 10, "issues": []})
         d = result.model_dump()
         assert isinstance(d, dict)
         assert d["total"] == 0
 
     def test_search_result_model_dump_json(self) -> None:
-        result = SearchResult.model_validate(
-            {"total": 0, "start_at": 0, "max_results": 10, "issues": []}
-        )
+        result = SearchResult.model_validate({"total": 0, "start_at": 0, "max_results": 10, "issues": []})
         js = result.model_dump_json()
         assert json.loads(js)["total"] == 0
 

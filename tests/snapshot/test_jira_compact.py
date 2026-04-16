@@ -54,9 +54,7 @@ def test_issue_get_json(snapshot: SnapshotAssertion) -> None:
 @respx.mock
 def test_issue_search_compact(snapshot: SnapshotAssertion) -> None:
     """atls jira issue search 'project=PROJ' --format=compact matches snapshot."""
-    respx.get(f"{JIRA_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=_load("search-proj.json"))
-    )
+    respx.get(f"{JIRA_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=_load("search-proj.json")))
     result = runner.invoke(app, ["--format", "compact", "jira", "issue", "search", "project=PROJ"])
     assert result.exit_code == 0, result.output
     assert result.output == snapshot

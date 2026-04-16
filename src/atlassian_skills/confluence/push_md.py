@@ -1,4 +1,5 @@
 """RFE-001 R2: push-md -- md -> canonicalize -> PUT + attachment upload."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -68,7 +69,13 @@ def push_md(
         return {"status": "no_change", "page_id": page_id, "version": current_version}
 
     if dry_run:
-        return {"status": "dry_run", "page_id": page_id, "dry_run": True, "would_update": True, "version": current_version + 1}
+        return {
+            "status": "dry_run",
+            "page_id": page_id,
+            "dry_run": True,
+            "would_update": True,
+            "version": current_version + 1,
+        }
 
     # PUT with new version
     new_version = current_version + 1

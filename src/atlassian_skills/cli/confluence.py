@@ -126,6 +126,7 @@ def page_get(
         # double conversion (body_repr already set the body representation).
         if fmt == OutputFormat.MD and body_repr:
             from atlassian_skills.core.format.markdown import format_page_md_header
+
             space_key = page.space.key if page.space else ""
             header = format_page_md_header(page.title, space_key, page.version)
             typer.echo(header + (page.body_storage or ""))
@@ -787,7 +788,9 @@ def page_push_md(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
     md_file: str = typer.Option(..., "--md-file", "-f", help="Path to markdown file ('-' reads stdin)"),
-    passthrough_prefix: list[str] = typer.Option([], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"),  # noqa: B008
+    passthrough_prefix: list[str] = typer.Option(
+        [], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"
+    ),  # noqa: B008
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
     attachment: list[str] = typer.Option([], "--attachment", help="Attachment file paths"),  # noqa: B008
     asset_dir: str | None = typer.Option(
@@ -820,9 +823,7 @@ def page_push_md(
                 typer.echo(f"Error: not a directory: {asset_dir}", err=True)
                 raise typer.Exit(1)
             else:
-                att_paths.extend(
-                    sorted(p for p in ad.iterdir() if p.is_file() and not p.name.startswith("."))
-                )
+                att_paths.extend(sorted(p for p in ad.iterdir() if p.is_file() and not p.name.startswith(".")))
 
         from atlassian_skills.confluence.push_md import push_md
 
@@ -851,7 +852,9 @@ def page_pull_md(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
     output: str | None = typer.Option(None, "--output", "-o", help="Output file path"),
-    passthrough_prefix: list[str] = typer.Option([], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"),  # noqa: B008
+    passthrough_prefix: list[str] = typer.Option(
+        [], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"
+    ),  # noqa: B008
     resolve_assets: str | None = typer.Option(None, "--resolve-assets", help="Asset resolution mode: sidecar"),
     asset_dir: str | None = typer.Option(None, "--asset-dir", help="Directory for resolved assets"),
     format: str | None = typer.Option(None, "--format", "-f", help="Override output format (compact|json|md|raw)"),
@@ -876,7 +879,9 @@ def page_pull_md(
         if output_path:
             typer.echo(format_output({"status": "written", "path": str(output_path), "version": result.version}, fmt))
         elif fmt == OutputFormat.JSON:
-            typer.echo(format_output({"markdown": result.markdown, "version": result.version, "title": result.title}, fmt))
+            typer.echo(
+                format_output({"markdown": result.markdown, "version": result.version, "title": result.title}, fmt)
+            )
         else:
             typer.echo(result.markdown)
     except AtlasError as e:
@@ -893,7 +898,9 @@ def page_diff_local(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
     local_file: str = typer.Argument(..., help="Local markdown file path"),
-    passthrough_prefix: list[str] = typer.Option([], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"),  # noqa: B008
+    passthrough_prefix: list[str] = typer.Option(
+        [], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"
+    ),  # noqa: B008
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
     """Compare local markdown file vs server page content."""

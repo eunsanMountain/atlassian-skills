@@ -38,9 +38,7 @@ def client(cred: Credential) -> JiraClient:
 @respx.mock
 def test_create_issue(client: JiraClient) -> None:
     fixture = _load("create-issue-expected.json")
-    respx.post(f"{BASE_URL}/rest/api/2/issue").mock(
-        return_value=httpx.Response(201, json=fixture)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue").mock(return_value=httpx.Response(201, json=fixture))
 
     result = client.create_issue({"project": {"key": "PROJ"}, "summary": "Test", "issuetype": {"name": "Task"}})
 
@@ -55,9 +53,7 @@ def test_create_issue(client: JiraClient) -> None:
 
 @respx.mock
 def test_update_issue(client: JiraClient) -> None:
-    respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-99").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-99").mock(return_value=httpx.Response(204))
 
     result = client.update_issue("PROJ-99", fields={"summary": "Updated"})
 
@@ -83,9 +79,7 @@ def test_update_issue_with_json_response(client: JiraClient) -> None:
 
 @respx.mock
 def test_delete_issue(client: JiraClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/2/issue/PROJ-99").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{BASE_URL}/rest/api/2/issue/PROJ-99").mock(return_value=httpx.Response(204))
 
     result = client.delete_issue("PROJ-99")
 
@@ -99,18 +93,14 @@ def test_delete_issue(client: JiraClient) -> None:
 
 @respx.mock
 def test_transition_issue(client: JiraClient) -> None:
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(204))
 
     client.transition_issue("PROJ-3", "21")
 
 
 @respx.mock
 def test_transition_issue_with_comment(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(204))
 
     client.transition_issue("PROJ-3", "21", comment="Moving to done")
 
@@ -128,9 +118,7 @@ def test_transition_issue_with_comment(client: JiraClient) -> None:
 @respx.mock
 def test_add_comment(client: JiraClient) -> None:
     resp_json = {"id": "12345", "body": "Test comment", "author": {"name": "user1"}}
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/comment").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/comment").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.add_comment("PROJ-3", "Test comment")
 
@@ -162,9 +150,7 @@ def test_edit_comment(client: JiraClient) -> None:
 
 @respx.mock
 def test_delete_comment(client: JiraClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/2/issue/TEST-1/comment/12345").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{BASE_URL}/rest/api/2/issue/TEST-1/comment/12345").mock(return_value=httpx.Response(204))
 
     result = client.delete_comment("TEST-1", "12345")
 
@@ -179,9 +165,7 @@ def test_delete_comment(client: JiraClient) -> None:
 @respx.mock
 def test_create_issue_link(client: JiraClient) -> None:
     resp_json = {"id": "100", "type": {"name": "Blocks"}}
-    respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.create_issue_link("Blocks", "PROJ-1", "PROJ-2")
 
@@ -191,9 +175,7 @@ def test_create_issue_link(client: JiraClient) -> None:
 
 @respx.mock
 def test_create_issue_link_204(client: JiraClient) -> None:
-    respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(return_value=httpx.Response(204))
 
     result = client.create_issue_link("Blocks", "PROJ-1", "PROJ-2")
 
@@ -207,9 +189,7 @@ def test_create_issue_link_204(client: JiraClient) -> None:
 
 @respx.mock
 def test_add_watcher(client: JiraClient) -> None:
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(return_value=httpx.Response(204))
 
     client.add_watcher("PROJ-3", "testuser")
 
@@ -221,9 +201,7 @@ def test_add_watcher(client: JiraClient) -> None:
 
 @respx.mock
 def test_remove_watcher(client: JiraClient) -> None:
-    respx.delete(url__regex=r".*/rest/api/2/issue/PROJ-3/watchers.*").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(url__regex=r".*/rest/api/2/issue/PROJ-3/watchers.*").mock(return_value=httpx.Response(204))
 
     client.remove_watcher("PROJ-3", "testuser")
 
@@ -236,9 +214,7 @@ def test_remove_watcher(client: JiraClient) -> None:
 @respx.mock
 def test_create_sprint(client: JiraClient) -> None:
     resp_json = {"id": 42, "name": "Sprint 1", "state": "future", "originBoardId": 10}
-    respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.create_sprint("Sprint 1", 10, goal="Ship it")
 
@@ -254,9 +230,7 @@ def test_create_sprint(client: JiraClient) -> None:
 @respx.mock
 def test_upload_attachment(client: JiraClient) -> None:
     resp_json = [{"id": "55", "filename": "test.txt", "size": 4}]
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/attachments").mock(
-        return_value=httpx.Response(200, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/attachments").mock(return_value=httpx.Response(200, json=resp_json))
 
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
         f.write(b"test")
@@ -274,9 +248,7 @@ def test_upload_attachment(client: JiraClient) -> None:
 @respx.mock
 def test_add_worklog(client: JiraClient) -> None:
     resp_json = {"id": "777", "timeSpent": "1h", "timeSpentSeconds": 3600}
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.add_worklog("PROJ-3", 3600, comment="Working on it")
 
@@ -291,9 +263,7 @@ def test_add_worklog(client: JiraClient) -> None:
 
 @respx.mock
 def test_delete_attachment(client: JiraClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/2/attachment/55").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{BASE_URL}/rest/api/2/attachment/55").mock(return_value=httpx.Response(204))
 
     client.delete_attachment("55")
 
@@ -305,9 +275,7 @@ def test_delete_attachment(client: JiraClient) -> None:
 
 @respx.mock
 def test_remove_issue_link(client: JiraClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/2/issueLink/100").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{BASE_URL}/rest/api/2/issueLink/100").mock(return_value=httpx.Response(204))
 
     client.remove_issue_link("100")
 
@@ -319,9 +287,7 @@ def test_remove_issue_link(client: JiraClient) -> None:
 
 @respx.mock
 def test_add_issues_to_sprint(client: JiraClient) -> None:
-    respx.post(f"{BASE_URL}/rest/agile/1.0/sprint/42/issue").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post(f"{BASE_URL}/rest/agile/1.0/sprint/42/issue").mock(return_value=httpx.Response(204))
 
     client.add_issues_to_sprint(42, ["PROJ-1", "PROJ-2"])
 
@@ -334,9 +300,7 @@ def test_add_issues_to_sprint(client: JiraClient) -> None:
 @respx.mock
 def test_create_version(client: JiraClient) -> None:
     resp_json = {"id": "10100", "name": "1.0.0", "project": "PROJ"}
-    respx.post(f"{BASE_URL}/rest/api/2/version").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/version").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.create_version("PROJ", "1.0.0", description="First release")
 
@@ -352,9 +316,7 @@ def test_create_version(client: JiraClient) -> None:
 @respx.mock
 def test_update_sprint(client: JiraClient) -> None:
     resp_json = {"id": 42, "name": "Sprint 1 - renamed", "state": "active"}
-    respx.put(f"{BASE_URL}/rest/agile/1.0/sprint/42").mock(
-        return_value=httpx.Response(200, json=resp_json)
-    )
+    respx.put(f"{BASE_URL}/rest/agile/1.0/sprint/42").mock(return_value=httpx.Response(200, json=resp_json))
 
     result = client.update_sprint(42, name="Sprint 1 - renamed", state="active")
 
@@ -373,9 +335,7 @@ def test_list_remote_issue_links(client: JiraClient) -> None:
         {"id": 10, "object": {"url": "https://example.com/a", "title": "A"}},
         {"id": 11, "object": {"url": "https://example.com/b", "title": "B"}},
     ]
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/remotelink").mock(
-        return_value=httpx.Response(200, json=resp_json)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/remotelink").mock(return_value=httpx.Response(200, json=resp_json))
 
     result = client.list_remote_issue_links("PROJ-3")
 
@@ -385,9 +345,7 @@ def test_list_remote_issue_links(client: JiraClient) -> None:
 
 @respx.mock
 def test_list_remote_issue_links_empty(client: JiraClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-9/remotelink").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-9/remotelink").mock(return_value=httpx.Response(200, json=[]))
 
     assert client.list_remote_issue_links("PROJ-9") == []
 
@@ -400,9 +358,7 @@ def test_list_remote_issue_links_empty(client: JiraClient) -> None:
 @respx.mock
 def test_create_remote_issue_link(client: JiraClient) -> None:
     resp_json = {"id": 200, "self": "https://jira.example.com/rest/api/2/issue/PROJ-3/remotelink/200"}
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/remotelink").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/remotelink").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.create_remote_issue_link("PROJ-3", "https://example.com", "Example", relationship="relates to")
 
@@ -417,14 +373,14 @@ def test_create_remote_issue_link(client: JiraClient) -> None:
 @respx.mock
 def test_batch_create_issues(client: JiraClient) -> None:
     resp_json = {"issues": [{"id": "1", "key": "PROJ-1"}, {"id": "2", "key": "PROJ-2"}], "errors": []}
-    respx.post(f"{BASE_URL}/rest/api/2/issue/bulk").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/bulk").mock(return_value=httpx.Response(201, json=resp_json))
 
-    result = client.batch_create_issues([
-        {"project": {"key": "PROJ"}, "summary": "Issue 1", "issuetype": {"name": "Task"}},
-        {"project": {"key": "PROJ"}, "summary": "Issue 2", "issuetype": {"name": "Task"}},
-    ])
+    result = client.batch_create_issues(
+        [
+            {"project": {"key": "PROJ"}, "summary": "Issue 1", "issuetype": {"name": "Task"}},
+            {"project": {"key": "PROJ"}, "summary": "Issue 2", "issuetype": {"name": "Task"}},
+        ]
+    )
 
     assert len(result["issues"]) == 2
     assert result["issues"][0]["key"] == "PROJ-1"
@@ -437,9 +393,7 @@ def test_batch_create_issues(client: JiraClient) -> None:
 
 @respx.mock
 def test_link_to_epic(client: JiraClient) -> None:
-    respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-5").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-5").mock(return_value=httpx.Response(204))
 
     result = client.link_to_epic("PROJ-5", "PROJ-1", "customfield_10014")
 
@@ -453,9 +407,7 @@ def test_link_to_epic(client: JiraClient) -> None:
 
 @respx.mock
 def test_transition_issue_with_fields(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(204))
 
     client.transition_issue("PROJ-3", "21", fields={"resolution": {"name": "Fixed"}})
 
@@ -467,9 +419,7 @@ def test_transition_issue_with_fields(client: JiraClient) -> None:
 
 @respx.mock
 def test_transition_issue_with_resolution_field(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(204))
 
     client.transition_issue("PROJ-3", "731", fields={"resolution": {"id": "10001"}})
 
@@ -482,9 +432,7 @@ def test_transition_issue_with_resolution_field(client: JiraClient) -> None:
 @respx.mock
 def test_transition_issue_int_id_sent_as_str(client: JiraClient) -> None:
     """transition_id is passed as str; the client sends it as-is."""
-    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(204))
 
     # Caller may pass numeric string — verify it reaches the wire unchanged
     client.transition_issue("PROJ-3", "10")
@@ -496,9 +444,7 @@ def test_transition_issue_int_id_sent_as_str(client: JiraClient) -> None:
 
 @respx.mock
 def test_transition_issue_with_comment_body_structure(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(204))
 
     client.transition_issue("PROJ-3", "21", comment="Closing this issue")
 
@@ -574,9 +520,7 @@ def test_edit_comment_sends_body_field(client: JiraClient) -> None:
 
 @respx.mock
 def test_delete_comment_returns_none(client: JiraClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/2/issue/PROJ-3/comment/99").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{BASE_URL}/rest/api/2/issue/PROJ-3/comment/99").mock(return_value=httpx.Response(204))
 
     result = client.delete_comment("PROJ-3", "99")
 
@@ -590,9 +534,7 @@ def test_delete_comment_returns_none(client: JiraClient) -> None:
 
 @respx.mock
 def test_create_issue_link_sends_type_name(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(
-        return_value=httpx.Response(201, json={"id": "50"})
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(return_value=httpx.Response(201, json={"id": "50"}))
 
     client.create_issue_link("Relates", "PROJ-1", "PROJ-3")
 
@@ -607,9 +549,7 @@ def test_create_issue_link_sends_type_name(client: JiraClient) -> None:
 def test_create_issue_link_http_error_raises(client: JiraClient) -> None:
     from atlassian_skills.core.errors import NotFoundError
 
-    respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(
-        return_value=httpx.Response(404, text="Not found")
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(return_value=httpx.Response(404, text="Not found"))
 
     with pytest.raises(NotFoundError):
         client.create_issue_link("Blocks", "PROJ-1", "PROJ-99")
@@ -622,9 +562,7 @@ def test_create_issue_link_http_error_raises(client: JiraClient) -> None:
 
 @respx.mock
 def test_remove_issue_link_sends_correct_id(client: JiraClient) -> None:
-    route = respx.delete(f"{BASE_URL}/rest/api/2/issueLink/42").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.delete(f"{BASE_URL}/rest/api/2/issueLink/42").mock(return_value=httpx.Response(204))
 
     client.remove_issue_link("42")
 
@@ -646,9 +584,7 @@ def test_create_sprint_with_dates(client: JiraClient) -> None:
         "startDate": "2025-01-01T00:00:00.000Z",
         "endDate": "2025-01-15T00:00:00.000Z",
     }
-    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.create_sprint(
         "Sprint 3",
@@ -667,9 +603,7 @@ def test_create_sprint_with_dates(client: JiraClient) -> None:
 @respx.mock
 def test_create_sprint_without_optional_fields(client: JiraClient) -> None:
     resp_json = {"id": 56, "name": "Sprint X", "state": "future", "originBoardId": 5}
-    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(return_value=httpx.Response(201, json=resp_json))
 
     client.create_sprint("Sprint X", 5)
 
@@ -688,9 +622,7 @@ def test_create_sprint_without_optional_fields(client: JiraClient) -> None:
 @respx.mock
 def test_update_sprint_closed_state(client: JiraClient) -> None:
     resp_json = {"id": 42, "name": "Sprint 1", "state": "closed"}
-    respx.put(f"{BASE_URL}/rest/agile/1.0/sprint/42").mock(
-        return_value=httpx.Response(200, json=resp_json)
-    )
+    respx.put(f"{BASE_URL}/rest/agile/1.0/sprint/42").mock(return_value=httpx.Response(200, json=resp_json))
 
     result = client.update_sprint(42, state="closed")
 
@@ -775,9 +707,7 @@ def test_upload_attachment_401_raises(client: JiraClient) -> None:
 @respx.mock
 def test_batch_create_issues_sends_issue_updates_payload(client: JiraClient) -> None:
     resp_json = {"issues": [{"id": "1", "key": "PROJ-1"}], "errors": []}
-    route = respx.post(f"{BASE_URL}/rest/api/2/issue/bulk").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issue/bulk").mock(return_value=httpx.Response(201, json=resp_json))
 
     client.batch_create_issues([{"project": {"key": "PROJ"}, "summary": "Bulk issue", "issuetype": {"name": "Task"}}])
 
@@ -815,9 +745,7 @@ def test_edit_comment_uses_put_with_comment_id(client: JiraClient) -> None:
 
 @respx.mock
 def test_delete_comment_uses_delete_method(client: JiraClient) -> None:
-    route = respx.delete(f"{BASE_URL}/rest/api/2/issue/PROJ-10/comment/888").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.delete(f"{BASE_URL}/rest/api/2/issue/PROJ-10/comment/888").mock(return_value=httpx.Response(204))
 
     client.delete_comment("PROJ-10", "888")
 
@@ -874,9 +802,7 @@ def test_add_worklog_minimal_only_time_spent(client: JiraClient) -> None:
 
 @respx.mock
 def test_create_issue_link_body_structure(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(
-        return_value=httpx.Response(201, json={"id": "200"})
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issueLink").mock(return_value=httpx.Response(201, json={"id": "200"}))
 
     client.create_issue_link("Depends", "PROJ-10", "PROJ-20")
 
@@ -930,9 +856,7 @@ def test_create_remote_issue_link_without_relationship(client: JiraClient) -> No
 
 @respx.mock
 def test_remove_issue_link_calls_delete(client: JiraClient) -> None:
-    route = respx.delete(f"{BASE_URL}/rest/api/2/issueLink/999").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.delete(f"{BASE_URL}/rest/api/2/issueLink/999").mock(return_value=httpx.Response(204))
 
     client.remove_issue_link("999")
 
@@ -946,9 +870,7 @@ def test_remove_issue_link_calls_delete(client: JiraClient) -> None:
 
 @respx.mock
 def test_link_to_epic_sends_epic_field(client: JiraClient) -> None:
-    route = respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-10").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-10").mock(return_value=httpx.Response(204))
 
     client.link_to_epic("PROJ-10", "PROJ-1", "customfield_10014")
 
@@ -964,9 +886,7 @@ def test_link_to_epic_sends_epic_field(client: JiraClient) -> None:
 
 @respx.mock
 def test_add_watcher_sends_username_as_json_string(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(return_value=httpx.Response(204))
 
     client.add_watcher("PROJ-3", "alice")
 
@@ -981,9 +901,7 @@ def test_add_watcher_sends_username_as_json_string(client: JiraClient) -> None:
 
 @respx.mock
 def test_remove_watcher_sends_username_param(client: JiraClient) -> None:
-    route = respx.delete(url__regex=r".*/rest/api/2/issue/PROJ-3/watchers.*").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.delete(url__regex=r".*/rest/api/2/issue/PROJ-3/watchers.*").mock(return_value=httpx.Response(204))
 
     client.remove_watcher("PROJ-3", "alice")
 
@@ -999,9 +917,7 @@ def test_remove_watcher_sends_username_param(client: JiraClient) -> None:
 @respx.mock
 def test_create_sprint_payload_includes_board_id(client: JiraClient) -> None:
     resp_json = {"id": 77, "name": "Sprint Y", "state": "future", "originBoardId": 20}
-    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.create_sprint("Sprint Y", 20)
 
@@ -1020,9 +936,7 @@ def test_create_sprint_payload_includes_board_id(client: JiraClient) -> None:
 @respx.mock
 def test_update_sprint_goal_and_dates(client: JiraClient) -> None:
     resp_json = {"id": 10, "name": "Sprint A", "state": "active", "goal": "Ship feature X"}
-    route = respx.put(f"{BASE_URL}/rest/agile/1.0/sprint/10").mock(
-        return_value=httpx.Response(200, json=resp_json)
-    )
+    route = respx.put(f"{BASE_URL}/rest/agile/1.0/sprint/10").mock(return_value=httpx.Response(200, json=resp_json))
 
     result = client.update_sprint(
         10,
@@ -1046,9 +960,7 @@ def test_update_sprint_goal_and_dates(client: JiraClient) -> None:
 
 @respx.mock
 def test_add_issues_to_sprint_sends_issue_keys(client: JiraClient) -> None:
-    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint/42/issue").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.post(f"{BASE_URL}/rest/agile/1.0/sprint/42/issue").mock(return_value=httpx.Response(204))
 
     client.add_issues_to_sprint(42, ["PROJ-5", "PROJ-6", "PROJ-7"])
 
@@ -1072,9 +984,7 @@ def test_create_version_with_all_fields(client: JiraClient) -> None:
         "startDate": "2025-01-01",
         "releaseDate": "2025-06-30",
     }
-    route = respx.post(f"{BASE_URL}/rest/api/2/version").mock(
-        return_value=httpx.Response(201, json=resp_json)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/2/version").mock(return_value=httpx.Response(201, json=resp_json))
 
     result = client.create_version(
         "PROJ",
@@ -1108,10 +1018,12 @@ def test_batch_create_versions_calls_version_endpoint_per_version(client: JiraCl
         ]
     )
 
-    results = client.batch_create_versions([
-        {"project": "PROJ", "name": "1.0.0"},
-        {"project": "PROJ", "name": "1.1.0"},
-    ])
+    results = client.batch_create_versions(
+        [
+            {"project": "PROJ", "name": "1.0.0"},
+            {"project": "PROJ", "name": "1.1.0"},
+        ]
+    )
 
     assert route.call_count == 2
     assert len(results) == 2

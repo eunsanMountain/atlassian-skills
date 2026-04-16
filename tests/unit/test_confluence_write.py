@@ -294,9 +294,7 @@ def test_reply_to_comment_uses_child_comment_url(client: ConfluenceClient) -> No
 @respx.mock
 def test_reply_to_comment_returns_new_comment_id(client: ConfluenceClient) -> None:
     expected = {"id": "801", "type": "comment", "title": "Re: Discussion"}
-    respx.post(f"{BASE_URL}/rest/api/content/800/child/comment").mock(
-        return_value=httpx.Response(200, json=expected)
-    )
+    respx.post(f"{BASE_URL}/rest/api/content/800/child/comment").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.reply_to_comment("800", "<p>Another reply</p>")
 
@@ -312,9 +310,7 @@ def test_reply_to_comment_returns_new_comment_id(client: ConfluenceClient) -> No
 @respx.mock
 def test_add_label_single(client: ConfluenceClient) -> None:
     expected = {"results": [{"name": "release", "prefix": "global"}]}
-    route = respx.post(f"{BASE_URL}/rest/api/content/100/label").mock(
-        return_value=httpx.Response(200, json=expected)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/content/100/label").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.add_label("100", ["release"])
 
@@ -329,9 +325,7 @@ def test_add_label_single(client: ConfluenceClient) -> None:
 @respx.mock
 def test_add_label_multiple_labels(client: ConfluenceClient) -> None:
     expected = {"results": [{"name": "a"}, {"name": "b"}, {"name": "c"}]}
-    route = respx.post(f"{BASE_URL}/rest/api/content/200/label").mock(
-        return_value=httpx.Response(200, json=expected)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/content/200/label").mock(return_value=httpx.Response(200, json=expected))
 
     client.add_label("200", ["a", "b", "c"])
 
@@ -409,9 +403,7 @@ def test_upload_attachments_batch_replace_mode(client: ConfluenceClient, tmp_pat
 
 @respx.mock
 def test_delete_attachment_calls_correct_endpoint(client: ConfluenceClient) -> None:
-    route = respx.delete(f"{BASE_URL}/rest/api/content/att999").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.delete(f"{BASE_URL}/rest/api/content/att999").mock(return_value=httpx.Response(204))
 
     result = client.delete_attachment("att999")
 
@@ -426,9 +418,7 @@ def test_delete_attachment_calls_correct_endpoint(client: ConfluenceClient) -> N
 
 @respx.mock
 def test_delete_page_calls_correct_endpoint(client: ConfluenceClient) -> None:
-    route = respx.delete(f"{BASE_URL}/rest/api/content/555").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.delete(f"{BASE_URL}/rest/api/content/555").mock(return_value=httpx.Response(204))
 
     result = client.delete_page("555")
 
@@ -440,9 +430,7 @@ def test_delete_page_calls_correct_endpoint(client: ConfluenceClient) -> None:
 def test_delete_page_404_raises(client: ConfluenceClient) -> None:
     from atlassian_skills.core.errors import NotFoundError
 
-    respx.delete(f"{BASE_URL}/rest/api/content/9999").mock(
-        return_value=httpx.Response(404, text="Page not found")
-    )
+    respx.delete(f"{BASE_URL}/rest/api/content/9999").mock(return_value=httpx.Response(404, text="Page not found"))
 
     with pytest.raises(NotFoundError):
         client.delete_page("9999")

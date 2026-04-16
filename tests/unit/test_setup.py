@@ -57,6 +57,7 @@ class TestInjectClaudeMdBlock:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
         # Monkey-patch the function's path resolution
         import atlassian_skills.cli.setup as setup_mod
+
         monkeypatch.setattr(setup_mod, "_get_claude_md_path", lambda: tmp_path / ".claude" / "CLAUDE.md")
 
         msg = _inject_claude_md_block()
@@ -71,6 +72,7 @@ class TestInjectClaudeMdBlock:
 
     def test_appends_block_to_existing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.cli.setup as setup_mod
+
         claude_md = tmp_path / ".claude" / "CLAUDE.md"
         claude_md.parent.mkdir(parents=True)
         claude_md.write_text("# My CLAUDE.md\n\nExisting content.\n", encoding="utf-8")
@@ -85,6 +87,7 @@ class TestInjectClaudeMdBlock:
 
     def test_replaces_existing_block(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.cli.setup as setup_mod
+
         claude_md = tmp_path / ".claude" / "CLAUDE.md"
         claude_md.parent.mkdir(parents=True)
         old_content = (
@@ -105,10 +108,12 @@ class TestInjectClaudeMdBlock:
 
     def test_updates_when_identical(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.cli.setup as setup_mod
+
         claude_md = tmp_path / ".claude" / "CLAUDE.md"
         claude_md.parent.mkdir(parents=True)
         # Write the exact block that would be generated
         from atlassian_skills.cli.setup import _claude_md_block
+
         claude_md.write_text(_claude_md_block() + "\n", encoding="utf-8")
         monkeypatch.setattr(setup_mod, "_get_claude_md_path", lambda: claude_md)
 
@@ -160,8 +165,12 @@ class TestSetupCodex:
         (source_dir / "SKILL.md").write_text("<!-- installed-by: atls 0.1.0 -->", encoding="utf-8")
 
         monkeypatch.setattr(setup_mod, "ASSETS_DIR", asset_root)
-        monkeypatch.setattr(setup_mod, "_get_codex_skill_target", lambda: tmp_path / ".agents" / "skills" / "atls" / "SKILL.md")
-        monkeypatch.setattr(setup_mod, "_get_codex_legacy_target", lambda: tmp_path / ".codex" / "skills" / "atls" / "SKILL.md")
+        monkeypatch.setattr(
+            setup_mod, "_get_codex_skill_target", lambda: tmp_path / ".agents" / "skills" / "atls" / "SKILL.md"
+        )
+        monkeypatch.setattr(
+            setup_mod, "_get_codex_legacy_target", lambda: tmp_path / ".codex" / "skills" / "atls" / "SKILL.md"
+        )
         monkeypatch.setattr(setup_mod, "_get_codex_agents_path", lambda: tmp_path / ".codex" / "AGENTS.md")
 
         runner = CliRunner()

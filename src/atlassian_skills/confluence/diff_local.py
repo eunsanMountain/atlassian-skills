@@ -1,4 +1,5 @@
 """RFE-001 R5: diff-local -- compare local md vs server canonical."""
+
 from __future__ import annotations
 
 import difflib

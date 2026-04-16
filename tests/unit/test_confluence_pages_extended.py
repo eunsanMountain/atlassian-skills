@@ -56,9 +56,7 @@ def test_get_page_default_expand(client: ConfluenceClient) -> None:
         "space": {"key": "TESTSPACE", "name": "Test Lab"},
         "body": {"storage": {"value": "<p>content</p>", "representation": "storage"}},
     }
-    route = respx.get(f"{BASE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/content/429140627").mock(return_value=httpx.Response(200, json=fixture))
 
     page = client.get_page("429140627")
 
@@ -77,9 +75,7 @@ def test_get_page_without_body(client: ConfluenceClient) -> None:
         "version": {"number": 1},
         "space": {"key": "TS", "name": "Test Space"},
     }
-    route = respx.get(f"{BASE_URL}/rest/api/content/100").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/content/100").mock(return_value=httpx.Response(200, json=fixture))
 
     page = client.get_page("100", include_body=False)
 
@@ -103,9 +99,7 @@ def test_get_page_with_ancestors(client: ConfluenceClient) -> None:
         ],
         "body": {"storage": {"value": "<p>content</p>", "representation": "storage"}},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/200").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/200").mock(return_value=httpx.Response(200, json=fixture))
 
     page = client.get_page("200")
 
@@ -117,9 +111,7 @@ def test_get_page_with_ancestors(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_get_page_404_raises_not_found(client: ConfluenceClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/content/9999").mock(
-        return_value=httpx.Response(404, text="Page not found")
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/9999").mock(return_value=httpx.Response(404, text="Page not found"))
 
     with pytest.raises(NotFoundError):
         client.get_page("9999")
@@ -134,9 +126,7 @@ def test_get_page_version_number(client: ConfluenceClient) -> None:
         "version": {"number": 7, "when": "2024-03-01T00:00:00.000Z"},
         "body": {"storage": {"value": "<p>v7</p>", "representation": "storage"}},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/300").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/300").mock(return_value=httpx.Response(200, json=fixture))
 
     page = client.get_page("300")
 
@@ -161,9 +151,7 @@ def test_search_with_cql(client: ConfluenceClient) -> None:
         "size": 2,
         "_links": {},
     }
-    route = respx.get(f"{BASE_URL}/rest/api/search").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/search").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.search("space=DEMO AND type=page")
 
@@ -176,9 +164,7 @@ def test_search_with_cql(client: ConfluenceClient) -> None:
 @respx.mock
 def test_search_empty_results(client: ConfluenceClient) -> None:
     fixture: dict = {"results": [], "start": 0, "limit": 25, "size": 0, "_links": {}}
-    respx.get(f"{BASE_URL}/rest/api/search").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/search").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.search("title='nonexistent page xyz'")
 
@@ -234,9 +220,7 @@ def test_get_children_returns_pages(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/100/child/page").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/page").mock(return_value=httpx.Response(200, json=fixture))
 
     children = client.get_children("100")
 
@@ -249,9 +233,7 @@ def test_get_children_returns_pages(client: ConfluenceClient) -> None:
 @respx.mock
 def test_get_children_empty(client: ConfluenceClient) -> None:
     fixture: dict = {"results": [], "_links": {}}
-    respx.get(f"{BASE_URL}/rest/api/content/100/child/page").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/page").mock(return_value=httpx.Response(200, json=fixture))
 
     children = client.get_children("100")
 
@@ -270,7 +252,12 @@ def test_get_space_tree_returns_result(client: ConfluenceClient) -> None:
         "page": {
             "results": [
                 {"id": "1", "title": "Root Page", "type": "page", "ancestors": []},
-                {"id": "2", "title": "Child Page", "type": "page", "ancestors": [{"id": "1", "title": "Root Page", "type": "page"}]},
+                {
+                    "id": "2",
+                    "title": "Child Page",
+                    "type": "page",
+                    "ancestors": [{"id": "1", "title": "Root Page", "type": "page"}],
+                },
                 {"id": "3", "title": "Another Page", "type": "page", "ancestors": []},
             ],
             "size": 3,
@@ -278,9 +265,7 @@ def test_get_space_tree_returns_result(client: ConfluenceClient) -> None:
         },
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/space/TESTSPACE/content").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.get_space_tree("TESTSPACE")
 
@@ -304,9 +289,7 @@ def test_get_space_tree_empty(client: ConfluenceClient) -> None:
         },
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/space/TEST/content").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/space/TEST/content").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.get_space_tree("TEST")
 
@@ -328,9 +311,7 @@ def test_get_page_history_specific_version(client: ConfluenceClient) -> None:
         "version": {"number": 2, "when": "2024-02-01T00:00:00.000Z"},
         "body": {"storage": {"value": "<p>v2 content</p>", "representation": "storage"}},
     }
-    route = respx.get(f"{BASE_URL}/rest/api/content/500").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/content/500").mock(return_value=httpx.Response(200, json=fixture))
 
     page = client.get_page_history("500", version=2)
 
@@ -343,9 +324,7 @@ def test_get_page_history_specific_version(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_get_page_history_version_not_found(client: ConfluenceClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/content/500").mock(
-        return_value=httpx.Response(404, text="Version not found")
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/500").mock(return_value=httpx.Response(404, text="Version not found"))
 
     with pytest.raises(NotFoundError):
         client.get_page_history("500", version=999)
@@ -410,9 +389,7 @@ def test_get_page_diff_identical_versions(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_get_page_diff_version_not_found(client: ConfluenceClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/content/602").mock(
-        return_value=httpx.Response(404, text="Not found")
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/602").mock(return_value=httpx.Response(404, text="Not found"))
 
     with pytest.raises(NotFoundError):
         client.get_page_diff("602", from_ver=1, to_ver=5)
@@ -434,9 +411,7 @@ def test_get_page_images_only_images_returned(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/700/child/attachment").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/700/child/attachment").mock(return_value=httpx.Response(200, json=fixture))
 
     images = client.get_page_images("700")
 
@@ -455,9 +430,7 @@ def test_get_page_images_no_images(client: ConfluenceClient) -> None:
         ],
         "_links": {},
     }
-    respx.get(f"{BASE_URL}/rest/api/content/701/child/attachment").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/content/701/child/attachment").mock(return_value=httpx.Response(200, json=fixture))
 
     images = client.get_page_images("701")
 
@@ -499,9 +472,7 @@ def test_create_page_success(client: ConfluenceClient) -> None:
         "space": {"key": "TEST", "name": "Test Space"},
         "_links": {"webui": "/spaces/TEST/pages/800/New+Page"},
     }
-    respx.post(f"{BASE_URL}/rest/api/content").mock(
-        return_value=httpx.Response(200, json=resp_body)
-    )
+    respx.post(f"{BASE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=resp_body))
 
     result = client.create_page("TEST", "New Page", "<p>Hello</p>")
 
@@ -546,9 +517,7 @@ def test_update_page_success(client: ConfluenceClient) -> None:
         "type": "page",
         "version": {"number": 4},
     }
-    respx.put(f"{BASE_URL}/rest/api/content/902").mock(
-        return_value=httpx.Response(200, json=resp_body)
-    )
+    respx.put(f"{BASE_URL}/rest/api/content/902").mock(return_value=httpx.Response(200, json=resp_body))
 
     result = client.update_page("902", "Updated Title", "<p>new</p>", version_number=4)
 
@@ -563,9 +532,7 @@ def test_update_page_success(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_delete_page_404_not_found(client: ConfluenceClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/content/999").mock(
-        return_value=httpx.Response(404, text="Page not found")
-    )
+    respx.delete(f"{BASE_URL}/rest/api/content/999").mock(return_value=httpx.Response(404, text="Page not found"))
 
     with pytest.raises(NotFoundError):
         client.delete_page("999")
@@ -573,9 +540,7 @@ def test_delete_page_404_not_found(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_delete_page_403_permission_denied(client: ConfluenceClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/content/800").mock(
-        return_value=httpx.Response(403, text="Forbidden")
-    )
+    respx.delete(f"{BASE_URL}/rest/api/content/800").mock(return_value=httpx.Response(403, text="Forbidden"))
 
     with pytest.raises(ForbiddenError):
         client.delete_page("800")
@@ -583,9 +548,7 @@ def test_delete_page_403_permission_denied(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_delete_page_success(client: ConfluenceClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/content/801").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{BASE_URL}/rest/api/content/801").mock(return_value=httpx.Response(204))
 
     client.delete_page("801")  # Should not raise
 
@@ -597,9 +560,7 @@ def test_delete_page_success(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_move_page_invalid_position(client: ConfluenceClient) -> None:
-    respx.post(
-        f"{BASE_URL}/rest/api/content/100/move/invalid/target/200"
-    ).mock(
+    respx.post(f"{BASE_URL}/rest/api/content/100/move/invalid/target/200").mock(
         return_value=httpx.Response(400, json={"message": "Invalid position: invalid"})
     )
 
@@ -683,9 +644,7 @@ def test_upload_attachments_batch_skip_existing(client: ConfluenceClient, tmp_pa
         return_value=httpx.Response(
             200,
             json={
-                "results": [
-                    {"id": "att_old", "title": "existing.txt", "mediaType": "text/plain", "fileSize": 100}
-                ],
+                "results": [{"id": "att_old", "title": "existing.txt", "mediaType": "text/plain", "fileSize": 100}],
                 "_links": {},
             },
         )

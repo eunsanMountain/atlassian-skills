@@ -198,11 +198,7 @@ def test_get_field_options_passes_project_key_param(client: JiraClient) -> None:
                 "issuetypes": [
                     {
                         "name": "Bug",
-                        "fields": {
-                            "customfield_10020": {
-                                "allowedValues": [{"id": "10", "value": "Option A"}]
-                            }
-                        },
+                        "fields": {"customfield_10020": {"allowedValues": [{"id": "10", "value": "Option A"}]}},
                     }
                 ],
             }
@@ -290,10 +286,7 @@ def test_batch_create_issues_success(client: JiraClient) -> None:
     }
     route = respx.post(f"{BASE_URL}/rest/api/2/issue/bulk").mock(return_value=httpx.Response(201, json=resp_json))
 
-    issues = [
-        {"project": {"key": "PROJ"}, "summary": f"Issue {i}", "issuetype": {"name": "Task"}}
-        for i in range(1, 4)
-    ]
+    issues = [{"project": {"key": "PROJ"}, "summary": f"Issue {i}", "issuetype": {"name": "Task"}} for i in range(1, 4)]
     result = client.batch_create_issues(issues)
 
     req = route.calls[0].request
@@ -312,15 +305,21 @@ def test_batch_create_issues_partial_failure(client: JiraClient) -> None:
             {"id": "10001", "key": "PROJ-1", "self": f"{BASE_URL}/rest/api/2/issue/10001"},
         ],
         "errors": [
-            {"status": 400, "elementErrors": {"errorMessages": ["summary is required"], "errors": {}}, "failedElementNumber": 1}
+            {
+                "status": 400,
+                "elementErrors": {"errorMessages": ["summary is required"], "errors": {}},
+                "failedElementNumber": 1,
+            }
         ],
     }
     respx.post(f"{BASE_URL}/rest/api/2/issue/bulk").mock(return_value=httpx.Response(201, json=resp_json))
 
-    result = client.batch_create_issues([
-        {"project": {"key": "PROJ"}, "summary": "Good issue", "issuetype": {"name": "Task"}},
-        {"project": {"key": "PROJ"}, "issuetype": {"name": "Task"}},  # missing summary
-    ])
+    result = client.batch_create_issues(
+        [
+            {"project": {"key": "PROJ"}, "summary": "Good issue", "issuetype": {"name": "Task"}},
+            {"project": {"key": "PROJ"}, "issuetype": {"name": "Task"}},  # missing summary
+        ]
+    )
 
     assert len(result["issues"]) == 1
     assert len(result["errors"]) == 1
@@ -385,7 +384,9 @@ def test_get_service_desk_queues(client: JiraClient) -> None:
             {"id": "11", "name": "In Progress", "issueCount": 2},
         ]
     }
-    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk/1/queue").mock(return_value=httpx.Response(200, json=resp_json))
+    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk/1/queue").mock(
+        return_value=httpx.Response(200, json=resp_json)
+    )
 
     result = client.get_service_desk_queues(1)
 
@@ -397,7 +398,9 @@ def test_get_service_desk_queues(client: JiraClient) -> None:
 @respx.mock
 def test_get_service_desk_queues_empty(client: JiraClient) -> None:
     resp_json: dict[str, Any] = {"values": []}
-    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk/5/queue").mock(return_value=httpx.Response(200, json=resp_json))
+    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk/5/queue").mock(
+        return_value=httpx.Response(200, json=resp_json)
+    )
 
     result = client.get_service_desk_queues(5)
 
@@ -501,9 +504,7 @@ def test_create_remote_issue_link_without_relationship(client: JiraClient) -> No
 
 @respx.mock
 def test_remove_issue_link_calls_delete(client: JiraClient) -> None:
-    route = respx.delete(f"{BASE_URL}/rest/api/2/issueLink/555").mock(
-        return_value=httpx.Response(204)
-    )
+    route = respx.delete(f"{BASE_URL}/rest/api/2/issueLink/555").mock(return_value=httpx.Response(204))
 
     client.remove_issue_link("555")
 
@@ -513,9 +514,7 @@ def test_remove_issue_link_calls_delete(client: JiraClient) -> None:
 
 @respx.mock
 def test_remove_issue_link_404_raises_not_found(client: JiraClient) -> None:
-    respx.delete(f"{BASE_URL}/rest/api/2/issueLink/999").mock(
-        return_value=httpx.Response(404, text="Link not found")
-    )
+    respx.delete(f"{BASE_URL}/rest/api/2/issueLink/999").mock(return_value=httpx.Response(404, text="Link not found"))
 
     with pytest.raises(NotFoundError):
         client.remove_issue_link("999")
@@ -737,9 +736,7 @@ def test_upload_attachment_success(client: JiraClient) -> None:
             "self": f"{BASE_URL}/rest/api/2/attachment/10100",
         }
     ]
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-5/attachments").mock(
-        return_value=httpx.Response(200, json=resp_json)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-5/attachments").mock(return_value=httpx.Response(200, json=resp_json))
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
         f.write(b"%PDF-1.4 test content")

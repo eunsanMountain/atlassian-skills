@@ -204,9 +204,7 @@ def test_cli_confluence_page_create_success(tmp_path: Path) -> None:
     """page create POSTs and returns created page id."""
     body_file = tmp_path / "body.html"
     body_file.write_text("<p>Hello world</p>")
-    respx.post(f"{CONFLUENCE_URL}/rest/api/content").mock(
-        return_value=httpx.Response(200, json=_RAW_PAGE_CREATED)
-    )
+    respx.post(f"{CONFLUENCE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=_RAW_PAGE_CREATED))
     result = runner.invoke(
         app,
         [
@@ -237,9 +235,7 @@ def test_cli_confluence_page_update(tmp_path: Path) -> None:
     respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/429140627").mock(
         return_value=httpx.Response(200, json=_RAW_PAGE)
     )
-    respx.put(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(200, json=_RAW_PAGE)
-    )
+    respx.put(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(return_value=httpx.Response(200, json=_RAW_PAGE))
     result = runner.invoke(
         app,
         ["confluence", "page", "update", "429140627", "--body-file", str(body_file)],
@@ -266,9 +262,7 @@ def test_cli_confluence_page_update_dry_run(tmp_path: Path) -> None:
 @respx.mock
 def test_cli_confluence_page_delete() -> None:
     """page delete DELETEs and exits 0."""
-    respx.delete(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(return_value=httpx.Response(204))
     result = runner.invoke(app, ["confluence", "page", "delete", "429140627"])
     assert result.exit_code == 0, result.output
 
@@ -276,9 +270,7 @@ def test_cli_confluence_page_delete() -> None:
 @respx.mock
 def test_cli_confluence_page_delete_json_format() -> None:
     """page delete with --format json outputs deleted id."""
-    respx.delete(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{CONFLUENCE_URL}/rest/api/content/429140627").mock(return_value=httpx.Response(204))
     result = runner.invoke(app, ["--format", "json", "confluence", "page", "delete", "429140627"])
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)

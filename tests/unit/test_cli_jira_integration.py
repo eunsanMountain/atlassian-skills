@@ -84,9 +84,7 @@ def test_cli_jira_issue_get_auth_error_exit_code() -> None:
 @respx.mock
 def test_cli_jira_search_compact() -> None:
     """atls jira issue search 'project=PROJ' returns exit 0 and shows issue key."""
-    respx.get(f"{JIRA_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=_load("search-proj.json"))
-    )
+    respx.get(f"{JIRA_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=_load("search-proj.json")))
     result = runner.invoke(app, ["jira", "issue", "search", "project=PROJ"])
     assert result.exit_code == 0, result.output
     assert "PROJ-3" in result.output
@@ -98,9 +96,7 @@ def test_cli_jira_issue_get_requested_customfield_in_json() -> None:
     fixture = _load("get-issue-proj3.json")
     fixture.setdefault("fields", {})
     fixture["fields"]["customfield_10100"] = "PROJ-1"
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=fixture))
     result = runner.invoke(
         app,
         ["jira", "issue", "get", "PROJ-3", "--fields", "summary,customfield_10100", "--format", "json"],
@@ -113,9 +109,7 @@ def test_cli_jira_issue_get_requested_customfield_in_json() -> None:
 @respx.mock
 def test_cli_jira_search_local_json_format_overrides_global() -> None:
     """Local -f json on issue search overrides the global format setting."""
-    respx.get(f"{JIRA_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=_load("search-proj.json"))
-    )
+    respx.get(f"{JIRA_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=_load("search-proj.json")))
     result = runner.invoke(
         app,
         ["--format", "compact", "jira", "issue", "search", "project=PROJ", "-f", "json"],
@@ -169,9 +163,7 @@ def test_cli_jira_issue_create_dry_run() -> None:
 def test_cli_jira_issue_create_success() -> None:
     """issue create POSTs and returns the new issue key."""
     created = {"id": "123456", "key": "PROJ-42", "self": f"{JIRA_URL}/rest/api/2/issue/123456"}
-    respx.post(f"{JIRA_URL}/rest/api/2/issue").mock(
-        return_value=httpx.Response(201, json=created)
-    )
+    respx.post(f"{JIRA_URL}/rest/api/2/issue").mock(return_value=httpx.Response(201, json=created))
     result = runner.invoke(
         app,
         ["jira", "issue", "create", "--project", "PROJ", "--type", "Bug", "--summary", "Test bug"],
@@ -197,9 +189,7 @@ def test_cli_jira_issue_update_stale_check() -> None:
     """--if-updated mismatch exits with STALE (5)."""
     issue_data = dict(_load("get-issue-proj3.json"))
     issue_data["updated"] = "2026-04-10T18:21:25.303+0900"
-    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(200, json=issue_data)
-    )
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=issue_data))
     result = runner.invoke(
         app,
         [
@@ -264,9 +254,7 @@ def test_cli_jira_issue_update_customfield_verification_failure() -> None:
 @respx.mock
 def test_cli_jira_issue_transition() -> None:
     """issue transition POSTs to transitions endpoint and returns transitioned status."""
-    respx.post(f"{JIRA_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post(f"{JIRA_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(204))
     result = runner.invoke(
         app,
         ["jira", "issue", "transition", "PROJ-3", "--transition-id", "11"],
@@ -290,9 +278,7 @@ def test_cli_jira_issue_transition_dry_run() -> None:
 @respx.mock
 def test_cli_jira_issue_delete() -> None:
     """issue delete DELETEs and returns deleted status."""
-    respx.delete(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.delete(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(204))
     result = runner.invoke(app, ["jira", "issue", "delete", "PROJ-3"])
     assert result.exit_code == 0, result.output
     assert "deleted" in result.output

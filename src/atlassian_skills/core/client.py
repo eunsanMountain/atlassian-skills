@@ -187,6 +187,7 @@ class BaseClient:
 # Internal helpers
 # ------------------------------------------------------------------
 
+
 def _retry_wait(response: httpx.Response, default_delay: float) -> float:
     """Return seconds to wait before retry, honouring Retry-After if present."""
     retry_after = response.headers.get("Retry-After")

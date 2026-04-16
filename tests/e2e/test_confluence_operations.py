@@ -29,9 +29,7 @@ def test_e2e_confluence_search(e2e_confluence_client: ConfluenceClient, e2e_test
 
 
 @pytest.mark.integration
-def test_e2e_confluence_create_update_delete(
-    e2e_confluence_client: ConfluenceClient, e2e_test_space: str
-) -> None:
+def test_e2e_confluence_create_update_delete(e2e_confluence_client: ConfluenceClient, e2e_test_space: str) -> None:
     """Full lifecycle: create page → update → delete."""
     created = e2e_confluence_client.create_page(
         space_key=e2e_test_space,
@@ -60,9 +58,7 @@ def test_e2e_confluence_create_update_delete(
 
 
 @pytest.mark.integration
-def test_e2e_confluence_add_comment(
-    e2e_confluence_client: ConfluenceClient, e2e_test_space: str
-) -> None:
+def test_e2e_confluence_add_comment(e2e_confluence_client: ConfluenceClient, e2e_test_space: str) -> None:
     """Add a comment to a page and verify it is returned by list_comments."""
     result = e2e_confluence_client.search(f'type=page AND space="{e2e_test_space}"', limit=1)
     assert result.results, f"No pages in space {e2e_test_space}"
@@ -76,9 +72,7 @@ def test_e2e_confluence_add_comment(
 
 
 @pytest.mark.integration
-def test_e2e_confluence_labels(
-    e2e_confluence_client: ConfluenceClient, e2e_test_space: str
-) -> None:
+def test_e2e_confluence_labels(e2e_confluence_client: ConfluenceClient, e2e_test_space: str) -> None:
     """Add a label to a page and verify it appears in list_labels."""
     result = e2e_confluence_client.search(f'type=page AND space="{e2e_test_space}"', limit=1)
     assert result.results, f"No pages in space {e2e_test_space}"
@@ -92,9 +86,7 @@ def test_e2e_confluence_labels(
 
 
 @pytest.mark.integration
-def test_e2e_confluence_space_tree(
-    e2e_confluence_client: ConfluenceClient, e2e_test_space: str
-) -> None:
+def test_e2e_confluence_space_tree(e2e_confluence_client: ConfluenceClient, e2e_test_space: str) -> None:
     """get_space_tree returns a SpaceTreeResult with pages."""
     tree = e2e_confluence_client.get_space_tree(e2e_test_space)
     assert tree.space_key == e2e_test_space
@@ -103,9 +95,7 @@ def test_e2e_confluence_space_tree(
 
 
 @pytest.mark.integration
-def test_e2e_confluence_upload_attachment(
-    e2e_confluence_client: ConfluenceClient, e2e_test_space: str
-) -> None:
+def test_e2e_confluence_upload_attachment(e2e_confluence_client: ConfluenceClient, e2e_test_space: str) -> None:
     """Upload a small file attachment to a page and verify it appears in list_attachments."""
     result = e2e_confluence_client.search(f'type=page AND space="{e2e_test_space}"', limit=1)
     assert result.results, f"No pages in space {e2e_test_space}"
@@ -125,9 +115,7 @@ def test_e2e_confluence_upload_attachment(
 
 
 @pytest.mark.integration
-def test_e2e_confluence_push_pull_md(
-    e2e_confluence_client: ConfluenceClient, e2e_test_space: str
-) -> None:
+def test_e2e_confluence_push_pull_md(e2e_confluence_client: ConfluenceClient, e2e_test_space: str) -> None:
     """Create a page with storage body, read it back, verify body is non-empty."""
     created = e2e_confluence_client.create_page(
         space_key=e2e_test_space,
@@ -140,11 +128,7 @@ def test_e2e_confluence_push_pull_md(
     try:
         page = e2e_confluence_client.get_page(page_id, include_body=True)
         assert page.id == page_id
-        body_value = (
-            page.body.get("storage", {}).get("value", "")
-            if isinstance(page.body, dict)
-            else ""
-        )
+        body_value = page.body.get("storage", {}).get("value", "") if isinstance(page.body, dict) else ""
         assert body_value, "Expected non-empty page body"
     finally:
         e2e_confluence_client.delete_page(page_id)

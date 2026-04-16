@@ -44,6 +44,7 @@ class JiraClient(BaseClient):
             results = self.get("/rest/api/2/user/search", params={"username": identifier}).json()
             if not results:
                 from atlassian_skills.core.errors import NotFoundError
+
                 raise NotFoundError(f"No Jira user matches email '{identifier}'")
             return User.model_validate(results[0])
         params: dict[str, Any]
@@ -116,9 +117,7 @@ class JiraClient(BaseClient):
 
     def get_issue_images(self, key: str) -> list[dict[str, Any]]:
         data = self.get(f"/rest/api/2/issue/{key}", params={"fields": "attachment"}).json()
-        attachments: list[dict[str, Any]] = (
-            data.get("fields", {}).get("attachment", data.get("attachments", []))
-        )
+        attachments: list[dict[str, Any]] = data.get("fields", {}).get("attachment", data.get("attachments", []))
         result: list[dict[str, Any]] = []
         for a in attachments:
             mime = (a.get("mimeType") or a.get("mime_type") or "").lower()
@@ -468,7 +467,8 @@ class JiraClient(BaseClient):
         resp = self.post("/rest/api/2/issueLink", json=payload)
         if resp.status_code in (200, 201):
             if resp.content:
-                return resp.json()
+                data: dict[str, Any] = resp.json()
+                return data
             return {"status": "linked"}
         return None
 
@@ -490,9 +490,7 @@ class JiraClient(BaseClient):
         payload: dict[str, Any] = {"object": {"url": url, "title": title}}
         if relationship:
             payload["relationship"] = relationship
-        result: dict[str, Any] = self.post(
-            f"/rest/api/2/issue/{key}/remotelink", json=payload
-        ).json()
+        result: dict[str, Any] = self.post(f"/rest/api/2/issue/{key}/remotelink", json=payload).json()
         return result
 
     def remove_issue_link(self, link_id: str) -> None:
@@ -658,9 +656,7 @@ class JiraClient(BaseClient):
         return result
 
     def get_queue_issues(self, sd_id: int | str, queue_id: int | str) -> list[dict[str, Any]]:
-        data: Any = self.get(
-            f"/rest/servicedeskapi/servicedesk/{sd_id}/queue/{queue_id}/issue"
-        ).json()
+        data: Any = self.get(f"/rest/servicedeskapi/servicedesk/{sd_id}/queue/{queue_id}/issue").json()
         raw = data.get("issues", data.get("values", data)) if isinstance(data, dict) else data
         result: list[dict[str, Any]] = list(raw) if raw is not None else []
         return result

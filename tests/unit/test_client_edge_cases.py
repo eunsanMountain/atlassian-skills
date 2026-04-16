@@ -90,9 +90,7 @@ def test_503_triggers_retry(capsys: pytest.CaptureFixture[str]) -> None:
 @respx.mock
 def test_max_retries_exhausted_raises_network_error() -> None:
     """When all retries are exhausted the client raises NetworkError."""
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(502, text="Bad Gateway")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(502, text="Bad Gateway"))
     client = make_client(max_retries=2)
     with pytest.raises(NetworkError) as exc_info:
         client.get("/rest/api/2/search")
@@ -114,9 +112,7 @@ def test_non_retryable_400_no_retry() -> None:
 @respx.mock
 def test_non_retryable_401_no_retry() -> None:
     """401 must NOT be retried."""
-    route = respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
-        return_value=httpx.Response(401, text="Unauthorized")
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/myself").mock(return_value=httpx.Response(401, text="Unauthorized"))
     client = make_client(max_retries=3)
     with pytest.raises(AuthError):
         client.get("/rest/api/2/myself")
@@ -126,9 +122,7 @@ def test_non_retryable_401_no_retry() -> None:
 @respx.mock
 def test_non_retryable_403_no_retry() -> None:
     """403 must NOT be retried."""
-    route = respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(
-        return_value=httpx.Response(403, text="Forbidden")
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(return_value=httpx.Response(403, text="Forbidden"))
     client = make_client(max_retries=3)
     with pytest.raises(ForbiddenError):
         client.get("/rest/api/2/issue/PROJ-1")
@@ -138,9 +132,7 @@ def test_non_retryable_403_no_retry() -> None:
 @respx.mock
 def test_non_retryable_404_no_retry() -> None:
     """404 must NOT be retried."""
-    route = respx.get(f"{BASE_URL}/rest/api/2/issue/NOPE-999").mock(
-        return_value=httpx.Response(404, text="Not found")
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/issue/NOPE-999").mock(return_value=httpx.Response(404, text="Not found"))
     client = make_client(max_retries=3)
     with pytest.raises(NotFoundError):
         client.get("/rest/api/2/issue/NOPE-999")
@@ -165,9 +157,7 @@ def test_400_raises_validation_error() -> None:
 
 @respx.mock
 def test_401_raises_auth_error() -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
-        return_value=httpx.Response(401, text="Unauthorized")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(return_value=httpx.Response(401, text="Unauthorized"))
     client = make_client(max_retries=0)
     with pytest.raises(AuthError) as exc_info:
         client.get("/rest/api/2/myself")
@@ -176,9 +166,7 @@ def test_401_raises_auth_error() -> None:
 
 @respx.mock
 def test_403_raises_forbidden_error() -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(
-        return_value=httpx.Response(403, text="Forbidden")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(return_value=httpx.Response(403, text="Forbidden"))
     client = make_client(max_retries=0)
     with pytest.raises(ForbiddenError) as exc_info:
         client.get("/rest/api/2/issue/PROJ-1")
@@ -187,9 +175,7 @@ def test_403_raises_forbidden_error() -> None:
 
 @respx.mock
 def test_404_raises_not_found_error() -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/issue/GONE-1").mock(
-        return_value=httpx.Response(404, text="Not found")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/GONE-1").mock(return_value=httpx.Response(404, text="Not found"))
     client = make_client(max_retries=0)
     with pytest.raises(NotFoundError) as exc_info:
         client.get("/rest/api/2/issue/GONE-1")
@@ -211,9 +197,7 @@ def test_409_raises_conflict_error() -> None:
 @respx.mock
 def test_429_exhausted_raises_rate_limit_error() -> None:
     """When 429 exhausts all retries, RateLimitError is raised."""
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(429, headers={"Retry-After": "0"})
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(429, headers={"Retry-After": "0"}))
     client = make_client(max_retries=1)
     with pytest.raises(RateLimitError) as exc_info:
         client.get("/rest/api/2/search")
@@ -222,9 +206,7 @@ def test_429_exhausted_raises_rate_limit_error() -> None:
 
 @respx.mock
 def test_500_exhausted_raises_network_error() -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(500, text="Internal Server Error")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(500, text="Internal Server Error"))
     client = make_client(max_retries=1)
     with pytest.raises(NetworkError) as exc_info:
         client.get("/rest/api/2/search")
@@ -233,9 +215,7 @@ def test_500_exhausted_raises_network_error() -> None:
 
 @respx.mock
 def test_502_exhausted_raises_network_error() -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(502, text="Bad Gateway")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(502, text="Bad Gateway"))
     client = make_client(max_retries=1)
     with pytest.raises(NetworkError) as exc_info:
         client.get("/rest/api/2/search")
@@ -245,9 +225,7 @@ def test_502_exhausted_raises_network_error() -> None:
 @respx.mock
 def test_connection_error_raises_network_error() -> None:
     """A low-level connection error maps to NetworkError."""
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(
-        side_effect=httpx.ConnectError("Connection refused")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(side_effect=httpx.ConnectError("Connection refused"))
     client = make_client(max_retries=0)
     with pytest.raises(NetworkError) as exc_info:
         client.get("/rest/api/2/issue/PROJ-1")
@@ -319,6 +297,7 @@ def test_paginate_offset_multiple_pages() -> None:
 
 def test_paginate_offset_single_page() -> None:
     """paginate_offset stops after one page when total <= page_size."""
+
     def fetch(start_at: int, max_results: int) -> dict:
         return {"startAt": 0, "maxResults": 50, "total": 3, "items": [1, 2, 3]}
 
@@ -373,6 +352,7 @@ def test_paginate_links_no_next_link() -> None:
 
 def test_paginate_links_limit_respected() -> None:
     """paginate_links stops when collected results >= limit."""
+
     def fetch(next_url: str | None) -> dict:
         return {"results": [{"id": "a"}, {"id": "b"}], "_links": {"next": "/more"}}
 
@@ -382,11 +362,13 @@ def test_paginate_links_limit_respected() -> None:
 
 def test_collect_all_flattens_pages() -> None:
     """collect_all accumulates items across pages."""
-    pages_iter = iter([
-        {"items": [1, 2]},
-        {"items": [3]},
-        {"items": [4, 5]},
-    ])
+    pages_iter = iter(
+        [
+            {"items": [1, 2]},
+            {"items": [3]},
+            {"items": [4, 5]},
+        ]
+    )
     result = collect_all(pages_iter, items_key="items")
     assert result == [1, 2, 3, 4, 5]
 
@@ -406,9 +388,7 @@ def test_collect_all_missing_key_yields_empty() -> None:
 @respx.mock
 def test_post_with_no_body() -> None:
     """POST with no json/data body is sent successfully."""
-    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-1/transitions").mock(
-        return_value=httpx.Response(204)
-    )
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-1/transitions").mock(return_value=httpx.Response(204))
     client = make_client()
     resp = client.post("/rest/api/2/issue/PROJ-1/transitions")
     assert resp.status_code == 204
@@ -417,9 +397,7 @@ def test_post_with_no_body() -> None:
 @respx.mock
 def test_get_with_none_params_excluded() -> None:
     """None values in params dict are forwarded; httpx drops them automatically."""
-    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json={})
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json={}))
     client = make_client()
     # Passing None values — verify no exception is raised
     resp = client.get("/rest/api/2/search", params={"jql": "project=X", "expand": None})
@@ -438,9 +416,7 @@ def test_request_honours_custom_timeout() -> None:
 @respx.mock
 def test_context_manager_closes_client() -> None:
     """__exit__ closes the underlying httpx.Client without error."""
-    respx.get(f"{BASE_URL}/rest/api/2/serverInfo").mock(
-        return_value=httpx.Response(200, json={"version": "9.0"})
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/serverInfo").mock(return_value=httpx.Response(200, json={"version": "9.0"}))
     client = BaseClient(BASE_URL, PAT_CRED)
     with client as c:
         resp = c.get("/rest/api/2/serverInfo")
@@ -457,9 +433,7 @@ def test_context_manager_closes_client() -> None:
 @respx.mock
 def test_pat_produces_bearer_header() -> None:
     """PAT credential produces Authorization: Bearer <token>."""
-    route = respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
-        return_value=httpx.Response(200, json={})
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={}))
     client = make_client()
     client.get("/rest/api/2/myself")
     auth = route.calls[0].request.headers["authorization"]
@@ -475,9 +449,7 @@ def test_basic_auth_produces_correct_header() -> None:
     expected = base64.b64encode(f"{username}:{password}".encode()).decode()
 
     cred = Credential(method="basic", token=password, username=username)
-    route = respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
-        return_value=httpx.Response(200, json={})
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/myself").mock(return_value=httpx.Response(200, json={}))
     client = BaseClient(BASE_URL, cred)
     client.get("/rest/api/2/myself")
     auth = route.calls[0].request.headers["authorization"]
@@ -490,9 +462,7 @@ def test_token_not_in_error_message() -> None:
     secret_token = "super-secret-token-xyz"
     cred = Credential(method="pat", token=secret_token)
 
-    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
-        return_value=httpx.Response(401, text="Unauthorized")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(return_value=httpx.Response(401, text="Unauthorized"))
     client = BaseClient(BASE_URL, cred)
     with pytest.raises(AuthError) as exc_info:
         client.get("/rest/api/2/myself")

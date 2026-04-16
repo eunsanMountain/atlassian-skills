@@ -71,9 +71,7 @@ def test_confluence_page_get_body_repr_md_converts_content() -> None:
                 "id": "12345",
                 "title": "Test Page",
                 "type": "page",
-                "body": {
-                    "storage": {"value": storage_html, "representation": "storage"}
-                },
+                "body": {"storage": {"value": storage_html, "representation": "storage"}},
             },
         )
     )
@@ -151,10 +149,7 @@ def test_jira_invalid_fields_json_raises_validation_exit(
         env=_JIRA_ENV,
     )
 
-    assert result.exit_code == 7, (
-        f"Expected exit 7 (VALIDATION), got {result.exit_code}.\n"
-        f"Output: {result.output}"
-    )
+    assert result.exit_code == 7, f"Expected exit 7 (VALIDATION), got {result.exit_code}.\nOutput: {result.output}"
 
 
 def test_jira_batch_create_invalid_json_file_raises_validation_exit(
@@ -171,10 +166,7 @@ def test_jira_batch_create_invalid_json_file_raises_validation_exit(
         catch_exceptions=False,
     )
 
-    assert result.exit_code == 7, (
-        f"Expected exit 7 (VALIDATION), got {result.exit_code}.\n"
-        f"Output: {result.output}"
-    )
+    assert result.exit_code == 7, f"Expected exit 7 (VALIDATION), got {result.exit_code}.\nOutput: {result.output}"
 
 
 # ===========================================================================
@@ -198,6 +190,7 @@ def test_read_body_oversized_stdin_raises_validation_error(
     oversized = "x" * (10 * 1024 * 1024 + 1)
 
     import io
+
     monkeypatch.setattr("sys.stdin", io.StringIO(oversized))
 
     with pytest.raises(ValidationError, match="limit"):
@@ -236,9 +229,7 @@ def test_retry_budget_exhaustion_raises_typed_error(
     Old code raised a generic AtlasError after break; fixed code calls
     http_error_to_atlas(response.status_code, ...).
     """
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(status_code)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(status_code))
 
     # Exhaust budget instantly by making elapsed always >= max_total_retry_seconds
     _real_monotonic = time.monotonic
@@ -251,7 +242,10 @@ def test_retry_budget_exhaustion_raises_typed_error(
         return 0.0 if call_count == 1 else 999.0
 
     client = make_client(max_retries=3)
-    with patch("atlassian_skills.core.client.time.monotonic", side_effect=_fast_clock), pytest.raises(expected_error) as exc_info:
+    with (
+        patch("atlassian_skills.core.client.time.monotonic", side_effect=_fast_clock),
+        pytest.raises(expected_error) as exc_info,
+    ):
         client.get("/rest/api/2/search")
 
     assert exc_info.value.http_status == status_code

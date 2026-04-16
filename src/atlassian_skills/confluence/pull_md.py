@@ -1,4 +1,5 @@
 """RFE-001 R3: pull-md -- GET -> md -> asset resolve -> file write."""
+
 from __future__ import annotations
 
 import re
@@ -15,9 +16,7 @@ class PullResult(NamedTuple):
 
 
 # Regex to match cfxmark asset markers: ![alt](src)<!-- cfxmark:asset src="filename" -->
-_ASSET_MARKER_RE = re.compile(
-    r'(!\[[^\]]*\]\()([^)]+)(\)<!-- cfxmark:asset src="([^"]*)" -->)'
-)
+_ASSET_MARKER_RE = re.compile(r'(!\[[^\]]*\]\()([^)]+)(\)<!-- cfxmark:asset src="([^"]*)" -->)')
 
 
 def pull_md(

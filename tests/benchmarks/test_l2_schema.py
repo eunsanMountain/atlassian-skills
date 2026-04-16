@@ -1,4 +1,5 @@
 """L2 token schema benchmarks: skill files must be <= 2000 tokens."""
+
 from __future__ import annotations
 
 from pathlib import Path

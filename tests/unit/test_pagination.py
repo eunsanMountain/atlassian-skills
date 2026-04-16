@@ -122,19 +122,23 @@ def test_links_limit_stops_early() -> None:
 
 
 def test_collect_all_merges_pages() -> None:
-    pages = iter([
-        {"results": [1, 2]},
-        {"results": [3, 4]},
-        {"results": [5]},
-    ])
+    pages = iter(
+        [
+            {"results": [1, 2]},
+            {"results": [3, 4]},
+            {"results": [5]},
+        ]
+    )
     assert collect_all(pages) == [1, 2, 3, 4, 5]
 
 
 def test_collect_all_custom_key() -> None:
-    pages = iter([
-        {"issues": ["A", "B"]},
-        {"issues": ["C"]},
-    ])
+    pages = iter(
+        [
+            {"issues": ["A", "B"]},
+            {"issues": ["C"]},
+        ]
+    )
     assert collect_all(pages, items_key="issues") == ["A", "B", "C"]
 
 
@@ -418,37 +422,45 @@ def test_paginate_links_single_result_per_page() -> None:
 
 def test_collect_all_custom_items_key() -> None:
     """items_key='values' collects correctly."""
-    pages = iter([
-        {"values": [10, 20]},
-        {"values": [30]},
-    ])
+    pages = iter(
+        [
+            {"values": [10, 20]},
+            {"values": [30]},
+        ]
+    )
     assert collect_all(pages, items_key="values") == [10, 20, 30]
 
 
 def test_collect_all_all_empty_pages() -> None:
     """All pages have empty results → returns empty list."""
-    pages = iter([
-        {"results": []},
-        {"results": []},
-        {"results": []},
-    ])
+    pages = iter(
+        [
+            {"results": []},
+            {"results": []},
+            {"results": []},
+        ]
+    )
     assert collect_all(pages) == []
 
 
 def test_collect_all_mixed_page_sizes() -> None:
     """Pages with 3, 1, 5 items are all flattened correctly."""
-    pages = iter([
-        {"results": [1, 2, 3]},
-        {"results": [4]},
-        {"results": [5, 6, 7, 8, 9]},
-    ])
+    pages = iter(
+        [
+            {"results": [1, 2, 3]},
+            {"results": [4]},
+            {"results": [5, 6, 7, 8, 9]},
+        ]
+    )
     assert collect_all(pages) == list(range(1, 10))
 
 
 def test_collect_all_default_key() -> None:
     """Default items_key is 'results'."""
-    pages = iter([
-        {"results": ["x", "y"]},
-        {"results": ["z"]},
-    ])
+    pages = iter(
+        [
+            {"results": ["x", "y"]},
+            {"results": ["z"]},
+        ]
+    )
     assert collect_all(pages) == ["x", "y", "z"]

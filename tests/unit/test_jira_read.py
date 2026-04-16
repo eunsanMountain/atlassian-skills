@@ -55,9 +55,7 @@ def client(cred: Credential) -> JiraClient:
 @respx.mock
 def test_get_issue_returns_issue(client: JiraClient) -> None:
     fixture = _load("get-issue-proj3.json")
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=fixture))
 
     issue = client.get_issue("PROJ-3")
 
@@ -77,9 +75,7 @@ def test_get_issue_raw_preserves_requested_customfield(client: JiraClient) -> No
     assert isinstance(fixture, dict)
     fixture.setdefault("fields", {})
     fixture["fields"]["customfield_10100"] = "EPIC-1"
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=fixture))
 
     issue = client.get_issue_raw("PROJ-3", fields=["customfield_10100"])
 
@@ -94,9 +90,7 @@ def test_get_issue_raw_preserves_requested_customfield(client: JiraClient) -> No
 @respx.mock
 def test_search_returns_search_result(client: JiraClient) -> None:
     fixture = _load("search-proj.json")
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.search("project=PROJ")
 
@@ -116,9 +110,7 @@ def test_search_returns_search_result(client: JiraClient) -> None:
 @respx.mock
 def test_get_transitions_returns_list(client: JiraClient) -> None:
     fixture = _load("get-transitions-rlm3.json")
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(200, json=fixture))
 
     transitions = client.get_transitions("PROJ-3")
 
@@ -150,9 +142,7 @@ def test_get_transitions_wrapped_dict(client: JiraClient) -> None:
 @respx.mock
 def test_search_fields_no_keyword(client: JiraClient) -> None:
     fixture = _load("search-fields-epic.json")
-    respx.get(f"{BASE_URL}/rest/api/2/field").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/field").mock(return_value=httpx.Response(200, json=fixture))
 
     fields = client.search_fields()
 
@@ -163,9 +153,7 @@ def test_search_fields_no_keyword(client: JiraClient) -> None:
 @respx.mock
 def test_search_fields_fuzzy_match(client: JiraClient) -> None:
     fixture = _load("search-fields-epic.json")
-    respx.get(f"{BASE_URL}/rest/api/2/field").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/field").mock(return_value=httpx.Response(200, json=fixture))
 
     fields = client.search_fields(keyword="epic link")
 
@@ -176,9 +164,7 @@ def test_search_fields_fuzzy_match(client: JiraClient) -> None:
 @respx.mock
 def test_search_fields_no_match(client: JiraClient) -> None:
     fixture = _load("search-fields-epic.json")
-    respx.get(f"{BASE_URL}/rest/api/2/field").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/field").mock(return_value=httpx.Response(200, json=fixture))
 
     fields = client.search_fields(keyword="nonexistent")
 
@@ -193,9 +179,7 @@ def test_search_fields_no_match(client: JiraClient) -> None:
 @respx.mock
 def test_list_boards_returns_boards(client: JiraClient) -> None:
     fixture = _load("get-agile-boards-rlm.json")
-    respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(return_value=httpx.Response(200, json=fixture))
 
     boards = client.list_boards()
 
@@ -216,9 +200,7 @@ def test_list_boards_returns_boards(client: JiraClient) -> None:
 @respx.mock
 def test_list_worklogs_empty(client: JiraClient) -> None:
     fixture = _load("get-worklog-rlm3.json")
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.list_worklogs("PROJ-3")
 
@@ -234,9 +216,7 @@ def test_list_worklogs_empty(client: JiraClient) -> None:
 @respx.mock
 def test_list_watchers(client: JiraClient) -> None:
     fixture = _load("get-watchers-proj3.json")
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.list_watchers("PROJ-3")
 
@@ -309,9 +289,7 @@ def test_preprocess_jira_text_combined() -> None:
 @respx.mock
 def test_search_with_explicit_fields(client: JiraClient) -> None:
     fixture = _load("search-proj.json")
-    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=fixture))
 
     client.search("project=PROJ", fields=["summary", "status", "assignee"])
 
@@ -323,9 +301,7 @@ def test_search_with_explicit_fields(client: JiraClient) -> None:
 @respx.mock
 def test_search_empty_results(client: JiraClient) -> None:
     empty = {"total": 0, "start_at": 0, "max_results": 50, "issues": []}
-    respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=empty)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=empty))
 
     result = client.search("project=NONEXISTENT")
 
@@ -337,9 +313,7 @@ def test_search_empty_results(client: JiraClient) -> None:
 @respx.mock
 def test_search_max_results_capping(client: JiraClient) -> None:
     fixture = _load("search-proj.json")
-    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=fixture))
 
     client.search("project=PROJ", max_results=10)
 
@@ -368,9 +342,7 @@ def test_get_issue_404_raises_not_found_error(client: JiraClient) -> None:
 def test_get_issue_401_raises_auth_error(client: JiraClient) -> None:
     from atlassian_skills.core.errors import AuthError
 
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(
-        return_value=httpx.Response(401, text="Unauthorized")
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(return_value=httpx.Response(401, text="Unauthorized"))
 
     with pytest.raises(AuthError):
         client.get_issue("PROJ-1")
@@ -383,9 +355,7 @@ def test_get_issue_401_raises_auth_error(client: JiraClient) -> None:
 
 @respx.mock
 def test_list_boards_empty_response(client: JiraClient) -> None:
-    respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(
-        return_value=httpx.Response(200, json={"values": []})
-    )
+    respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(return_value=httpx.Response(200, json={"values": []}))
 
     boards = client.list_boards()
 
@@ -396,9 +366,7 @@ def test_list_boards_empty_response(client: JiraClient) -> None:
 def test_list_boards_http_error_raises(client: JiraClient) -> None:
     from atlassian_skills.core.errors import AuthError
 
-    respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(
-        return_value=httpx.Response(401, text="Unauthorized")
-    )
+    respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(return_value=httpx.Response(401, text="Unauthorized"))
 
     with pytest.raises(AuthError):
         client.list_boards()
@@ -448,9 +416,7 @@ def test_list_sprints_no_state_filter_omits_param(client: JiraClient) -> None:
 @respx.mock
 def test_search_fields_returns_all_when_no_keyword(client: JiraClient) -> None:
     fixture = _load("search-fields-epic.json")
-    respx.get(f"{BASE_URL}/rest/api/2/field").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/field").mock(return_value=httpx.Response(200, json=fixture))
 
     fields = client.search_fields()
 
@@ -461,9 +427,7 @@ def test_search_fields_returns_all_when_no_keyword(client: JiraClient) -> None:
 @respx.mock
 def test_search_fields_keyword_partial_match(client: JiraClient) -> None:
     fixture = _load("search-fields-epic.json")
-    respx.get(f"{BASE_URL}/rest/api/2/field").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/field").mock(return_value=httpx.Response(200, json=fixture))
 
     # "epic" should match fields whose name or id contains "epic"
     fields = client.search_fields(keyword="epic")
@@ -475,9 +439,7 @@ def test_search_fields_keyword_partial_match(client: JiraClient) -> None:
 @respx.mock
 def test_search_fields_keyword_no_match(client: JiraClient) -> None:
     fixture = _load("search-fields-epic.json")
-    respx.get(f"{BASE_URL}/rest/api/2/field").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/field").mock(return_value=httpx.Response(200, json=fixture))
 
     fields = client.search_fields(keyword="zzz_no_such_field")
 
@@ -491,9 +453,7 @@ def test_search_fields_keyword_no_match(client: JiraClient) -> None:
 
 @respx.mock
 def test_get_project_versions_empty(client: JiraClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/project/PROJ/versions").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/PROJ/versions").mock(return_value=httpx.Response(200, json=[]))
 
     versions = client.get_project_versions("PROJ")
 
@@ -503,9 +463,7 @@ def test_get_project_versions_empty(client: JiraClient) -> None:
 @respx.mock
 def test_get_project_versions_returns_list(client: JiraClient) -> None:
     data = [{"id": "10001", "name": "1.0.0", "released": False, "archived": False}]
-    respx.get(f"{BASE_URL}/rest/api/2/project/PROJ/versions").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/PROJ/versions").mock(return_value=httpx.Response(200, json=data))
 
     versions = client.get_project_versions("PROJ")
 
@@ -520,9 +478,7 @@ def test_get_project_versions_returns_list(client: JiraClient) -> None:
 
 @respx.mock
 def test_get_project_components_empty(client: JiraClient) -> None:
-    respx.get(f"{BASE_URL}/rest/api/2/project/PROJ/components").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/project/PROJ/components").mock(return_value=httpx.Response(200, json=[]))
 
     components = client.get_project_components("PROJ")
 
@@ -538,9 +494,7 @@ def test_get_project_components_empty(client: JiraClient) -> None:
 def test_list_watchers_missing_watchers_key(client: JiraClient) -> None:
     # Response without "watchers" key — fallback to empty list
     data = {"watchCount": 0, "isWatching": False}
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(return_value=httpx.Response(200, json=data))
 
     result = client.list_watchers("PROJ-3")
 
@@ -567,9 +521,7 @@ def test_get_issue_images_returns_only_images(client: JiraClient) -> None:
             ]
         },
     }
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=data))
 
     images = client.get_issue_images("PROJ-3")
 
@@ -583,9 +535,7 @@ def test_get_issue_images_returns_only_images(client: JiraClient) -> None:
 @respx.mock
 def test_get_issue_images_no_attachments(client: JiraClient) -> None:
     data = {"id": "1", "key": "PROJ-1", "fields": {"attachment": []}}
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-1").mock(return_value=httpx.Response(200, json=data))
 
     images = client.get_issue_images("PROJ-1")
 
@@ -609,9 +559,7 @@ def test_get_issue_dates_returns_all_date_fields(client: JiraClient) -> None:
             "resolutiondate": None,
         },
     }
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=data))
 
     dates = client.get_issue_dates("PROJ-3")
 
@@ -629,9 +577,7 @@ def test_get_issue_dates_sends_correct_fields_param(client: JiraClient) -> None:
         "key": "PROJ-3",
         "fields": {"created": "2024-01-01", "updated": "2024-06-01", "duedate": None, "resolutiondate": None},
     }
-    route = respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=data))
 
     client.get_issue_dates("PROJ-3")
 
@@ -673,9 +619,7 @@ def test_get_issue_sla_returns_dict(client: JiraClient) -> None:
 @respx.mock
 def test_search_fields_with_keyword_filter(client: JiraClient) -> None:
     fixture = _load("search-fields-epic.json")
-    respx.get(f"{BASE_URL}/rest/api/2/field").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/field").mock(return_value=httpx.Response(200, json=fixture))
 
     fields = client.search_fields(keyword="epic link")
 
@@ -711,9 +655,7 @@ def test_get_field_options_returns_allowed_values(client: JiraClient) -> None:
             }
         ]
     }
-    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta").mock(
-        return_value=httpx.Response(200, json=createmeta)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta").mock(return_value=httpx.Response(200, json=createmeta))
 
     options = client.get_field_options("priority", "PROJ", "Bug")
 
@@ -731,9 +673,7 @@ def test_get_field_options_field_not_found_returns_empty(client: JiraClient) -> 
             }
         ]
     }
-    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta").mock(
-        return_value=httpx.Response(200, json=createmeta)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta").mock(return_value=httpx.Response(200, json=createmeta))
 
     options = client.get_field_options("nonexistent_field", "PROJ", "Task")
 
@@ -749,11 +689,7 @@ def test_get_field_options_field_not_found_returns_empty(client: JiraClient) -> 
 def test_get_dev_info_returns_dict(client: JiraClient) -> None:
     dev_data = {
         "detail": [
-            {
-                "repositories": [
-                    {"name": "my-repo", "url": "https://bitbucket.example.com/my-repo", "commits": []}
-                ]
-            }
+            {"repositories": [{"name": "my-repo", "url": "https://bitbucket.example.com/my-repo", "commits": []}]}
         ]
     }
     route = respx.get(f"{BASE_URL}/rest/dev-status/1.0/issue/detail").mock(
@@ -786,9 +722,7 @@ def test_list_link_types_returns_list(client: JiraClient) -> None:
             {"id": "10003", "name": "Relates", "inward": "relates to", "outward": "relates to"},
         ]
     }
-    respx.get(f"{BASE_URL}/rest/api/2/issueLinkType").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issueLinkType").mock(return_value=httpx.Response(200, json=data))
 
     link_types = client.list_link_types()
 
@@ -805,9 +739,7 @@ def test_list_link_types_plain_list_response(client: JiraClient) -> None:
     data = [
         {"id": "1", "name": "Blocks", "inward": "is blocked by", "outward": "blocks"},
     ]
-    respx.get(f"{BASE_URL}/rest/api/2/issueLinkType").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issueLinkType").mock(return_value=httpx.Response(200, json=data))
 
     link_types = client.list_link_types()
 
@@ -823,9 +755,7 @@ def test_list_link_types_plain_list_response(client: JiraClient) -> None:
 @respx.mock
 def test_list_worklogs_fixture(client: JiraClient) -> None:
     fixture = _load("get-worklog-rlm3.json")
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.list_worklogs("PROJ-3")
 
@@ -847,9 +777,7 @@ def test_list_worklogs_with_entries(client: JiraClient) -> None:
             }
         ]
     }
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-5/worklog").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-5/worklog").mock(return_value=httpx.Response(200, json=data))
 
     result = client.list_worklogs("PROJ-5")
 
@@ -866,9 +794,7 @@ def test_list_worklogs_with_entries(client: JiraClient) -> None:
 @respx.mock
 def test_list_watchers_fixture(client: JiraClient) -> None:
     fixture = _load("get-watchers-proj3.json")
-    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(
-        return_value=httpx.Response(200, json=fixture)
-    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/watchers").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.list_watchers("PROJ-3")
 
@@ -886,9 +812,7 @@ def test_list_watchers_fixture(client: JiraClient) -> None:
 @respx.mock
 def test_list_boards_with_type_filter(client: JiraClient) -> None:
     data = {"values": [{"id": "394", "name": "Scrum Board", "type": "scrum"}]}
-    route = respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    route = respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(return_value=httpx.Response(200, json=data))
 
     boards = client.list_boards(board_type="scrum")
 
@@ -907,13 +831,19 @@ def test_list_boards_with_type_filter(client: JiraClient) -> None:
 def test_get_board_issues_returns_issues(client: JiraClient) -> None:
     data = {
         "issues": [
-            {"id": "100", "key": "PROJ-10", "fields": {"summary": "Issue 10", "status": {"name": "To Do"}, "issuetype": {"name": "Task"}}},
-            {"id": "101", "key": "PROJ-11", "fields": {"summary": "Issue 11", "status": {"name": "In Progress"}, "issuetype": {"name": "Story"}}},
+            {
+                "id": "100",
+                "key": "PROJ-10",
+                "fields": {"summary": "Issue 10", "status": {"name": "To Do"}, "issuetype": {"name": "Task"}},
+            },
+            {
+                "id": "101",
+                "key": "PROJ-11",
+                "fields": {"summary": "Issue 11", "status": {"name": "In Progress"}, "issuetype": {"name": "Story"}},
+            },
         ]
     }
-    respx.get(f"{BASE_URL}/rest/agile/1.0/board/394/issue").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/agile/1.0/board/394/issue").mock(return_value=httpx.Response(200, json=data))
 
     issues = client.get_board_issues(394)
 
@@ -926,9 +856,7 @@ def test_get_board_issues_returns_issues(client: JiraClient) -> None:
 @respx.mock
 def test_get_board_issues_with_jql_filter(client: JiraClient) -> None:
     data = {"issues": [{"id": "100", "key": "PROJ-10", "fields": {"summary": "s", "issuetype": {"name": "Task"}}}]}
-    route = respx.get(f"{BASE_URL}/rest/agile/1.0/board/394/issue").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    route = respx.get(f"{BASE_URL}/rest/agile/1.0/board/394/issue").mock(return_value=httpx.Response(200, json=data))
 
     client.get_board_issues(394, jql="status=Done")
 
@@ -976,9 +904,7 @@ def test_get_sprint_issues_returns_search_result(client: JiraClient) -> None:
             {"id": "2", "key": "PROJ-2", "fields": {"summary": "Task 2", "issuetype": {"name": "Story"}}},
         ],
     }
-    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    route = respx.get(f"{BASE_URL}/rest/api/2/search").mock(return_value=httpx.Response(200, json=data))
 
     result = client.get_sprint_issues(42)
 
@@ -1002,9 +928,7 @@ def test_list_service_desks_returns_list(client: JiraClient) -> None:
             {"id": "2", "projectId": "10002", "projectName": "HR Service", "projectKey": "HR"},
         ]
     }
-    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk").mock(return_value=httpx.Response(200, json=data))
 
     result = client.list_service_desks()
 
@@ -1016,9 +940,7 @@ def test_list_service_desks_returns_list(client: JiraClient) -> None:
 @respx.mock
 def test_list_service_desks_plain_list_response(client: JiraClient) -> None:
     data = [{"id": "1", "projectKey": "IT"}]
-    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk").mock(return_value=httpx.Response(200, json=data))
 
     result = client.list_service_desks()
 
@@ -1038,9 +960,7 @@ def test_get_service_desk_queues_returns_list(client: JiraClient) -> None:
             {"id": "11", "name": "Open Issues", "issueCount": 15},
         ]
     }
-    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk/1/queue").mock(
-        return_value=httpx.Response(200, json=data)
-    )
+    respx.get(f"{BASE_URL}/rest/servicedeskapi/servicedesk/1/queue").mock(return_value=httpx.Response(200, json=data))
 
     result = client.get_service_desk_queues(1)
 

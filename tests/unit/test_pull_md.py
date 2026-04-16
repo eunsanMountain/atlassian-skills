@@ -79,11 +79,7 @@ class TestPullMdJsonVersion:
 class TestPullMdResolveAssetsSidecar:
     def test_sidecar_downloads_and_rewrites(self, tmp_path: Path) -> None:
         """Sidecar mode downloads attachments and rewrites image links."""
-        md_with_marker = (
-            '# Page\n\n'
-            '![diagram](diagram.png)<!-- cfxmark:asset src="diagram.png" -->\n\n'
-            'Some text\n'
-        )
+        md_with_marker = '# Page\n\n![diagram](diagram.png)<!-- cfxmark:asset src="diagram.png" -->\n\nSome text\n'
         # We need to provide storage that converts to md_with_marker.
         # Since we can't easily reverse cfxmark, we mock the conversion by
         # providing the md directly via passthrough-free path.

@@ -45,9 +45,7 @@ def test_e2e_confluence_basic_auth() -> None:
     user = os.environ.get("ATLS_E2E_CONFLUENCE_USER")
     password = os.environ.get("ATLS_E2E_CONFLUENCE_PASSWORD")
     if not (url and user and password):
-        pytest.skip(
-            "Missing ATLS_E2E_CONFLUENCE_URL / ATLS_E2E_CONFLUENCE_USER / ATLS_E2E_CONFLUENCE_PASSWORD"
-        )
+        pytest.skip("Missing ATLS_E2E_CONFLUENCE_URL / ATLS_E2E_CONFLUENCE_USER / ATLS_E2E_CONFLUENCE_PASSWORD")
     cred = Credential(method="basic", token=password, username=user)
     client = ConfluenceClient(base_url=url, credential=cred)
     result = client.search("type=page", limit=1)

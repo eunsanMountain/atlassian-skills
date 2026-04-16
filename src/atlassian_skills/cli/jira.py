@@ -9,7 +9,7 @@ import typer
 from atlassian_skills.core.auth import resolve_credential
 from atlassian_skills.core.config import get_profile, load_config
 from atlassian_skills.core.dryrun import format_dry_run
-from atlassian_skills.core.errors import AtlasError, ExitCode, ValidationError
+from atlassian_skills.core.errors import AtlasError, ValidationError
 from atlassian_skills.core.format import OutputFormat, format_output
 from atlassian_skills.core.format.markdown import (
     _SectionNotFoundError,
@@ -886,10 +886,18 @@ def issue_update(
     body_file: str | None = typer.Option(None, "--body-file", help="Description body file (- for stdin)"),
     body_format: str | None = typer.Option(None, "--body-format", help="Body format hint"),
     fields_json: str | None = typer.Option(None, "--fields-json", help="Fields as JSON string"),
-    set_customfield: list[str] | None = typer.Option(None, "--set-customfield", help="KEY=VAL custom field (read-back verified; use --fields-json for structured values)"),  # noqa: B008
+    set_customfield: list[str] | None = typer.Option(
+        None,
+        "--set-customfield",
+        help="KEY=VAL custom field (read-back verified; use --fields-json for structured values)",
+    ),  # noqa: B008
     if_updated: str | None = typer.Option(None, "--if-updated", help="ISO8601 timestamp for stale check"),
-    heading_promotion: str | None = typer.Option(None, "--heading-promotion", help="Heading promotion: jira|confluence|none"),
-    passthrough_prefix: list[str] = typer.Option([], "--passthrough-prefix", help="Passthrough prefixes for md→wiki conversion only"),  # noqa: B008
+    heading_promotion: str | None = typer.Option(
+        None, "--heading-promotion", help="Heading promotion: jira|confluence|none"
+    ),
+    passthrough_prefix: list[str] = typer.Option(
+        [], "--passthrough-prefix", help="Passthrough prefixes for md→wiki conversion only"
+    ),  # noqa: B008
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be sent"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
@@ -932,9 +940,7 @@ def issue_update(
         fields.update(customfield_updates)
 
         if dry_run:
-            typer.echo(
-                format_dry_run("PUT", f"{client.base_url}/rest/api/2/issue/{key}", body={"fields": fields})
-            )
+            typer.echo(format_dry_run("PUT", f"{client.base_url}/rest/api/2/issue/{key}", body={"fields": fields}))
             return
 
         result = client.update_issue(key, fields=fields or None)
@@ -986,7 +992,9 @@ def issue_transition(
     ctx: typer.Context,
     key: str = typer.Argument(..., help="Issue key"),
     transition_id: str | None = typer.Option(None, "--transition-id", help="Transition ID"),
-    transition_name: str | None = typer.Option(None, "--transition-name", help="Transition name (alternative to --transition-id)"),
+    transition_name: str | None = typer.Option(
+        None, "--transition-name", help="Transition name (alternative to --transition-id)"
+    ),
     comment: str | None = typer.Option(None, "--comment", help="Transition comment"),
     fields_json: str | None = typer.Option(None, "--fields-json", help="Transition fields as JSON"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be sent"),
@@ -1022,9 +1030,7 @@ def issue_transition(
                 body["fields"] = extra_fields
             if comment:
                 body["update"] = {"comment": [{"add": {"body": comment}}]}
-            typer.echo(
-                format_dry_run("POST", f"{client.base_url}/rest/api/2/issue/{key}/transitions", body=body)
-            )
+            typer.echo(format_dry_run("POST", f"{client.base_url}/rest/api/2/issue/{key}/transitions", body=body))
             return
 
         if transition_id is None:
@@ -1076,9 +1082,7 @@ def comment_add(
         text = read_body(body=body, body_file=body_file)
         if dry_run:
             client = _make_client(ctx.obj)
-            typer.echo(
-                format_dry_run("POST", f"{client.base_url}/rest/api/2/issue/{key}/comment", body={"body": text})
-            )
+            typer.echo(format_dry_run("POST", f"{client.base_url}/rest/api/2/issue/{key}/comment", body={"body": text}))
             return
         client = _make_client(ctx.obj)
         result = client.add_comment(key, text)
