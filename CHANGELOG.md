@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3] - 2026-04-17
+
+### Fixed
+- `auth status` now resolves URLs from env vars (`ATLS_{PROFILE}_{PRODUCT}_URL`), matching the behavior of actual Jira/Confluence commands. Previously showed "(not configured)" even when the URL was set via environment variable.
+- `auth status` now displays the URL source (config vs env) for easier debugging
+- `auth login` now includes the URL env var in the export snippet
+- `auth list` now shows `confluence_url` alongside `jira_url` and checks env var fallback
+
+### Changed
+- Translate all Korean prose to English across CLAUDE.md, docstrings, comments, and fixture docs. Test fixtures and intentional CJK test data are preserved.
+
 ## [0.1.2] - 2026-04-16
 
 ### Changed
