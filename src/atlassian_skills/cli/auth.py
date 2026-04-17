@@ -50,22 +50,25 @@ def auth_status(
     config = load_config()
     prof = get_profile(config, profile_name)
 
-    jira_url, jira_src = _resolve_url(profile_name, "jira", prof.jira_url)
-    conf_url, conf_src = _resolve_url(profile_name, "confluence", prof.confluence_url)
+    products = ("jira", "confluence", "bitbucket")
+    url_fields = {"jira": prof.jira_url, "confluence": prof.confluence_url, "bitbucket": prof.bitbucket_url}
 
     typer.echo(f"Profile: {profile_name}")
-    typer.echo(f"  Jira URL:       {jira_url or '(not configured)'}{f'  ({jira_src})' if jira_src else ''}")
-    typer.echo(f"  Confluence URL: {conf_url or '(not configured)'}{f'  ({conf_src})' if conf_src else ''}")
-    typer.echo(f"  Auth method:    {prof.auth.jira} (jira) / {prof.auth.confluence} (confluence)")
+    for product in products:
+        url, src = _resolve_url(profile_name, product, url_fields[product])
+        label = f"{product.capitalize()} URL:"
+        typer.echo(f"  {label:<18}{url or '(not configured)'}{f'  ({src})' if src else ''}")
+
+    auth_parts = " / ".join(f"{getattr(prof.auth, p)} ({p})" for p in products)
+    typer.echo(f"  Auth method:    {auth_parts}")
     typer.echo(f"  Storage:        {prof.storage}")
 
-    for product in ("jira", "confluence"):
+    for product in products:
         token = get_env_token(profile_name, product)
-        env_key = f"ATLS_{profile_name.upper()}_{product.upper()}_TOKEN"
         if token:
-            typer.echo(f"  [{product}] token: set via {env_key} (length={len(token)})")
+            typer.echo(f"  [{product}] token: set (length={len(token)})")
         else:
-            typer.echo(f"  [{product}] token: NOT SET — export {env_key}=<token>")
+            typer.echo(f"  [{product}] token: NOT SET")
 
 
 @auth_app.command("list")
@@ -78,8 +81,12 @@ def auth_list(ctx: typer.Context) -> None:
         return
     for name, prof in config.profiles.items():
         marker = " (default)" if name == config.default_profile else ""
-        jira_url, _ = _resolve_url(name, "jira", prof.jira_url)
-        conf_url, _ = _resolve_url(name, "confluence", prof.confluence_url)
-        typer.echo(
-            f"  {name}{marker}  storage={prof.storage}  jira={jira_url or 'n/a'}  confluence={conf_url or 'n/a'}"
-        )
+        urls = []
+        for product, profile_url in [
+            ("jira", prof.jira_url),
+            ("confluence", prof.confluence_url),
+            ("bitbucket", prof.bitbucket_url),
+        ]:
+            url, _ = _resolve_url(name, product, profile_url)
+            urls.append(f"{product}={url or 'n/a'}")
+        typer.echo(f"  {name}{marker}  storage={prof.storage}  {'  '.join(urls)}")

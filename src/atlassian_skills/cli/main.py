@@ -55,6 +55,7 @@ def main(
 def _register_sub_apps() -> None:
     """Deferred import to avoid circular imports at module load time."""
     from atlassian_skills.cli.auth import auth_app
+    from atlassian_skills.cli.bitbucket import bitbucket_app
     from atlassian_skills.cli.config import config_app
     from atlassian_skills.cli.confluence import confluence_app
     from atlassian_skills.cli.jira import jira_app
@@ -62,6 +63,7 @@ def _register_sub_apps() -> None:
     from atlassian_skills.cli.upgrade import upgrade
 
     app.add_typer(auth_app, name="auth")
+    app.add_typer(bitbucket_app, name="bitbucket")
     app.add_typer(config_app, name="config")
     app.add_typer(confluence_app, name="confluence")
     app.add_typer(jira_app, name="jira")

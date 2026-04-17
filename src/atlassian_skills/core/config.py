@@ -82,6 +82,11 @@ def get_profile(config: Config, name: str | None = None) -> Profile:
 _LEGACY_TOKEN_VARS: dict[str, str] = {
     "jira": "JIRA_PERSONAL_TOKEN",
     "confluence": "CONFLUENCE_PERSONAL_TOKEN",
+    "bitbucket": "BITBUCKET_TOKEN",
+}
+
+_LEGACY_USER_VARS: dict[str, str] = {
+    "bitbucket": "BITBUCKET_USERNAME",
 }
 
 
@@ -100,9 +105,15 @@ def get_env_token(profile_name: str, product: str) -> str | None:
 
 
 def get_env_user(profile_name: str, product: str) -> str | None:
-    """Read ATLS_{PROFILE}_{PRODUCT}_USER from environment."""
+    """Read user from env. Priority: ATLS_{PROFILE}_{PRODUCT}_USER > legacy vars."""
     key = f"ATLS_{profile_name.upper()}_{product.upper()}_USER"
-    return os.environ.get(key)
+    val = os.environ.get(key)
+    if val:
+        return val
+    legacy_key = _LEGACY_USER_VARS.get(product.lower())
+    if legacy_key:
+        return os.environ.get(legacy_key)
+    return None
 
 
 def get_env_auth_method(profile_name: str, product: str) -> str | None:
