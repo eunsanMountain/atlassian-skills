@@ -430,13 +430,18 @@ class ConfluenceClient(BaseClient):
         body: str,
         body_format: str = "storage",
     ) -> dict[str, Any]:
-        """Add a comment to a page."""
+        """Add a comment to a page.
+
+        Uses POST /rest/api/content with a container field — the /child/comment
+        sub-resource only accepts GET on Confluence Server/DC (POST returns 405).
+        """
         payload: dict[str, Any] = {
             "type": "comment",
+            "container": {"id": page_id, "type": "page"},
             "body": {body_format: {"value": body, "representation": body_format}},
         }
         return self.post(  # type: ignore[no-any-return]
-            f"/rest/api/content/{page_id}/child/comment",
+            "/rest/api/content",
             json=payload,
         ).json()
 
@@ -446,13 +451,22 @@ class ConfluenceClient(BaseClient):
         body: str,
         body_format: str = "storage",
     ) -> dict[str, Any]:
-        """Reply to an existing comment."""
+        """Reply to an existing comment.
+
+        Fetches the parent comment to resolve its container page, then creates
+        a new comment under that page with the parent as an ancestor.
+        """
+        parent = self.get(f"/rest/api/content/{comment_id}?expand=container").json()
+        container_id = parent.get("container", {}).get("id", comment_id)
+
         payload: dict[str, Any] = {
             "type": "comment",
+            "container": {"id": container_id, "type": "page"},
+            "ancestors": [{"id": comment_id}],
             "body": {body_format: {"value": body, "representation": body_format}},
         }
         return self.post(  # type: ignore[no-any-return]
-            f"/rest/api/content/{comment_id}/child/comment",
+            "/rest/api/content",
             json=payload,
         ).json()
 

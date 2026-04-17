@@ -540,9 +540,7 @@ def test_safe_filename_with_spaces() -> None:
 @respx.mock
 def test_add_comment_success(client: ConfluenceClient) -> None:
     expected = {"id": "700", "type": "comment", "title": "Re: My Page"}
-    route = respx.post(f"{BASE_URL}/rest/api/content/100/child/comment").mock(
-        return_value=httpx.Response(200, json=expected)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.add_comment("100", "<p>A new comment</p>")
 
@@ -550,21 +548,24 @@ def test_add_comment_success(client: ConfluenceClient) -> None:
     assert result["type"] == "comment"
     sent = json.loads(route.calls[0].request.content)
     assert sent["type"] == "comment"
+    assert sent["container"] == {"id": "100", "type": "page"}
     assert sent["body"]["storage"]["value"] == "<p>A new comment</p>"
     assert sent["body"]["storage"]["representation"] == "storage"
 
 
 @respx.mock
 def test_reply_to_comment_nested(client: ConfluenceClient) -> None:
+    parent = {"id": "700", "type": "comment", "container": {"id": "100", "type": "page"}}
+    respx.get(f"{BASE_URL}/rest/api/content/700?expand=container").mock(return_value=httpx.Response(200, json=parent))
     expected = {"id": "701", "type": "comment", "title": "Re: Re: My Page"}
-    route = respx.post(f"{BASE_URL}/rest/api/content/700/child/comment").mock(
-        return_value=httpx.Response(200, json=expected)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.reply_to_comment("700", "<p>Nested reply</p>")
 
     assert result["id"] == "701"
     sent = json.loads(route.calls[0].request.content)
+    assert sent["container"] == {"id": "100", "type": "page"}
+    assert sent["ancestors"] == [{"id": "700"}]
     assert sent["body"]["storage"]["value"] == "<p>Nested reply</p>"
 
 

@@ -635,11 +635,15 @@ def comment_add(
         client = _make_client(ctx.obj)
 
         if dry_run:
-            payload = {"type": "comment", "body": {"storage": {"value": body, "representation": "storage"}}}
+            payload = {
+                "type": "comment",
+                "container": {"id": page_id, "type": "page"},
+                "body": {"storage": {"value": body, "representation": "storage"}},
+            }
             typer.echo(
                 format_dry_run(
                     "POST",
-                    f"{client.base_url}/rest/api/content/{page_id}/child/comment",
+                    f"{client.base_url}/rest/api/content",
                     body=payload,
                     fmt=fmt.value,
                 )
@@ -677,11 +681,15 @@ def comment_reply(
         client = _make_client(ctx.obj)
 
         if dry_run:
-            payload = {"type": "comment", "body": {"storage": {"value": body, "representation": "storage"}}}
+            payload = {
+                "type": "comment",
+                "ancestors": [{"id": comment_id}],
+                "body": {"storage": {"value": body, "representation": "storage"}},
+            }
             typer.echo(
                 format_dry_run(
                     "POST",
-                    f"{client.base_url}/rest/api/content/{comment_id}/child/comment",
+                    f"{client.base_url}/rest/api/content",
                     body=payload,
                     fmt=fmt.value,
                 )

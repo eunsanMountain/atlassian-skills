@@ -121,9 +121,7 @@ def test_move_page(client: ConfluenceClient) -> None:
 @respx.mock
 def test_add_comment(client: ConfluenceClient) -> None:
     expected = {"id": "600", "type": "comment", "title": "Re: Page"}
-    route = respx.post(f"{BASE_URL}/rest/api/content/100/child/comment").mock(
-        return_value=httpx.Response(200, json=expected)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.add_comment("100", "<p>My comment</p>")
 
@@ -131,6 +129,7 @@ def test_add_comment(client: ConfluenceClient) -> None:
     assert result["type"] == "comment"
     sent_body = json.loads(route.calls[0].request.content)
     assert sent_body["type"] == "comment"
+    assert sent_body["container"] == {"id": "100", "type": "page"}
     assert sent_body["body"]["storage"]["value"] == "<p>My comment</p>"
 
 
@@ -141,8 +140,10 @@ def test_add_comment(client: ConfluenceClient) -> None:
 
 @respx.mock
 def test_reply_to_comment(client: ConfluenceClient) -> None:
+    parent = {"id": "600", "type": "comment", "container": {"id": "100", "type": "page"}}
+    respx.get(f"{BASE_URL}/rest/api/content/600?expand=container").mock(return_value=httpx.Response(200, json=parent))
     expected = {"id": "601", "type": "comment", "title": "Re: Re: Page"}
-    respx.post(f"{BASE_URL}/rest/api/content/600/child/comment").mock(return_value=httpx.Response(200, json=expected))
+    respx.post(f"{BASE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.reply_to_comment("600", "<p>Reply</p>")
 
@@ -275,11 +276,11 @@ def test_move_page_below(client: ConfluenceClient) -> None:
 
 
 @respx.mock
-def test_reply_to_comment_uses_child_comment_url(client: ConfluenceClient) -> None:
+def test_reply_to_comment_uses_content_endpoint(client: ConfluenceClient) -> None:
+    parent = {"id": "600", "type": "comment", "container": {"id": "100", "type": "page"}}
+    respx.get(f"{BASE_URL}/rest/api/content/600?expand=container").mock(return_value=httpx.Response(200, json=parent))
     expected = {"id": "700", "type": "comment"}
-    route = respx.post(f"{BASE_URL}/rest/api/content/600/child/comment").mock(
-        return_value=httpx.Response(200, json=expected)
-    )
+    route = respx.post(f"{BASE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.reply_to_comment("600", "<p>My reply</p>")
 
@@ -287,14 +288,18 @@ def test_reply_to_comment_uses_child_comment_url(client: ConfluenceClient) -> No
     req = route.calls[0].request
     body = json.loads(req.content)
     assert body["type"] == "comment"
+    assert body["container"] == {"id": "100", "type": "page"}
+    assert body["ancestors"] == [{"id": "600"}]
     assert body["body"]["storage"]["value"] == "<p>My reply</p>"
     assert result["id"] == "700"
 
 
 @respx.mock
 def test_reply_to_comment_returns_new_comment_id(client: ConfluenceClient) -> None:
+    parent = {"id": "800", "type": "comment", "container": {"id": "200", "type": "page"}}
+    respx.get(f"{BASE_URL}/rest/api/content/800?expand=container").mock(return_value=httpx.Response(200, json=parent))
     expected = {"id": "801", "type": "comment", "title": "Re: Discussion"}
-    respx.post(f"{BASE_URL}/rest/api/content/800/child/comment").mock(return_value=httpx.Response(200, json=expected))
+    respx.post(f"{BASE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=expected))
 
     result = client.reply_to_comment("800", "<p>Another reply</p>")
 
