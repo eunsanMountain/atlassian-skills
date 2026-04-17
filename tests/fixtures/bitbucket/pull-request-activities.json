@@ -1,0 +1,35 @@
+{
+  "size": 3,
+  "limit": 25,
+  "isLastPage": true,
+  "values": [
+    {
+      "id": 1,
+      "action": "OPENED",
+      "createdDate": 1713200000000,
+      "user": {"name": "jsmith", "displayName": "John Smith"}
+    },
+    {
+      "id": 2,
+      "action": "APPROVED",
+      "createdDate": 1713250000000,
+      "user": {"name": "alice", "displayName": "Alice Lee"}
+    },
+    {
+      "id": 3,
+      "action": "COMMENTED",
+      "createdDate": 1713260000000,
+      "user": {"name": "bob", "displayName": "Bob Kim"},
+      "comment": {
+        "id": 102,
+        "text": "This line needs refactoring",
+        "author": {"name": "bob", "displayName": "Bob Kim"},
+        "severity": "BLOCKER",
+        "state": "OPEN",
+        "version": 0,
+        "comments": []
+      }
+    }
+  ],
+  "start": 0
+}

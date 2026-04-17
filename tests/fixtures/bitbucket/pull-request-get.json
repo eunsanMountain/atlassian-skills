@@ -1,0 +1,53 @@
+{
+  "id": 1,
+  "version": 3,
+  "title": "Add feature X",
+  "description": "Implements feature X for the module",
+  "state": "OPEN",
+  "createdDate": 1713200000000,
+  "updatedDate": 1713300000000,
+  "fromRef": {
+    "id": "refs/heads/feature/x",
+    "displayId": "feature/x",
+    "latestCommit": "abc123def456",
+    "repository": {
+      "id": 1,
+      "slug": "my-repo",
+      "name": "My Repo",
+      "project": {"id": 1, "key": "PROJ", "name": "Project"}
+    }
+  },
+  "toRef": {
+    "id": "refs/heads/main",
+    "displayId": "main",
+    "latestCommit": "def789abc012",
+    "repository": {
+      "id": 1,
+      "slug": "my-repo",
+      "name": "My Repo",
+      "project": {"id": 1, "key": "PROJ", "name": "Project"}
+    }
+  },
+  "author": {
+    "user": {"name": "jsmith", "displayName": "John Smith", "emailAddress": "jsmith@example.com"},
+    "role": "AUTHOR",
+    "approved": false,
+    "status": "UNAPPROVED"
+  },
+  "reviewers": [
+    {
+      "user": {"name": "alice", "displayName": "Alice Lee"},
+      "role": "REVIEWER",
+      "approved": true,
+      "status": "APPROVED"
+    },
+    {
+      "user": {"name": "bob", "displayName": "Bob Kim"},
+      "role": "REVIEWER",
+      "approved": false,
+      "status": "NEEDS_WORK"
+    }
+  ],
+  "participants": [],
+  "links": {}
+}

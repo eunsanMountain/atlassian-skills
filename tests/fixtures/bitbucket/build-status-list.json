@@ -1,0 +1,24 @@
+{
+  "size": 2,
+  "limit": 25,
+  "isLastPage": true,
+  "values": [
+    {
+      "state": "SUCCESSFUL",
+      "key": "ci-build",
+      "name": "CI Build",
+      "url": "https://ci.example.com/build/123",
+      "description": "Build passed",
+      "dateAdded": 1713300000000
+    },
+    {
+      "state": "FAILED",
+      "key": "code-analysis",
+      "name": "Code Analysis",
+      "url": "https://ci.example.com/analysis/456",
+      "description": "3 issues found",
+      "dateAdded": 1713310000000
+    }
+  ],
+  "start": 0
+}

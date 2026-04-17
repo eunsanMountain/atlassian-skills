@@ -1,0 +1,7 @@
+{
+  "id": 12,
+  "text": "Update documentation",
+  "state": "OPEN",
+  "author": {"name": "jsmith", "displayName": "John Smith"},
+  "createdDate": 1713400000000
+}

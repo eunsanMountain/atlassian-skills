@@ -1,0 +1,24 @@
+{
+  "size": 2,
+  "limit": 25,
+  "isLastPage": true,
+  "values": [
+    {
+      "id": "abc123def456789012345678901234567890abcd",
+      "displayId": "abc123d",
+      "message": "Add feature X implementation\n\nDetailed description here",
+      "authorTimestamp": 1713200000000,
+      "author": {"name": "jsmith", "displayName": "John Smith", "emailAddress": "jsmith@example.com"},
+      "committer": {"name": "jsmith", "displayName": "John Smith"}
+    },
+    {
+      "id": "def456abc789012345678901234567890abcdef01",
+      "displayId": "def456a",
+      "message": "Fix tests",
+      "authorTimestamp": 1713210000000,
+      "author": {"name": "jsmith", "displayName": "John Smith"},
+      "committer": {"name": "jsmith", "displayName": "John Smith"}
+    }
+  ],
+  "start": 0
+}

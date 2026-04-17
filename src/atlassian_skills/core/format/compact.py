@@ -4,6 +4,16 @@ import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from atlassian_skills.bitbucket.models import (
+        Branch,
+        BuildStatus,
+        Commit,
+        DiffStat,
+        PullRequest,
+        PullRequestActivity,
+        PullRequestComment,
+        Task,
+    )
     from atlassian_skills.confluence.models import (
         Attachment,
         Comment,
@@ -232,6 +242,58 @@ def _format_space_tree_result(result: SpaceTreeResult) -> str:
     return "\n".join(lines)
 
 
+def _format_pull_request(pr: PullRequest) -> str:
+    author = pr.author.user.display_name if pr.author else ""
+    from_ref = pr.from_ref.display_id if pr.from_ref else ""
+    to_ref = pr.to_ref.display_id if pr.to_ref else ""
+    approved = sum(1 for r in pr.reviewers if r.status == "APPROVED")
+    needs_work = sum(1 for r in pr.reviewers if r.status == "NEEDS_WORK")
+    total = len(pr.reviewers)
+    review_summary = f"{approved}A/{needs_work}NW/{total}R" if total else ""
+    return f"{pr.id} | {pr.title} | {pr.state} | {author} | {from_ref} -> {to_ref} | {review_summary}"
+
+
+def _format_pr_comment(comment: PullRequestComment) -> str:
+    author = comment.author.display_name if comment.author else ""
+    state = comment.state or comment.severity or ""
+    anchor_info = ""
+    if comment.anchor and comment.anchor.path:
+        line = f":{comment.anchor.line}" if comment.anchor.line else ""
+        anchor_info = f"{comment.anchor.path}{line}"
+    text_preview = (comment.text or "")[:80]
+    return f"{comment.id} | {author} | {state} | {anchor_info} | {text_preview}"
+
+
+def _format_pr_activity(activity: PullRequestActivity) -> str:
+    user = activity.user.display_name if activity.user else ""
+    return f"{activity.action} | {user}"
+
+
+def _format_branch(branch: Branch) -> str:
+    commit_short = (branch.latest_commit or branch.latest_changeset or "")[:7]
+    default_marker = " (default)" if branch.is_default else ""
+    return f"{branch.display_id} | {commit_short}{default_marker}"
+
+
+def _format_commit(commit: Commit) -> str:
+    author = commit.author.display_name if commit.author else ""
+    first_line = (commit.message or "").split("\n", 1)[0][:80]
+    return f"{commit.display_id} | {author} | {first_line}"
+
+
+def _format_task(task: Task) -> str:
+    text_preview = (task.text or "")[:80]
+    return f"{task.id} | {task.state} | {text_preview}"
+
+
+def _format_build_status(status: BuildStatus) -> str:
+    return f"{status.state} | {status.key} | {status.name or ''} | {status.url or ''}"
+
+
+def _format_diffstat(stat: DiffStat) -> str:
+    return f"{stat.type or 'MODIFY'} | {stat.path.to_string}"
+
+
 def format_compact(data: Any) -> str:
     """Return a compact, pipe-separated string representation.
 
@@ -240,6 +302,16 @@ def format_compact(data: Any) -> str:
     and arbitrary objects.
     """
     # Import here to avoid circular imports at module load time
+    from atlassian_skills.bitbucket.models import (
+        Branch,
+        BuildStatus,
+        Commit,
+        DiffStat,
+        PullRequest,
+        PullRequestActivity,
+        PullRequestComment,
+        Task,
+    )
     from atlassian_skills.confluence.models import (
         Attachment,
         Comment,
@@ -270,6 +342,22 @@ def format_compact(data: Any) -> str:
 
     if isinstance(data, WriteResult):
         return _format_write_result(data)
+    if isinstance(data, PullRequest):
+        return _format_pull_request(data)
+    if isinstance(data, PullRequestComment):
+        return _format_pr_comment(data)
+    if isinstance(data, PullRequestActivity):
+        return _format_pr_activity(data)
+    if isinstance(data, Branch):
+        return _format_branch(data)
+    if isinstance(data, Commit):
+        return _format_commit(data)
+    if isinstance(data, Task):
+        return _format_task(data)
+    if isinstance(data, BuildStatus):
+        return _format_build_status(data)
+    if isinstance(data, DiffStat):
+        return _format_diffstat(data)
     if isinstance(data, Issue):
         return _format_jira_issue(data)
     if isinstance(data, SearchResult):

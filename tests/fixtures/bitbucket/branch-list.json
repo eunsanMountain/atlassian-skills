@@ -1,0 +1,29 @@
+{
+  "size": 3,
+  "limit": 25,
+  "isLastPage": true,
+  "values": [
+    {
+      "id": "refs/heads/main",
+      "displayId": "main",
+      "latestChangeset": "def789abc012",
+      "latestCommit": "def789abc012",
+      "isDefault": true
+    },
+    {
+      "id": "refs/heads/feature/x",
+      "displayId": "feature/x",
+      "latestChangeset": "abc123def456",
+      "latestCommit": "abc123def456",
+      "isDefault": false
+    },
+    {
+      "id": "refs/heads/develop",
+      "displayId": "develop",
+      "latestChangeset": "999888777666",
+      "latestCommit": "999888777666",
+      "isDefault": false
+    }
+  ],
+  "start": 0
+}
