@@ -80,4 +80,6 @@ def auth_list(ctx: typer.Context) -> None:
         marker = " (default)" if name == config.default_profile else ""
         jira_url, _ = _resolve_url(name, "jira", prof.jira_url)
         conf_url, _ = _resolve_url(name, "confluence", prof.confluence_url)
-        typer.echo(f"  {name}{marker}  storage={prof.storage}  jira={jira_url or 'n/a'}  confluence={conf_url or 'n/a'}")
+        typer.echo(
+            f"  {name}{marker}  storage={prof.storage}  jira={jira_url or 'n/a'}  confluence={conf_url or 'n/a'}"
+        )
