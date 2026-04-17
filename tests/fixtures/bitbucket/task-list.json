@@ -1,0 +1,22 @@
+{
+  "size": 2,
+  "limit": 25,
+  "isLastPage": true,
+  "values": [
+    {
+      "id": 10,
+      "text": "Fix naming convention",
+      "state": "OPEN",
+      "author": {"name": "alice", "displayName": "Alice Lee"},
+      "createdDate": 1713200000000
+    },
+    {
+      "id": 11,
+      "text": "Add unit tests",
+      "state": "RESOLVED",
+      "author": {"name": "bob", "displayName": "Bob Kim"},
+      "createdDate": 1713210000000
+    }
+  ],
+  "start": 0
+}

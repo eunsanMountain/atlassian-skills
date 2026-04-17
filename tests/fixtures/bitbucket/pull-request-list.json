@@ -1,0 +1,76 @@
+{
+  "size": 2,
+  "limit": 25,
+  "isLastPage": true,
+  "values": [
+    {
+      "id": 1,
+      "version": 3,
+      "title": "Add feature X",
+      "description": "Implements feature X for the module",
+      "state": "OPEN",
+      "createdDate": 1713200000000,
+      "updatedDate": 1713300000000,
+      "fromRef": {
+        "id": "refs/heads/feature/x",
+        "displayId": "feature/x",
+        "latestCommit": "abc123def456"
+      },
+      "toRef": {
+        "id": "refs/heads/main",
+        "displayId": "main",
+        "latestCommit": "def789abc012"
+      },
+      "author": {
+        "user": {"name": "jsmith", "displayName": "John Smith", "emailAddress": "jsmith@example.com"},
+        "role": "AUTHOR",
+        "approved": false,
+        "status": "UNAPPROVED"
+      },
+      "reviewers": [
+        {
+          "user": {"name": "alice", "displayName": "Alice Lee", "emailAddress": "alice@example.com"},
+          "role": "REVIEWER",
+          "approved": true,
+          "status": "APPROVED"
+        },
+        {
+          "user": {"name": "bob", "displayName": "Bob Kim", "emailAddress": "bob@example.com"},
+          "role": "REVIEWER",
+          "approved": false,
+          "status": "NEEDS_WORK"
+        }
+      ],
+      "participants": [],
+      "links": {}
+    },
+    {
+      "id": 2,
+      "version": 1,
+      "title": "Fix bug in parser",
+      "state": "MERGED",
+      "createdDate": 1713100000000,
+      "updatedDate": 1713200000000,
+      "fromRef": {
+        "id": "refs/heads/fix/parser",
+        "displayId": "fix/parser",
+        "latestCommit": "111222333444"
+      },
+      "toRef": {
+        "id": "refs/heads/main",
+        "displayId": "main",
+        "latestCommit": "def789abc012"
+      },
+      "author": {
+        "user": {"name": "alice", "displayName": "Alice Lee"},
+        "role": "AUTHOR",
+        "approved": false,
+        "status": "UNAPPROVED"
+      },
+      "reviewers": [],
+      "participants": [],
+      "links": {}
+    }
+  ],
+  "start": 0
+}

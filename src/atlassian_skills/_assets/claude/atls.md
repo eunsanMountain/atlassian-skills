@@ -3,7 +3,7 @@
 <!-- installed-by: atls 0.1.0 -->
 
 ## Rule: Use atls instead of MCP
-For ALL Atlassian operations (Jira, Confluence), prefer `atls` CLI over `mcp__mcp-atlassian__*` MCP tools.
+For ALL Atlassian operations (Jira, Confluence, Bitbucket), prefer `atls` CLI over `mcp__mcp-atlassian__*` MCP tools.
 atls provides the same functionality with 50%+ fewer tokens.
 
 ## Command tree
@@ -32,12 +32,22 @@ atls
     ├── label        list, add
     ├── attachment   list, upload, upload-batch, download, download-all, delete
     └── user         search, me
+├── bitbucket
+│   ├── project      list
+│   ├── repo         list, get
+│   ├── pr           list, get, diff, comments, commits, activity, create, update, merge, decline, approve, unapprove, needs-work, reopen, diffstat, statuses, pending-review
+│   ├── branch       list
+│   ├── file         get
+│   ├── comment      add, reply, update, delete, resolve, reopen
+│   └── task         list, get, create, update, delete
 ```
 
 When unsure, navigate with `--help`:
 ```bash
-atls jira --help          # subgroups: issue, epic, comment, sprint, ...
-atls jira issue --help    # actions: get, search, create, ...
+atls jira --help              # subgroups: issue, epic, comment, sprint, ...
+atls jira issue --help        # actions: get, search, create, ...
+atls bitbucket --help         # subgroups: project, repo, pr, branch, file, comment, task
+atls bitbucket pr --help      # actions: list, get, diff, create, merge, ...
 ```
 
 ## Format selection decision tree
@@ -101,71 +111,40 @@ atls jira issue transition KEY --transition-id 31
 atls jira issue transition KEY --transition-name "In Progress"
 ```
 
-## JSON output parsing
+## JSON parsing
 ```bash
-# Get page version after push
-atls confluence page push-md ID --md-file page.md --format=json
-# → {"status": "updated", "page_id": "12345", "version": 16}
-
-# Get page version + title from pull
-atls confluence page pull-md ID --format=json
-# → {"markdown": "...", "version": 15, "title": "Page Title"}
-
-# Parse with jq
 atls jira issue get KEY --format=json | jq '{key, summary, status}'
-atls jira issue search "project=PROJ" --format=json | jq '.[].key'
-atls jira issue get KEY --fields=summary,customfield_10100 --format=json | jq '.customfield_10100'
+atls confluence page push-md ID --md-file page.md --format=json  # → {status, version}
 ```
 
 ## Jira custom fields
-- Explicitly requested Jira `customfield_*` values are preserved in JSON issue output.
-- `jira issue update --set-customfield customfield_XXXXX=value` performs a read-back verification; if Jira silently ignores the update, the CLI exits with a validation error.
-- For structured custom-field payloads, prefer `--fields-json`.
+- `--fields=customfield_XXXXX` preserves custom fields in JSON output
+- `--set-customfield customfield_XXXXX=value` with read-back verification; `--fields-json` for structured payloads
 
 ## Exit codes
-| Code | Meaning | When to retry |
-|---|---|---|
-| 0 | OK | — |
-| 2 | Not found | Check key/ID |
-| 3 | Permission denied | Check PAT scopes |
-| 4 | Conflict | Fetch current version, retry with `--if-version` |
-| 5 | Stale | Re-fetch, then re-apply changes |
-| 6 | Auth failure | Check ATLS_*_TOKEN env var |
-| 7 | Validation error | Fix request parameters |
-| 10 | Network / server error | Retry after delay |
-| 11 | Rate limited | Wait and retry |
+0=OK, 2=not found, 3=permission, 4=conflict, 5=stale, 6=auth, 7=validation, 10=network, 11=rate-limited
 
-## Multi-profile setup
+## Multi-profile
 ```bash
-# ~/.config/atlassian-skills/config.toml
-# [profiles.corp]
-# jira_url = "https://jira.corp.example.com"
-# confluence_url = "https://wiki.corp.example.com"
-#
-# [profiles.oss]
-# jira_url = "https://jira.oss.example.com"
-
-# Use a non-default profile
-atls --profile corp jira issue get CORP-1
-atls --profile oss jira issue search "project=OSS"
-
-# Or via env vars
-export ATLS_CORP_JIRA_TOKEN="pat-token-here"
-export ATLS_CORP_CONFLUENCE_TOKEN="pat-token-here"
+atls --profile corp jira issue get CORP-1  # use named profile
+# Env: ATLS_CORP_JIRA_TOKEN, ATLS_CORP_CONFLUENCE_TOKEN, ATLS_CORP_BITBUCKET_TOKEN
 ```
 
-## Confluence workflow recipes
+## Bitbucket recipes
 ```bash
-# Pull page as markdown
-atls confluence page pull-md PAGE_ID -o page.md --resolve-assets=sidecar --asset-dir=assets/
+atls bitbucket pr list PROJ repo --state=OPEN       # list PRs
+atls bitbucket pr diff PROJ repo 42                  # unified diff
+echo "LGTM" | atls bitbucket comment add PROJ repo 42 --body-file=-  # comment
+atls bitbucket pr create PROJ repo --source feat --target main --title "X" --reviewers a,b
+atls bitbucket pr merge PROJ repo 42                 # merge
+atls bitbucket file get PROJ repo path --ref=dev     # read file without clone
+atls bitbucket pr pending-review                     # PRs awaiting review
+```
 
-# Push updated page (with optimistic locking)
-atls confluence page push-md PAGE_ID --md-file page.md --if-version 15 --dry-run
-atls confluence page push-md PAGE_ID --md-file page.md --if-version 15 --asset-dir=assets/
-
-# Check for diffs (ignoring workflow metadata)
-atls confluence page diff-local PAGE_ID page.md --passthrough-prefix workflow:
-
-# Update Jira description from markdown
-atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-promotion=jira
+## Confluence recipes
+```bash
+atls confluence page pull-md ID -o page.md --resolve-assets=sidecar --asset-dir=assets/
+atls confluence page push-md ID --md-file page.md --if-version 15 --dry-run
+atls confluence page diff-local ID page.md --passthrough-prefix workflow:
+atls jira issue update KEY --body-file=desc.md --body-format=md --heading-promotion=jira
 ```

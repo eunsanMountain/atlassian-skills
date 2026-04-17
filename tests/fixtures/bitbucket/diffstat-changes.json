@@ -1,0 +1,23 @@
+{
+  "size": 2,
+  "limit": 100,
+  "isLastPage": true,
+  "values": [
+    {
+      "path": {
+        "components": ["src", "main.py"],
+        "toString": "src/main.py"
+      },
+      "type": "MODIFY"
+    },
+    {
+      "path": {
+        "components": ["tests", "test_main.py"],
+        "toString": "tests/test_main.py"
+      },
+      "type": "ADD",
+      "srcPath": null
+    }
+  ],
+  "start": 0
+}

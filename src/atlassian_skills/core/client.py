@@ -125,8 +125,8 @@ class BaseClient:
     def put(self, path: str, *, json: Any = None) -> httpx.Response:
         return self.request("PUT", path, json=json)
 
-    def delete(self, path: str) -> httpx.Response:
-        return self.request("DELETE", path)
+    def delete(self, path: str, *, params: dict[str, Any] | None = None) -> httpx.Response:
+        return self.request("DELETE", path, params=params)
 
     # ------------------------------------------------------------------
     # Pagination helpers

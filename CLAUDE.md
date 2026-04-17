@@ -48,8 +48,10 @@ src/atlassian_skills/
 ├── confluence/
 │   ├── client.py
 │   └── models.py
-├── bitbucket/              # 0.2.0
-└── bamboo/                 # 0.2.0
+├── bitbucket/
+│   ├── client.py           # BitbucketClient(BaseClient)
+│   └── models.py           # pydantic response models (PR, Comment, Branch, Task, etc.)
+└── bamboo/                 # planned
 
 tests/
 ├── fixtures/               # MCP capture JSON (golden files)

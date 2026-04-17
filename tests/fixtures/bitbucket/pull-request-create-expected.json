@@ -1,0 +1,34 @@
+{
+  "id": 3,
+  "version": 0,
+  "title": "New feature PR",
+  "description": "Description of the PR",
+  "state": "OPEN",
+  "createdDate": 1713400000000,
+  "fromRef": {
+    "id": "refs/heads/feature/new",
+    "displayId": "feature/new",
+    "latestCommit": "aaa111bbb222"
+  },
+  "toRef": {
+    "id": "refs/heads/main",
+    "displayId": "main",
+    "latestCommit": "def789abc012"
+  },
+  "author": {
+    "user": {"name": "jsmith", "displayName": "John Smith"},
+    "role": "AUTHOR",
+    "approved": false,
+    "status": "UNAPPROVED"
+  },
+  "reviewers": [
+    {
+      "user": {"name": "alice", "displayName": "Alice Lee"},
+      "role": "REVIEWER",
+      "approved": false,
+      "status": "UNAPPROVED"
+    }
+  ],
+  "participants": [],
+  "links": {}
+}

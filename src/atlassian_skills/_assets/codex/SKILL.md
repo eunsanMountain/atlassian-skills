@@ -1,6 +1,6 @@
 ---
 name: atls
-description: Use when the task involves Jira or Confluence and the preferred path is the atls CLI rather than Atlassian MCP tools. Covers command selection, output formats, dry-run safety, and markdown push/pull workflows.
+description: Use when the task involves Jira, Confluence, or Bitbucket and the preferred path is the atls CLI rather than Atlassian MCP tools. Covers command selection, output formats, dry-run safety, and markdown push/pull workflows.
 ---
 
 # atls — Atlassian CLI Dispatcher
@@ -8,7 +8,7 @@ description: Use when the task involves Jira or Confluence and the preferred pat
 <!-- installed-by: atls 0.1.0 -->
 
 ## When to use
-Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations.
+Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations (Jira, Confluence, Bitbucket).
 
 ## Command tree
 ```
@@ -36,12 +36,22 @@ atls
     ├── label        list, add
     ├── attachment   list, upload, upload-batch, download, download-all, delete
     └── user         search, me
+├── bitbucket
+│   ├── project      list
+│   ├── repo         list, get
+│   ├── pr           list, get, diff, comments, commits, activity, create, update, merge, decline, approve, unapprove, needs-work, reopen, diffstat, statuses, pending-review
+│   ├── branch       list
+│   ├── file         get
+│   ├── comment      add, reply, update, delete, resolve, reopen
+│   └── task         list, get, create, update, delete
 ```
 
 When unsure, navigate with `--help`:
 ```bash
-atls jira --help          # subgroups: issue, epic, comment, sprint, ...
-atls jira issue --help    # actions: get, search, create, ...
+atls jira --help              # subgroups: issue, epic, comment, sprint, ...
+atls jira issue --help        # actions: get, search, create, ...
+atls bitbucket --help         # subgroups: project, repo, pr, branch, file, comment, task
+atls bitbucket pr --help      # actions: list, get, diff, create, merge, ...
 ```
 
 ## Format selection

@@ -27,7 +27,8 @@ First-class integration with **Claude Code** and **Codex**. `atls setup all` reg
 | Jira body preservation | Drops special chars | Byte-preserving |
 | Server/DC support | Partial | Full (primary target) |
 | AI agent setup | Manual MCP config | One-line `atls setup all` for Claude Code + Codex |
-| Bitbucket/Bamboo | Not supported | Planned (0.2.0) |
+| Bitbucket Server | Not supported | Full (0.2.0) — PR workflow, comments, tasks, build status |
+| Bamboo | Not supported | Planned |
 
 ## Installation
 
@@ -49,17 +50,19 @@ atls upgrade
 
 Server/DC only. Personal Access Token (PAT / Bearer) is the default auth method.
 
-### 1. Create Personal Access Tokens
+### 1. Create access tokens
 
-Generate PATs from your Atlassian instance:
-- Jira: `https://your-jira.example.com` → Profile → Personal Access Tokens → Create
-- Confluence: `https://your-confluence.example.com` → Profile → Personal Access Tokens → Create
+Generate tokens from your Atlassian instances:
+- **Jira**: Profile → Personal Access Tokens → Create
+- **Confluence**: Profile → Personal Access Tokens → Create
+- **Bitbucket**: Profile → Manage Account → HTTP access tokens → Create (permissions: project read, repository read/write)
 
 ### 2. Configure server URLs
 
 ```bash
 atls config set profiles.default.jira_url https://your-jira.example.com
 atls config set profiles.default.confluence_url https://your-confluence.example.com
+atls config set profiles.default.bitbucket_url https://your-bitbucket.example.com
 ```
 
 Or via environment variables:
@@ -67,9 +70,10 @@ Or via environment variables:
 ```bash
 export ATLS_DEFAULT_JIRA_URL="https://your-jira.example.com"
 export ATLS_DEFAULT_CONFLUENCE_URL="https://your-confluence.example.com"
+export ATLS_DEFAULT_BITBUCKET_URL="https://your-bitbucket.example.com"
 ```
 
-For non-default profiles, use `ATLS_<PROFILE>_JIRA_URL` and `ATLS_<PROFILE>_CONFLUENCE_URL`.
+For non-default profiles, replace `DEFAULT` with the profile name (e.g. `ATLS_CORP_JIRA_URL`).
 
 ### 3. Set tokens
 
@@ -78,15 +82,17 @@ For non-default profiles, use `ATLS_<PROFILE>_JIRA_URL` and `ATLS_<PROFILE>_CONF
 Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-# mcp-atlassian compatible (works with both mcp-atlassian and atls)
+# Standard names (compatible with existing MCP servers)
 export JIRA_PERSONAL_TOKEN="your-jira-pat"
 export CONFLUENCE_PERSONAL_TOKEN="your-confluence-pat"
+export BITBUCKET_TOKEN="your-bitbucket-http-access-token"
 ```
 
 For multi-profile setups:
 ```bash
 export ATLS_CORP_JIRA_TOKEN="..."
 export ATLS_CORP_CONFLUENCE_TOKEN="..."
+export ATLS_CORP_BITBUCKET_TOKEN="..."
 ```
 
 <details>
@@ -96,15 +102,17 @@ export ATLS_CORP_CONFLUENCE_TOKEN="..."
 mkdir -p ~/.secrets && chmod 700 ~/.secrets
 printf '%s' 'YOUR_JIRA_PAT'       > ~/.secrets/jira_pat
 printf '%s' 'YOUR_CONFLUENCE_PAT' > ~/.secrets/confluence_pat
-chmod 600 ~/.secrets/jira_pat ~/.secrets/confluence_pat
+printf '%s' 'YOUR_BITBUCKET_PAT'  > ~/.secrets/bitbucket_pat
+chmod 600 ~/.secrets/*_pat
 
 # Then in ~/.zshrc or ~/.bashrc:
 [ -f ~/.secrets/jira_pat ]       && export JIRA_PERSONAL_TOKEN="$(cat ~/.secrets/jira_pat)"
 [ -f ~/.secrets/confluence_pat ] && export CONFLUENCE_PERSONAL_TOKEN="$(cat ~/.secrets/confluence_pat)"
+[ -f ~/.secrets/bitbucket_pat ]  && export BITBUCKET_TOKEN="$(cat ~/.secrets/bitbucket_pat)"
 ```
 </details>
 
-**Priority**: CLI flags > `ATLS_*` vars > `JIRA_PERSONAL_TOKEN`/`CONFLUENCE_PERSONAL_TOKEN` > config file
+**Priority**: CLI flags > `ATLS_*` vars > standard names (`JIRA_PERSONAL_TOKEN`, `CONFLUENCE_PERSONAL_TOKEN`, `BITBUCKET_TOKEN`) > config file
 
 ### 4. Verify
 
@@ -269,6 +277,17 @@ atls jira issue get PROJ-1 --format=json
 
 > `--passthrough-prefix` is supported on Confluence markdown round-trip commands only: `push-md`, `pull-md`, `diff-local`.
 
+### Bitbucket (33 commands: 11 read + 22 write)
+- `bitbucket project list`
+- `bitbucket repo list|get`
+- `bitbucket pr list|get|diff|comments|commits|activity|create|update|merge|decline|approve|unapprove|needs-work|reopen|diffstat|statuses|pending-review`
+- `bitbucket branch list`
+- `bitbucket file get`
+- `bitbucket comment add|reply|update|delete|resolve|reopen`
+- `bitbucket task list|get|create|update|delete`
+
+> All write commands support `--dry-run`. PR diff and file get treat `--format=md` as raw text passthrough.
+
 ### Utility
 - `auth login|status|list`
 - `config get|set|path`
@@ -359,9 +378,10 @@ uv build
 
 ## Roadmap
 
-- **0.1.0** (current): Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, skills
-- **0.2.0**: Bitbucket Server + Bamboo
-- **0.3.0+**: Workflow skills, async client, caching
+- **0.1.x** (current): Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, skills, GitHub Actions CI/release
+- **0.2.0**: Bitbucket Server/DC — PR workflow (create, review, comment, merge, diff, tasks, build status)
+- **0.3.0**: Bamboo + workflow skills
+- **0.4.0+**: Async client, caching
 
 ## License
 
