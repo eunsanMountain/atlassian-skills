@@ -115,7 +115,7 @@ class TestSearchResultModel:
 
 class TestTransitionModel:
     def test_transition_list(self) -> None:
-        data = load("get-transitions-rlm3.json")
+        data = load("get-transitions-proj3.json")
         adapter: TypeAdapter[list[Transition]] = TypeAdapter(list[Transition])
         transitions = adapter.validate_python(data)
         assert len(transitions) == 1
@@ -161,13 +161,13 @@ class TestJiraFieldModel:
 
 class TestBoardModel:
     def test_board_list(self) -> None:
-        data = load("get-agile-boards-rlm.json")
+        data = load("get-agile-boards-proj.json")
         adapter: TypeAdapter[list[Board]] = TypeAdapter(list[Board])
         boards = adapter.validate_python(data)
         assert len(boards) == 2
 
     def test_board_attributes(self) -> None:
-        data = load("get-agile-boards-rlm.json")
+        data = load("get-agile-boards-proj.json")
         adapter: TypeAdapter[list[Board]] = TypeAdapter(list[Board])
         boards = adapter.validate_python(data)
         kanban = next(b for b in boards if b.type == "kanban")
@@ -179,7 +179,7 @@ class TestBoardModel:
 
 class TestWorklogListModel:
     def test_empty_worklog(self) -> None:
-        data = load("get-worklog-rlm3.json")
+        data = load("get-worklog-proj3.json")
         wl = WorklogList.model_validate(data)
         assert wl.worklogs == []
 

@@ -13,9 +13,9 @@ fixtures/
 │   ├── get-all-projects.json          # 251 projects (token benchmark S1)
 │   ├── search-proj.json                # 3 results from PROJ search (S2)
 │   ├── get-issue-proj3.json            # single PROJ-3 issue (S3)
-│   ├── get-transitions-rlm3.json      # PROJ-3 transitions
+│   ├── get-transitions-proj3.json      # PROJ-3 transitions
 │   ├── search-fields-epic.json        # epic field search
-│   └── get-agile-boards-rlm.json      # PROJ board list
+│   └── get-agile-boards-proj.json      # PROJ board list
 ├── confluence/
 │   ├── search-proj.json                # 3 results from PROJ search (S5)
 │   ├── get-page-sample.json        # page (md-converted) (S4)

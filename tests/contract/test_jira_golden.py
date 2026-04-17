@@ -150,19 +150,19 @@ class TestGoldenSearchResult:
 
 
 # ---------------------------------------------------------------------------
-# get-transitions-rlm3.json → list[Transition]
+# get-transitions-proj3.json → list[Transition]
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenTransitions:
     def test_golden_transitions_parse(self) -> None:
-        data = load("get-transitions-rlm3.json")
+        data = load("get-transitions-proj3.json")
         adapter: TypeAdapter[list[Transition]] = TypeAdapter(list[Transition])
         transitions = adapter.validate_python(data)
         assert len(transitions) == 1
 
     def test_golden_transition_has_id_and_name(self) -> None:
-        data = load("get-transitions-rlm3.json")
+        data = load("get-transitions-proj3.json")
         adapter: TypeAdapter[list[Transition]] = TypeAdapter(list[Transition])
         transitions = adapter.validate_python(data)
         t = transitions[0]
@@ -257,36 +257,36 @@ class TestGoldenWatchers:
 
 
 # ---------------------------------------------------------------------------
-# get-worklog-rlm3.json → WorklogList
+# get-worklog-proj3.json → WorklogList
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenWorklogs:
     def test_golden_worklogs_parse(self) -> None:
-        data = load("get-worklog-rlm3.json")
+        data = load("get-worklog-proj3.json")
         wl = WorklogList.model_validate(data)
         assert wl.worklogs == []
 
     def test_golden_worklog_list_type(self) -> None:
-        data = load("get-worklog-rlm3.json")
+        data = load("get-worklog-proj3.json")
         wl = WorklogList.model_validate(data)
         assert isinstance(wl.worklogs, list)
 
 
 # ---------------------------------------------------------------------------
-# get-agile-boards-rlm.json → list[Board]
+# get-agile-boards-proj.json → list[Board]
 # ---------------------------------------------------------------------------
 
 
 class TestGoldenBoards:
     def test_golden_boards_parse(self) -> None:
-        data = load("get-agile-boards-rlm.json")
+        data = load("get-agile-boards-proj.json")
         adapter: TypeAdapter[list[Board]] = TypeAdapter(list[Board])
         boards = adapter.validate_python(data)
         assert len(boards) == 2
 
     def test_golden_boards_types(self) -> None:
-        data = load("get-agile-boards-rlm.json")
+        data = load("get-agile-boards-proj.json")
         adapter: TypeAdapter[list[Board]] = TypeAdapter(list[Board])
         boards = adapter.validate_python(data)
         types = {b.type for b in boards}
@@ -294,7 +294,7 @@ class TestGoldenBoards:
         assert "scrum" in types
 
     def test_golden_board_ids(self) -> None:
-        data = load("get-agile-boards-rlm.json")
+        data = load("get-agile-boards-proj.json")
         adapter: TypeAdapter[list[Board]] = TypeAdapter(list[Board])
         boards = adapter.validate_python(data)
         kanban = next(b for b in boards if b.type == "kanban")

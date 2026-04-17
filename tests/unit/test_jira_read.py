@@ -109,7 +109,7 @@ def test_search_returns_search_result(client: JiraClient) -> None:
 
 @respx.mock
 def test_get_transitions_returns_list(client: JiraClient) -> None:
-    fixture = _load("get-transitions-rlm3.json")
+    fixture = _load("get-transitions-proj3.json")
     respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/transitions").mock(return_value=httpx.Response(200, json=fixture))
 
     transitions = client.get_transitions("PROJ-3")
@@ -178,7 +178,7 @@ def test_search_fields_no_match(client: JiraClient) -> None:
 
 @respx.mock
 def test_list_boards_returns_boards(client: JiraClient) -> None:
-    fixture = _load("get-agile-boards-rlm.json")
+    fixture = _load("get-agile-boards-proj.json")
     respx.get(f"{BASE_URL}/rest/agile/1.0/board").mock(return_value=httpx.Response(200, json=fixture))
 
     boards = client.list_boards()
@@ -199,7 +199,7 @@ def test_list_boards_returns_boards(client: JiraClient) -> None:
 
 @respx.mock
 def test_list_worklogs_empty(client: JiraClient) -> None:
-    fixture = _load("get-worklog-rlm3.json")
+    fixture = _load("get-worklog-proj3.json")
     respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.list_worklogs("PROJ-3")
@@ -754,7 +754,7 @@ def test_list_link_types_plain_list_response(client: JiraClient) -> None:
 
 @respx.mock
 def test_list_worklogs_fixture(client: JiraClient) -> None:
-    fixture = _load("get-worklog-rlm3.json")
+    fixture = _load("get-worklog-proj3.json")
     respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3/worklog").mock(return_value=httpx.Response(200, json=fixture))
 
     result = client.list_worklogs("PROJ-3")
