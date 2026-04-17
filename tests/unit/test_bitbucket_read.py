@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 
 from atlassian_skills.bitbucket.client import BitbucketClient
@@ -22,6 +23,11 @@ API = "/rest/api/1.0"
 
 cred = Credential(method="pat", token="test-token")
 client = BitbucketClient(BASE_URL, cred)
+
+
+@pytest.fixture(autouse=True)
+def _reset_client_state() -> None:
+    client._current_user_slug = None
 
 
 def _load(name: str) -> dict:

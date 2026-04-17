@@ -266,7 +266,10 @@ def pr_diff(
     try:
         client = _make_client(ctx.obj)
         diff_text = client.get_pull_request_diff(project, repo, pr_id, path=path, context_lines=context_lines)
-        typer.echo(diff_text)
+        if fmt == OutputFormat.JSON:
+            typer.echo(format_output({"diff": diff_text}, fmt))
+        else:
+            typer.echo(diff_text)
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -399,7 +402,10 @@ def file_get(
     try:
         client = _make_client(ctx.obj)
         content = client.get_file_content(project, repo, path, at=ref)
-        typer.echo(content)
+        if fmt == OutputFormat.JSON:
+            typer.echo(format_output({"content": content, "path": path}, fmt))
+        else:
+            typer.echo(content)
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -736,7 +742,7 @@ def comment_update(
     repo: str = typer.Argument(..., help="Repository slug"),
     pr_id: int = typer.Argument(..., help="Pull request ID"),
     comment_id: int = typer.Argument(..., help="Comment ID"),
-    body_file: str | None = typer.Option(None, "--body-file", help="New body file (- for stdin)"),
+    body_file: str = typer.Option(..., "--body-file", help="New body file (- for stdin)"),
     version: int | None = typer.Option(None, "--version", help="Comment version for optimistic locking"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
 ) -> None:
@@ -902,16 +908,12 @@ def task_get(
     task_id: int = typer.Argument(..., help="Task ID"),
     format: str | None = typer.Option(None, "--format", help="Override output format"),
 ) -> None:
-    """Get a single task from a pull request (filters list by task ID)."""
+    """Get a single task by ID."""
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         client = _make_client(ctx.obj)
-        tasks = client.list_tasks(project, repo, pr_id)
-        task = next((t for t in tasks if t.id == task_id), None)
-        if task is None:
-            typer.echo(f"Error: Task {task_id} not found on PR-{pr_id}", err=True)
-            raise typer.Exit(2)
+        task = client.get_task(task_id)
         if fmt == OutputFormat.JSON or fmt == OutputFormat.RAW:
             typer.echo(format_output(task.model_dump(), fmt))
         else:
@@ -968,6 +970,9 @@ def task_update(
     fmt = _fmt(ctx.obj)
     try:
         client = _make_client(ctx.obj)
+        if not state and not text:
+            typer.echo("Error: At least one of --state or --text is required", err=True)
+            raise typer.Exit(7)
         payload: dict[str, Any] = {}
         if state:
             payload["state"] = state.upper()

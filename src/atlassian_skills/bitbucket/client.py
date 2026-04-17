@@ -235,7 +235,8 @@ class BitbucketClient(BaseClient):
             params["at"] = at
         resp = self.get(f"{self.API}/projects/{project}/repos/{repo}/raw/{path}", params=params)
         content_type = resp.headers.get("content-type", "")
-        if "text" not in content_type and "json" not in content_type and "xml" not in content_type:
+        binary_types = ("application/octet-stream", "image/", "video/", "audio/", "application/zip", "application/gzip")
+        if any(bt in content_type for bt in binary_types):
             raise ValidationError("Binary file cannot be displayed as text")
         return resp.text
 
@@ -279,12 +280,15 @@ class BitbucketClient(BaseClient):
         version: int | None = None,
     ) -> PullRequest:
         """PUT .../pull-requests/{id}"""
-        pr = self.get_pull_request(project, repo, pr_id)
-        if version is None:
-            version = pr.version
+        if version is None or title is None:
+            pr = self.get_pull_request(project, repo, pr_id)
+            if version is None:
+                version = pr.version
+            if title is None:
+                title = pr.title
         payload: dict[str, Any] = {
             "version": version,
-            "title": title or pr.title,
+            "title": title,
         }
         if description is not None:
             payload["description"] = description
@@ -305,10 +309,16 @@ class BitbucketClient(BaseClient):
         """POST .../pull-requests/{id}/merge"""
         if version is None:
             version = self.get_pull_request(project, repo, pr_id).version
-        params: dict[str, Any] = {"version": version}
+        query: dict[str, Any] = {"version": version}
+        body: dict[str, Any] | None = None
         if strategy:
-            params["strategyId"] = strategy
-        data = self.post(f"{self.API}{self._pr_path(project, repo)}/{pr_id}/merge", json=params).json()
+            body = {"strategyId": strategy}
+        data = self.request(
+            "POST",
+            f"{self.API}{self._pr_path(project, repo)}/{pr_id}/merge",
+            params=query,
+            json=body,
+        ).json()
         return PullRequest.model_validate(data)
 
     def decline_pull_request(
@@ -548,7 +558,7 @@ class BitbucketClient(BaseClient):
             resp = self.get(f"{self.API}/inbox/pull-requests", params=params)
             data = resp.json()
             return [PullRequest.model_validate(i) for i in data.get("values", [])]
-        except (NotFoundError, ValidationError):
+        except NotFoundError:
             # Fallback for older server versions that lack the inbox API
             params_fb: dict[str, Any] = {"limit": limit, "role": "REVIEWER"}
             if state:
@@ -568,6 +578,11 @@ class BitbucketClient(BaseClient):
             limit=limit,
         )
         return [Task.model_validate(i) for i in items]
+
+    def get_task(self, task_id: int) -> Task:
+        """GET /rest/api/1.0/tasks/{id}"""
+        data = self.get(f"{self.API}/tasks/{task_id}").json()
+        return Task.model_validate(data)
 
     def create_task(
         self,

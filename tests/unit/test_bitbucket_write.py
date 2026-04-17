@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 
 from atlassian_skills.bitbucket.client import BitbucketClient
@@ -16,6 +17,11 @@ API = "/rest/api/1.0"
 
 cred = Credential(method="pat", token="test-token")
 client = BitbucketClient(BASE_URL, cred)
+
+
+@pytest.fixture(autouse=True)
+def _reset_client_state() -> None:
+    client._current_user_slug = None
 
 
 def _load(name: str) -> dict:
@@ -95,8 +101,9 @@ def test_merge_pull_request_auto_version() -> None:
     result = client.merge_pull_request("PROJ", "my-repo", 1)
 
     assert result.state == "MERGED"
-    sent = json.loads(route.calls[0].request.content)
-    assert sent["version"] == 3  # auto-fetched from PR fixture
+    # version should be sent as query param, not in body
+    params = dict(route.calls[0].request.url.params)
+    assert params["version"] == "3"  # auto-fetched from PR fixture
 
 
 # ---------------------------------------------------------------------------
