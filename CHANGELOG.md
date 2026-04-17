@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-04-17
+
+### Added
+- **Bitbucket Server/DC support** — 33 CLI commands for PR workflow automation
+- **PR read** (8 commands): `pr list|get|diff|comments|commits|activity`, `branch list`, `file get`
+- **PR write** (10 commands): `pr create|update|merge|decline|approve|unapprove|needs-work|reopen`, `comment add|reply`
+- **PR management** (15 commands): `comment update|delete|resolve|reopen`, `task list|get|create|update|delete`, `pr diffstat|statuses|pending-review`
+- 13 pydantic models: PullRequest, PullRequestComment, PullRequestActivity, Branch, Commit, BitbucketUser, BitbucketRef, CommentAnchor, PullRequestParticipant, Task, BuildStatus, DiffStat, DiffStatPath
+- 8 compact format renderers with PR reviewer summary (`2A/1NW/3R`)
+- `BITBUCKET_TOKEN` env var as legacy fallback (compatible with existing Bitbucket MCP servers)
+- `auth status` now displays Bitbucket URL and token alongside Jira/Confluence
+- `BaseClient.delete()` now accepts `params` kwarg for version-based optimistic locking
+- `file get` uses `/raw/{path}` for byte-preserving file content
+- `pr diff` returns raw unified diff with `Accept: text/plain`
+- `pr comments` extracts comments from `/activities` (Bitbucket Server requires `path` param on `/comments`)
+- `_get_current_user_slug()` uses `X-AUSERNAME` header with caching
+- Build status fetches from `/rest/build-status/1.0/` (separate API base)
+- `pr pending-review` with `/inbox/pull-requests` + dashboard fallback
+- Task CRUD via top-level `/rest/api/1.0/tasks` (requires Bitbucket Server 7.2+)
+- All write commands support `--dry-run`
+
+### Fixed
+- `_safe_server_message` now handles Bitbucket's list-format `errors` field (was crashing on `.items()`)
+
 ## [0.1.4] - 2026-04-17
 
 ### Fixed

@@ -27,7 +27,7 @@ First-class integration with **Claude Code** and **Codex**. `atls setup all` reg
 | Jira body preservation | Drops special chars | Byte-preserving |
 | Server/DC support | Partial | Full (primary target) |
 | AI agent setup | Manual MCP config | One-line `atls setup all` for Claude Code + Codex |
-| Bitbucket Server | Not supported | In progress (0.2.0) |
+| Bitbucket Server | Not supported | Full (0.2.0) — PR workflow, comments, tasks, build status |
 | Bamboo | Not supported | Planned |
 
 ## Installation
@@ -277,10 +277,16 @@ atls jira issue get PROJ-1 --format=json
 
 > `--passthrough-prefix` is supported on Confluence markdown round-trip commands only: `push-md`, `pull-md`, `diff-local`.
 
-### Bitbucket (in progress — 0.2.0)
+### Bitbucket (33 commands: 11 read + 22 write)
 - `bitbucket project list`
 - `bitbucket repo list|get`
-- More commands coming: PR read/write, comments, diffs, tasks, build status
+- `bitbucket pr list|get|diff|comments|commits|activity|create|update|merge|decline|approve|unapprove|needs-work|reopen|diffstat|statuses|pending-review`
+- `bitbucket branch list`
+- `bitbucket file get`
+- `bitbucket comment add|reply|update|delete|resolve|reopen`
+- `bitbucket task list|get|create|update|delete`
+
+> All write commands support `--dry-run`. PR diff and file get treat `--format=md` as raw text passthrough.
 
 ### Utility
 - `auth login|status|list`
