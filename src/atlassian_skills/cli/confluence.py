@@ -608,7 +608,10 @@ def page_move(
     try:
         client = _make_client(ctx.obj)
         result = client.move_page(page_id, position, target)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="moved", key=page_id), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -697,7 +700,10 @@ def comment_reply(
             return
 
         result = client.reply_to_comment(comment_id, body, body_format="storage")
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="replied", key=str(result.get("id", comment_id))), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -720,7 +726,10 @@ def label_add(
     try:
         client = _make_client(ctx.obj)
         result = client.add_label(page_id, labels)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="labeled", key=page_id, summary=",".join(labels)), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -748,7 +757,16 @@ def attachment_upload(
             raise typer.Exit(1)
         client = _make_client(ctx.obj)
         result = client.upload_attachment(page_id, path, comment=comment)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            att_id = None
+            if isinstance(result, dict):
+                results_list = result.get("results") if isinstance(result.get("results"), list) else None
+                first = results_list[0] if results_list else result
+                if isinstance(first, dict) and first.get("id"):
+                    att_id = str(first["id"])
+            typer.echo(format_output(WriteResult(action="uploaded", key=page_id, id=att_id, summary=path.name), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 

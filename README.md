@@ -204,6 +204,11 @@ atls confluence page pull-md 12345 --output=page.md --resolve-assets=sidecar --a
 
 # Jira description from markdown
 atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-promotion=jira
+
+# Jira comment / worklog from markdown
+atls jira comment add PROJ-1 --body-file=comment.md --body-format=md
+atls jira comment edit PROJ-1 12345 --body-file=comment.md --body-format=md
+atls jira worklog add PROJ-1 --time-spent-seconds 1800 --comment "$(cat note.md)" --comment-format=md
 ```
 
 ### Agent usage tips

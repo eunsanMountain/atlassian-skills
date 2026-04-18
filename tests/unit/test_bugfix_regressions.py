@@ -336,3 +336,214 @@ def test_paginate_offset_actual_count_advances_start_at() -> None:
     assert len(pages) == 2
     # Second call must start at 5 (actual count from page 1), not some other offset
     assert calls[1][0] == 5
+
+
+# ---------------------------------------------------------------------------
+# Jira comment/worklog markdown → wiki conversion (issue #4 follow-up)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_jira_comment_add_body_format_md_converts_to_wiki() -> None:
+    """--body-format=md must convert markdown to Jira wiki before POST.
+
+    Without conversion, `**bold**` / `[text](url)` / `# H1` reach the server
+    literally and render as plain text in the Jira UI.
+    """
+    captured: dict[str, object] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(201, json={"id": "100", "body": "*bold*"})
+
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-1/comment").mock(side_effect=_capture)
+
+    with patch("atlassian_skills.cli.jira.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            ["jira", "comment", "add", "PROJ-1", "--body", "**bold** [x](http://y)", "--body-format=md"],
+            env=_JIRA_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    sent_body = captured["body"]["body"]  # type: ignore[index]
+    assert "**bold**" not in sent_body
+    assert "*bold*" in sent_body
+    assert "[x|http://y]" in sent_body
+
+
+@respx.mock
+def test_jira_comment_add_no_body_format_sends_raw() -> None:
+    """Without --body-format, body is sent unchanged (legacy behavior)."""
+    captured: dict[str, object] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(201, json={"id": "101"})
+
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-2/comment").mock(side_effect=_capture)
+
+    with patch("atlassian_skills.cli.jira.load_config", return_value=Config()):
+        result = _runner.invoke(app, ["jira", "comment", "add", "PROJ-2", "--body", "*raw wiki*"], env=_JIRA_ENV)
+
+    assert result.exit_code == 0, result.output
+    assert captured["body"]["body"] == "*raw wiki*"  # type: ignore[index]
+
+
+@respx.mock
+def test_jira_comment_edit_body_format_md_converts_to_wiki() -> None:
+    captured: dict[str, object] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(200, json={"id": "500"})
+
+    respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-3/comment/500").mock(side_effect=_capture)
+
+    with patch("atlassian_skills.cli.jira.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            ["jira", "comment", "edit", "PROJ-3", "500", "--body", "- item", "--body-format=md"],
+            env=_JIRA_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    sent_body = captured["body"]["body"]  # type: ignore[index]
+    assert "- item" not in sent_body
+    assert "* item" in sent_body
+
+
+@respx.mock
+def test_jira_worklog_add_comment_format_md_converts_to_wiki() -> None:
+    captured: dict[str, object] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(201, json={"id": "700"})
+
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-4/worklog").mock(side_effect=_capture)
+
+    with patch("atlassian_skills.cli.jira.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            [
+                "jira",
+                "worklog",
+                "add",
+                "PROJ-4",
+                "--time-spent-seconds",
+                "1800",
+                "--comment",
+                "**done**",
+                "--comment-format=md",
+            ],
+            env=_JIRA_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    sent_comment = captured["body"]["comment"]  # type: ignore[index]
+    assert "**done**" not in sent_comment
+    assert "*done*" in sent_comment
+
+
+# ---------------------------------------------------------------------------
+# Write-command compact output branching (confluence reply, jira comment edit,
+# worklog add, sprint create/update, version-create, attachment upload, label
+# add, page move, link remote-create, batch create-issues)
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_confluence_comment_reply_compact_uses_writeresult() -> None:
+    """Before fix: raw JSON dump on --format=compact. After: '<id> | replied'."""
+    respx.get(
+        url__regex=rf"{CONFLUENCE_URL}/rest/api/content/111\?expand=container",
+    ).mock(return_value=httpx.Response(200, json={"container": {"id": "999"}}))
+    respx.post(f"{CONFLUENCE_URL}/rest/api/content").mock(
+        return_value=httpx.Response(201, json={"id": "222", "type": "comment"})
+    )
+
+    with patch("atlassian_skills.cli.confluence.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            ["--format=compact", "confluence", "comment", "reply", "111", "--body-file=-"],
+            input="hi",
+            env=_CONFLUENCE_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "222 | replied"
+
+
+@respx.mock
+def test_jira_comment_edit_compact_uses_writeresult() -> None:
+    respx.put(f"{BASE_URL}/rest/api/2/issue/PROJ-5/comment/321").mock(
+        return_value=httpx.Response(200, json={"id": "321"})
+    )
+
+    with patch("atlassian_skills.cli.jira.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            ["--format=compact", "jira", "comment", "edit", "PROJ-5", "321", "--body", "updated"],
+            env=_JIRA_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "PROJ-5 | edited | 321"
+
+
+@respx.mock
+def test_jira_worklog_add_compact_uses_writeresult() -> None:
+    respx.post(f"{BASE_URL}/rest/api/2/issue/PROJ-6/worklog").mock(return_value=httpx.Response(201, json={"id": "800"}))
+
+    with patch("atlassian_skills.cli.jira.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            [
+                "--format=compact",
+                "jira",
+                "worklog",
+                "add",
+                "PROJ-6",
+                "--time-spent-seconds",
+                "60",
+            ],
+            env=_JIRA_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert "PROJ-6 | worklog added | 800" in result.output
+
+
+@respx.mock
+def test_confluence_page_move_compact_uses_writeresult() -> None:
+    respx.post(
+        url__regex=rf"{CONFLUENCE_URL}/rest/api/content/111/move/append/target/222",
+    ).mock(return_value=httpx.Response(200, json={"pageId": "111"}))
+
+    with patch("atlassian_skills.cli.confluence.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            ["--format=compact", "confluence", "page", "move", "111", "--target", "222"],
+            env=_CONFLUENCE_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "111 | moved"
+
+
+@respx.mock
+def test_confluence_label_add_compact_uses_writeresult() -> None:
+    respx.post(f"{CONFLUENCE_URL}/rest/api/content/111/label").mock(
+        return_value=httpx.Response(200, json={"results": []})
+    )
+
+    with patch("atlassian_skills.cli.confluence.load_config", return_value=Config()):
+        result = _runner.invoke(
+            app,
+            ["--format=compact", "confluence", "label", "add", "111", "bug", "urgent"],
+            env=_CONFLUENCE_ENV,
+        )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "111 | labeled | bug,urgent"

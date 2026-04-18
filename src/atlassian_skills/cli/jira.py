@@ -1072,6 +1072,9 @@ def comment_add(
     key: str = typer.Argument(..., help="Issue key"),
     body_file: str | None = typer.Option(None, "--body-file", help="Comment body file (- for stdin)"),
     body: str | None = typer.Option(None, "--body", help="Comment body text"),
+    body_format: str | None = typer.Option(
+        None, "--body-format", help="Body format: md (convert to Jira wiki) or wiki (raw, default)"
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be sent"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
@@ -1080,6 +1083,10 @@ def comment_add(
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         text = read_body(body=body, body_file=body_file)
+        if body_format == "md":
+            from atlassian_skills.core.format.markdown import md_to_jira_wiki
+
+            text = md_to_jira_wiki(text)
         if dry_run:
             client = _make_client(ctx.obj)
             typer.echo(format_dry_run("POST", f"{client.base_url}/rest/api/2/issue/{key}/comment", body={"body": text}))
@@ -1101,6 +1108,9 @@ def comment_edit(
     comment_id: str = typer.Argument(..., help="Comment ID"),
     body_file: str | None = typer.Option(None, "--body-file", help="Comment body file (- for stdin)"),
     body: str | None = typer.Option(None, "--body", help="Comment body text"),
+    body_format: str | None = typer.Option(
+        None, "--body-format", help="Body format: md (convert to Jira wiki) or wiki (raw, default)"
+    ),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
     """Edit an existing comment."""
@@ -1108,9 +1118,16 @@ def comment_edit(
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         text = read_body(body=body, body_file=body_file)
+        if body_format == "md":
+            from atlassian_skills.core.format.markdown import md_to_jira_wiki
+
+            text = md_to_jira_wiki(text)
         client = _make_client(ctx.obj)
         result = client.edit_comment(key, comment_id, text)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="edited", key=key, summary=comment_id), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1153,6 +1170,9 @@ def worklog_add(
     key: str = typer.Argument(..., help="Issue key"),
     time_spent_seconds: int = typer.Option(..., "--time-spent-seconds", help="Time spent in seconds"),
     comment: str | None = typer.Option(None, "--comment", help="Worklog comment"),
+    comment_format: str | None = typer.Option(
+        None, "--comment-format", help="Comment format: md (convert to Jira wiki) or wiki (raw, default)"
+    ),
     started: str | None = typer.Option(None, "--started", help="Started datetime (ISO format)"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
@@ -1160,9 +1180,18 @@ def worklog_add(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        if comment and comment_format == "md":
+            from atlassian_skills.core.format.markdown import md_to_jira_wiki
+
+            comment = md_to_jira_wiki(comment)
         client = _make_client(ctx.obj)
         result = client.add_worklog(key, time_spent_seconds, comment=comment, started=started)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(
+                format_output(WriteResult(action="worklog added", key=key, summary=str(result.get("id") or "")), fmt)
+            )
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1229,7 +1258,15 @@ def link_remote_create(
     try:
         client = _make_client(ctx.obj)
         result = client.create_remote_issue_link(key, url, title, relationship=relationship)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            link_id = (result or {}).get("id")
+            typer.echo(
+                format_output(
+                    WriteResult(action="remote-linked", key=key, summary=str(link_id) if link_id else None), fmt
+                )
+            )
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1337,7 +1374,11 @@ def sprint_create(
     try:
         client = _make_client(ctx.obj)
         result = client.create_sprint(name, board_id, start_date=start, end_date=end, goal=goal)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            sprint_key = str((result or {}).get("id", ""))
+            typer.echo(format_output(WriteResult(action="created", key=sprint_key, summary=name), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1359,7 +1400,10 @@ def sprint_update(
     try:
         client = _make_client(ctx.obj)
         result = client.update_sprint(sprint_id, name=name, state=state, start_date=start, end_date=end, goal=goal)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            typer.echo(format_output(WriteResult(action="updated", key=str(sprint_id)), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1405,7 +1449,11 @@ def project_versions_create(
         result = client.create_version(
             project, name, start_date=start_date, release_date=release_date, description=description
         )
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            version_key = str((result or {}).get("id", ""))
+            typer.echo(format_output(WriteResult(action="created", key=version_key, summary=name), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1439,7 +1487,15 @@ def attachment_upload(
             )
             return
         result = client.upload_attachment(key, file)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            att_id = None
+            if isinstance(result, list) and result:
+                att_id = str(result[0].get("id")) if isinstance(result[0], dict) else None
+            elif isinstance(result, dict):
+                att_id = str(result.get("id")) if result.get("id") else None
+            typer.echo(format_output(WriteResult(action="uploaded", key=key, id=att_id, summary=file), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1500,6 +1556,14 @@ def issue_batch_create(
 
         client = _make_client(ctx.obj)
         result = client.batch_create_issues(data)
-        typer.echo(format_output(result, fmt))
+        if fmt == OutputFormat.COMPACT:
+            created = [
+                WriteResult(action="created", key=str(item.get("key", "")), id=str(item.get("id", "")) or None)
+                for item in (result or {}).get("issues", [])
+                if isinstance(item, dict)
+            ]
+            typer.echo(format_output(created, fmt))
+        else:
+            typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)

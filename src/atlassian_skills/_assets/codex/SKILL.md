@@ -75,6 +75,7 @@ atls jira issue get KEY                    # compact view
 atls jira issue search "project=PROJ"      # JQL search
 atls jira issue create --project PROJ --type Story --summary "..." --body-file=-
 atls jira issue update KEY --body-file=- --body-format=md --heading-promotion=jira
+atls jira comment add KEY --body-file=- --body-format=md    # md → Jira wiki (also: comment edit, worklog add --comment-format=md)
 
 # Jira transition (2-step: discover ID, then transition)
 atls jira issue transitions KEY --format=json   # → [{"id":"31","name":"In Progress"},...]
@@ -107,6 +108,7 @@ atls confluence page diff-local ID page.md --passthrough-prefix workflow:
 | `--passthrough-prefix P` | push-md, pull-md, diff-local, issue update | Preserve `<!-- P:... -->` comments |
 | `--md-file -` | push-md | Read markdown from stdin |
 | `--body-repr md\|raw\|wiki` | issue get | Control body representation (separate from `--format`) |
+| `--body-format md` / `--comment-format md` | jira issue/comment/worklog, confluence page/comment writes | md → server format (Jira wiki / Confluence storage) |
 | `--heading-promotion jira` | issue update, issue get, issue search | Heading level adjust for md↔wiki |
 | `--section "H2 Title"` | issue get, issue search | Extract specific H2 section from body |
 

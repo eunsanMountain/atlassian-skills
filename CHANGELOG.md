@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-04-18
+
+### Added
+- **Jira comment/worklog markdown conversion**: `jira comment add|edit` accepts `--body-format=md` and `jira worklog add` accepts `--comment-format=md` to convert Markdown to Jira wiki markup before POST. Previously the Markdown reached the server literally and rendered as plain text in the Jira UI.
+- Compact output (`WriteResult`) for 11 write commands that previously dumped raw JSON under `--format=compact`: `jira comment edit`, `jira worklog add`, `jira link remote-create`, `jira sprint create|update`, `jira project versions-create`, `jira attachment upload`, `jira issue-batch create`, `confluence comment reply`, `confluence page move`, `confluence label add`, `confluence attachment upload`.
+- 10 regression tests covering the md→wiki conversion and compact output paths.
+
+### Fixed
+- `src/atlassian_skills/__init__.py` `__version__` is now kept in sync with `pyproject.toml` (was stale at `0.1.1`).
+- `tests/unit/test_config.py::test_no_legacy_var_for_bitbucket` was stale after `BITBUCKET_TOKEN` legacy fallback was added in 0.2.0; renamed to `test_bitbucket_legacy_token_fallback` and rewritten to assert the intended behavior.
+
 ## [0.2.0] - 2026-04-17
 
 ### Added

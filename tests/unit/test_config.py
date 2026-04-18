@@ -176,9 +176,10 @@ class TestLegacyEnvVarFallback:
         monkeypatch.setenv("JIRA_PERSONAL_TOKEN", "legacy-pat")
         assert get_env_token("corp", "jira") == "new-pat"
 
-    def test_no_legacy_var_for_bitbucket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_bitbucket_legacy_token_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ATLS_DEFAULT_BITBUCKET_TOKEN", raising=False)
-        assert get_env_token("default", "bitbucket") is None
+        monkeypatch.setenv("BITBUCKET_TOKEN", "legacy-bb-pat")
+        assert get_env_token("default", "bitbucket") == "legacy-bb-pat"
 
     def test_legacy_fallback_case_insensitive_product(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ATLS_DEFAULT_JIRA_TOKEN", raising=False)
