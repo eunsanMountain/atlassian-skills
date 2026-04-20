@@ -22,6 +22,12 @@ the same commands — on Windows they run identically in PowerShell or cmd.
 
 ## [0.2.4] - 2026-04-20
 
+> ⚠️ **Upgrading from v0.2.3 on a uv tool install**: `atls upgrade` itself is the bug
+> this release fixes, so it will fail with `No module named pip` on v0.2.3. Upgrade
+> manually this one time with `uv tool upgrade atlassian-skills` (or `pipx upgrade
+> atlassian-skills` for pipx). After v0.2.4 is installed, `atls upgrade` works again
+> for future releases.
+
 ### Fixed
 - **`atls upgrade` misdetected uv tool installs as pip** — `_detect_install_method` called `Path(sys.executable).resolve()`, which followed the uv tool venv's `python` symlink all the way to the uv-managed interpreter (`<data>/uv/python/cpython-.../bin/python3.x`). That resolved path no longer contains the `uv/tools` marker, so the detector fell through to the pip branch and ran `python -m pip install --upgrade atlassian-skills` inside a venv that has no `pip` module, failing with `No module named pip`. Fixed by dropping `.resolve()` — `sys.executable` is already absolute, and keeping the symlink means the `uv/tools/<package>/bin/python` layout stays visible to the detector.
 
