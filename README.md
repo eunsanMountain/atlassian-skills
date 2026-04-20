@@ -32,17 +32,38 @@ First-class integration with **Claude Code** and **Codex**. `atls setup all` reg
 
 ## Installation
 
+**Recommended: `uv tool install`** — isolates atls in its own environment and makes `atls upgrade` a single command. `pipx` (the pip-world equivalent of `uv tool`) and plain `pip` also work; `atls upgrade` auto-detects all three.
+
+### Step 1 — install `uv` (skip if you already have it)
+
+**Linux / macOS**
 ```bash
-# Install as a CLI tool (after PyPI publish)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows (PowerShell)**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Alternatives: `brew install uv` (macOS), `winget install astral-sh.uv` (Windows), `pipx install uv` (cross-platform). Full options in the [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/).
+
+### Step 2 — install atls
+
+```bash
+# Recommended — fastest, fully isolated
 uv tool install atlassian-skills
 
-# Or via pip
+# Alternative — pipx (pip-world equivalent of `uv tool`, also isolated per tool)
+pipx install atlassian-skills
+
+# Plain pip (installs into the current Python env; not recommended for CLI tools)
 pip install atlassian-skills
 
 # Verify
 atls --version
 
-# Upgrade the CLI and refresh assistant setup assets
+# Later — upgrade the CLI (auto-detects uv / pipx / pip) and refresh skill assets
 atls upgrade
 ```
 
@@ -110,6 +131,66 @@ chmod 600 ~/.secrets/*_pat
 [ -f ~/.secrets/confluence_pat ] && export CONFLUENCE_PERSONAL_TOKEN="$(cat ~/.secrets/confluence_pat)"
 [ -f ~/.secrets/bitbucket_pat ]  && export BITBUCKET_TOKEN="$(cat ~/.secrets/bitbucket_pat)"
 ```
+</details>
+
+<details>
+<summary>Windows — native equivalents (System Properties GUI / PowerShell / setx)</summary>
+
+atls runs natively on Windows; the only platform-specific piece is how you set environment variables. Pick whichever of the three Windows-native paths you prefer — all produce the same result as the `export` snippets above.
+
+**System Properties GUI (recommended — permanent, no dotfile)**
+
+Press `Win + R` → type `sysdm.cpl` → **Advanced** tab → **Environment Variables** → under **User variables** click **New**:
+
+- `JIRA_PERSONAL_TOKEN` = `<your-pat>`
+- `CONFLUENCE_PERSONAL_TOKEN` = `<your-pat>`
+- `BITBUCKET_TOKEN` = `<your-http-access-token>`
+- `ATLS_DEFAULT_JIRA_URL` = `https://your-jira.example.com` (and `*_CONFLUENCE_URL`, `*_BITBUCKET_URL`)
+
+Open a *new* terminal afterward — existing shells and IDEs do not see the change until restarted.
+
+**PowerShell (current session only)**
+
+```powershell
+$env:ATLS_DEFAULT_JIRA_URL = "https://your-jira.example.com"
+$env:JIRA_PERSONAL_TOKEN   = "your-jira-pat"
+```
+
+**PowerShell (permanent, picked up by new sessions)**
+
+```powershell
+[Environment]::SetEnvironmentVariable("JIRA_PERSONAL_TOKEN", "your-jira-pat", "User")
+[Environment]::SetEnvironmentVariable("ATLS_DEFAULT_JIRA_URL", "https://your-jira.example.com", "User")
+```
+
+**cmd / `setx` (permanent)**
+
+```cmd
+setx JIRA_PERSONAL_TOKEN "your-jira-pat"
+setx ATLS_DEFAULT_JIRA_URL "https://your-jira.example.com"
+```
+
+> `atls config set ...` works identically on Windows — config is stored at `%APPDATA%\atlassian-skills\config.toml` via `platformdirs`. Tokens, however, must live in environment variables (config-based token storage is not yet implemented).
+</details>
+
+<details>
+<summary>Basic auth (legacy instances without PAT support)</summary>
+
+Older Jira (< 8.14) and Confluence (< 7.9) predate Personal Access Tokens. For those, switch to Basic auth with username + password (or API token):
+
+```bash
+export ATLS_DEFAULT_JIRA_AUTH=basic
+export ATLS_DEFAULT_JIRA_USER=myname
+export ATLS_DEFAULT_JIRA_TOKEN=<password-or-api-token>
+```
+
+Or persist in config:
+
+```bash
+atls config set profiles.default.auth.jira basic
+```
+
+The same `*_AUTH=basic` / `*_USER` / `*_TOKEN` triple works for `jira`, `confluence`, and `bitbucket`. On Windows, set the three variables via the GUI or `setx` as shown above.
 </details>
 
 **Priority**: CLI flags > `ATLS_*` vars > standard names (`JIRA_PERSONAL_TOKEN`, `CONFLUENCE_PERSONAL_TOKEN`, `BITBUCKET_TOKEN`) > config file
@@ -298,6 +379,7 @@ atls jira issue get PROJ-1 --format=json
 - `config get|set|path`
 - `setup codex|claude|all|status|paths` (add `--interactive` to customize install paths per-platform)
 - `upgrade`
+- `version [--check]` — show installed version; `--check` compares against the latest PyPI release (exit 1 if outdated)
 
 ## Write Safety
 

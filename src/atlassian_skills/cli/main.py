@@ -61,6 +61,7 @@ def _register_sub_apps() -> None:
     from atlassian_skills.cli.jira import jira_app
     from atlassian_skills.cli.setup import setup_app
     from atlassian_skills.cli.upgrade import upgrade
+    from atlassian_skills.cli.version import version
 
     app.add_typer(auth_app, name="auth")
     app.add_typer(bitbucket_app, name="bitbucket")
@@ -69,6 +70,7 @@ def _register_sub_apps() -> None:
     app.add_typer(jira_app, name="jira")
     app.add_typer(setup_app, name="setup")
     app.command("upgrade")(upgrade)
+    app.command("version")(version)
 
 
 _register_sub_apps()

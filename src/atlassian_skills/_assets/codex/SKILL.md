@@ -10,6 +10,9 @@ description: Use when the task involves Jira, Confluence, or Bitbucket and the p
 ## When to use
 Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations (Jira, Confluence, Bitbucket).
 
+## When to suggest `atls upgrade`
+If the user hits `No such command` on a subcommand documented here, a flag that should exist but is rejected, or behavior the latest CHANGELOG lists as fixed, run `atls version --check` first (opt-in PyPI lookup). If it reports an outdated install (exit 1), suggest `atls upgrade`. Do not run the check on every invocation — only when there is a concrete symptom.
+
 ## Command tree
 ```
 atls

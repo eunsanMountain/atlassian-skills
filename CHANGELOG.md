@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## Upgrading
+
+```bash
+# Recommended — auto-detects uv / pipx / pip and refreshes Claude/Codex skill assets in one shot
+atls upgrade
+
+# Manual alternatives (if you prefer to run the underlying command yourself)
+uv tool upgrade atlassian-skills        # for uv tool installs
+pipx upgrade atlassian-skills            # for pipx installs
+pip install -U atlassian-skills          # for plain pip installs
+```
+
+After a manual upgrade, rerun `atls setup all` to refresh the bundled skill files
+(`atls upgrade` already does this automatically). Windows, macOS, and Linux all use
+the same commands — on Windows they run identically in PowerShell or cmd.
+
+---
+
+## [0.2.2] - 2026-04-20
+
+### Added
+- **`atls version [--check]` subcommand** — shows the installed version; with `--check`, queries PyPI and exits 1 if a newer release is available. Lets agents gate upgrade suggestions on a concrete signal rather than guessing.
+- **`atls upgrade` auto-detects uv, pipx, and pip** via `sys.executable` layout and dispatches the right upgrade command. Previously uv-only; pip and pipx users now get a single command that does the right thing. Works identically on Windows, macOS, and Linux.
+- `_assets/claude/atls.md` and `_assets/codex/SKILL.md` now include a "When to suggest `atls upgrade`" rule, so Claude/Codex route users through `atls version --check` + `atls upgrade` only when there is a concrete symptom (missing command, stale behavior).
+- README documents `uv` installation for Windows (PowerShell) and Linux/macOS (curl), with `pipx` as an explicit alternative.
+
+### Changed
+- README Installation section recommends `uv tool install` and clarifies when to pick `pipx` vs plain `pip`.
+- README Authentication section gains a Windows native-equivalents block (System Properties GUI, PowerShell `$env:` / `[Environment]::SetEnvironmentVariable`, cmd `setx`) and a previously-undocumented Basic auth block — the code already supported Basic auth via `ATLS_*_AUTH=basic` but it was missing from docs.
+
 ## [0.2.1] - 2026-04-18
 
 ### Added
