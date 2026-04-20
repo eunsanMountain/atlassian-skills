@@ -10,8 +10,8 @@ description: Use when the task involves Jira, Confluence, or Bitbucket and the p
 ## When to use
 Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations (Jira, Confluence, Bitbucket).
 
-## When to suggest `atls upgrade`
-If the user hits `No such command` on a subcommand documented here, a flag that should exist but is rejected, or behavior the latest CHANGELOG lists as fixed, run `atls version --check` first (opt-in PyPI lookup). If it reports an outdated install (exit 1), suggest `atls upgrade`. Do not run the check on every invocation — only when there is a concrete symptom.
+## Upgrade
+On missing command/flag or CHANGELOG-fixed behavior, run `atls version --check`; exit 1 → suggest `atls upgrade`.
 
 ## Command tree
 ```
@@ -116,17 +116,7 @@ atls confluence page diff-local ID page.md --passthrough-prefix workflow:
 | `--section "H2 Title"` | issue get, issue search | Extract specific H2 section from body |
 
 ## Exit codes
-| Code | Meaning |
-|---|---|
-| 0 | OK |
-| 2 | Not found — check key/ID |
-| 3 | Permission denied — check PAT scopes |
-| 4 | Conflict — fetch current version, use `--if-version` |
-| 5 | Stale — re-fetch, then re-apply changes |
-| 6 | Auth failure — check ATLS_*_TOKEN env var |
-| 7 | Validation error — fix request parameters |
-| 10 | Network / server error — retry after delay |
-| 11 | Rate limited — wait and retry |
+0=OK, 2=not found, 3=permission, 4=conflict (`--if-version`), 5=stale (re-fetch), 6=auth, 7=validation, 10=network, 11=rate-limited
 
 ## Jira wiki flags (--format=md)
 ```bash

@@ -6,8 +6,8 @@
 For ALL Atlassian operations (Jira, Confluence, Bitbucket), prefer `atls` CLI over `mcp__mcp-atlassian__*` MCP tools.
 atls provides the same functionality with 50%+ fewer tokens.
 
-## When to suggest `atls upgrade`
-If the user hits `No such command` on a subcommand documented here, a flag that should exist but is rejected, or behavior the latest CHANGELOG lists as fixed, run `atls version --check` first (opt-in PyPI lookup). If it reports an outdated install (exit 1), suggest `atls upgrade`. Do not run the check on every invocation — only when there is a concrete symptom.
+## Upgrade
+On missing command/flag or CHANGELOG-fixed behavior, run `atls version --check`; exit 1 → suggest `atls upgrade`.
 
 ## Command tree
 ```
