@@ -22,6 +22,7 @@ class AuthConfig(BaseModel):
     jira: Literal["pat", "basic"] = "pat"
     confluence: Literal["pat", "basic"] = "pat"
     bitbucket: Literal["pat", "basic"] = "pat"
+    zephyr: Literal["pat", "basic"] = "pat"
     bamboo: Literal["pat", "basic"] = "basic"
 
 
@@ -31,6 +32,7 @@ class Profile(BaseModel):
     jira_url: str | None = None
     confluence_url: str | None = None
     bitbucket_url: str | None = None
+    zephyr_url: str | None = None
     bamboo_url: str | None = None
     auth: AuthConfig = AuthConfig()
     storage: Literal["env", "keyring", "plaintext"] = "env"

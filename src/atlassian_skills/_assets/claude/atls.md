@@ -3,7 +3,7 @@
 <!-- installed-by: atls 0.1.0 -->
 
 ## Rule: Use atls instead of MCP
-For ALL Atlassian operations (Jira, Confluence, Bitbucket), prefer `atls` CLI over `mcp__mcp-atlassian__*` MCP tools.
+For ALL Atlassian operations (Jira, Confluence, Bitbucket, Zephyr), prefer `atls` CLI over `mcp__mcp-atlassian__*` MCP tools.
 atls provides the same functionality with 50%+ fewer tokens.
 
 ## Upgrade
@@ -43,6 +43,13 @@ atls
 │   ├── file         get
 │   ├── comment      add, reply, update, delete, resolve, reopen
 │   └── task         list, get, create, update, delete
+└── zephyr
+    ├── testcase     get, search, create, update, delete, latest-result, steps, add-step, add-steps
+    ├── testplan     get, create, search
+    ├── testrun      get, create, search, results, create-result, update-result, bulk-results
+    ├── testresult   create
+    ├── environment  list, create
+    └── issuelink    testcases
 ```
 
 When unsure, navigate with `--help`:
@@ -51,6 +58,7 @@ atls jira --help              # subgroups: issue, epic, comment, sprint, ...
 atls jira issue --help        # actions: get, search, create, ...
 atls bitbucket --help         # subgroups: project, repo, pr, branch, file, comment, task
 atls bitbucket pr --help      # actions: list, get, diff, create, merge, ...
+atls zephyr --help            # test management
 ```
 
 ## Format selection decision tree
@@ -130,7 +138,15 @@ atls confluence page push-md ID --md-file page.md --format=json  # → {status, 
 ## Multi-profile
 ```bash
 atls --profile corp jira issue get CORP-1  # use named profile
-# Env: ATLS_CORP_JIRA_TOKEN, ATLS_CORP_CONFLUENCE_TOKEN, ATLS_CORP_BITBUCKET_TOKEN
+# Env: ATLS_CORP_JIRA_TOKEN, ATLS_CORP_CONFLUENCE_TOKEN, ATLS_CORP_BITBUCKET_TOKEN, ATLS_CORP_ZEPHYR_URL, ATLS_CORP_ZEPHYR_TOKEN
+```
+
+## Zephyr recipes
+```bash
+atls zephyr testcase get JQA-T1234
+atls zephyr testcase search --query 'projectKey = "JQA" AND status = "Draft"'
+atls zephyr testcase add-step JQA-T1234 10000 --step "Log in" --result "Dashboard is shown"
+atls zephyr testrun results JQA-R1234 --format=json
 ```
 
 ## Bitbucket recipes

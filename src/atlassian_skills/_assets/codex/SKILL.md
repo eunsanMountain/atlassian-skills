@@ -1,6 +1,6 @@
 ---
 name: atls
-description: Use when the task involves Jira, Confluence, or Bitbucket and the preferred path is the atls CLI rather than Atlassian MCP tools. Covers command selection, output formats, dry-run safety, and markdown push/pull workflows.
+description: Use when the task involves Jira, Confluence, Bitbucket, or Zephyr and the preferred path is the atls CLI rather than Atlassian MCP tools. Covers command selection, output formats, dry-run safety, and markdown push/pull workflows.
 ---
 
 # atls — Atlassian CLI Dispatcher
@@ -8,7 +8,7 @@ description: Use when the task involves Jira, Confluence, or Bitbucket and the p
 <!-- installed-by: atls 0.1.0 -->
 
 ## When to use
-Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations (Jira, Confluence, Bitbucket).
+Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations (Jira, Confluence, Bitbucket, Zephyr).
 
 ## Upgrade
 On missing command/flag or CHANGELOG-fixed behavior, run `atls version --check`; exit 1 → suggest `atls upgrade`.
@@ -47,6 +47,13 @@ atls
 │   ├── file         get
 │   ├── comment      add, reply, update, delete, resolve, reopen
 │   └── task         list, get, create, update, delete
+└── zephyr
+    ├── testcase     get, search, create, update, delete, latest-result, steps, add-step, add-steps
+    ├── testplan     get, create, search
+    ├── testrun      get, create, search, results, create-result, update-result, bulk-results
+    ├── testresult   create
+    ├── environment  list, create
+    └── issuelink    testcases
 ```
 
 When unsure, navigate with `--help`:
@@ -55,6 +62,7 @@ atls jira --help              # subgroups: issue, epic, comment, sprint, ...
 atls jira issue --help        # actions: get, search, create, ...
 atls bitbucket --help         # subgroups: project, repo, pr, branch, file, comment, task
 atls bitbucket pr --help      # actions: list, get, diff, create, merge, ...
+atls zephyr --help            # test management
 ```
 
 ## Format selection
@@ -93,6 +101,12 @@ atls confluence page push-md ID --md-file page.md --if-version 15
 atls confluence page push-md ID --md-file page.md --asset-dir=assets/
 atls confluence page pull-md ID --output page.md --resolve-assets=sidecar --asset-dir=assets/
 atls confluence page diff-local ID page.md --passthrough-prefix workflow:
+
+# Zephyr Scale Server/DC
+atls zephyr testcase get JQA-T1234
+atls zephyr testcase search --query 'projectKey = "JQA" AND status = "Draft"'
+atls zephyr testcase add-step JQA-T1234 10000 --step "Log in" --result "Dashboard is shown"
+atls zephyr testrun results JQA-R1234 --format=json
 ```
 
 ## Write safety
@@ -146,4 +160,6 @@ atls --profile corp jira issue get CORP-1
 # Env vars
 export ATLS_CORP_JIRA_TOKEN="pat-token-here"
 export ATLS_CORP_CONFLUENCE_TOKEN="pat-token-here"
+export ATLS_CORP_ZEPHYR_URL="https://your-jira.example.com"
+export ATLS_CORP_ZEPHYR_TOKEN="pat-token-here"
 ```

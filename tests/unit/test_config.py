@@ -23,6 +23,7 @@ class TestConfigDefaults:
         assert auth.jira == "pat"
         assert auth.confluence == "pat"
         assert auth.bitbucket == "pat"
+        assert auth.zephyr == "pat"
         assert auth.bamboo == "basic"
 
     def test_profile_defaults(self) -> None:
@@ -30,6 +31,7 @@ class TestConfigDefaults:
         assert profile.jira_url is None
         assert profile.confluence_url is None
         assert profile.bitbucket_url is None
+        assert profile.zephyr_url is None
         assert profile.bamboo_url is None
         assert profile.storage == "env"
         assert isinstance(profile.auth, AuthConfig)
@@ -156,6 +158,12 @@ class TestEnvVars:
     def test_get_env_auth_method_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ATLS_CORP_BITBUCKET_AUTH", raising=False)
         assert get_env_auth_method("corp", "bitbucket") is None
+
+    def test_get_env_zephyr_token_and_auth(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ATLS_CORP_ZEPHYR_TOKEN", "zephyr-token")
+        monkeypatch.setenv("ATLS_CORP_ZEPHYR_AUTH", "pat")
+        assert get_env_token("corp", "zephyr") == "zephyr-token"
+        assert get_env_auth_method("corp", "zephyr") == "pat"
 
 
 class TestLegacyEnvVarFallback:

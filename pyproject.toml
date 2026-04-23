@@ -1,7 +1,7 @@
 [project]
 name = "atlassian-skills"
 version = "0.2.4"
-description = "Token-efficient CLI + Claude Code Skill for Atlassian Server/DC (Jira, Confluence, Bitbucket, Bamboo)."
+description = "Token-efficient CLI + Claude Code Skill for Atlassian Server/DC (Jira, Confluence, Bitbucket, Zephyr, Bamboo)."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -12,6 +12,7 @@ keywords = [
     "jira",
     "confluence",
     "bitbucket",
+    "zephyr",
     "bamboo",
     "cli",
     "claude-code",

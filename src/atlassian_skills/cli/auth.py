@@ -24,7 +24,7 @@ def _resolve_url(profile_name: str, product: str, profile_url: str | None) -> tu
 def auth_login(
     ctx: typer.Context,
     profile: str = typer.Option(None, "--profile", "-p", help="Profile name (overrides global)"),
-    product: str = typer.Option("jira", "--product", help="Product: jira|confluence|bitbucket|bamboo"),
+    product: str = typer.Option("jira", "--product", help="Product: jira|confluence|bitbucket|zephyr|bamboo"),
 ) -> None:
     """Show export snippet for setting up authentication tokens."""
     ctx.ensure_object(dict)
@@ -50,8 +50,13 @@ def auth_status(
     config = load_config()
     prof = get_profile(config, profile_name)
 
-    products = ("jira", "confluence", "bitbucket")
-    url_fields = {"jira": prof.jira_url, "confluence": prof.confluence_url, "bitbucket": prof.bitbucket_url}
+    products = ("jira", "confluence", "bitbucket", "zephyr")
+    url_fields = {
+        "jira": prof.jira_url,
+        "confluence": prof.confluence_url,
+        "bitbucket": prof.bitbucket_url,
+        "zephyr": prof.zephyr_url,
+    }
 
     typer.echo(f"Profile: {profile_name}")
     for product in products:
@@ -86,6 +91,7 @@ def auth_list(ctx: typer.Context) -> None:
             ("jira", prof.jira_url),
             ("confluence", prof.confluence_url),
             ("bitbucket", prof.bitbucket_url),
+            ("zephyr", prof.zephyr_url),
         ]:
             url, _ = _resolve_url(name, product, profile_url)
             urls.append(f"{product}={url or 'n/a'}")

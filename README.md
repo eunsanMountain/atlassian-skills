@@ -103,6 +103,7 @@ Generate tokens from your Atlassian instances:
 - **Jira**: Profile → Personal Access Tokens → Create
 - **Confluence**: Profile → Personal Access Tokens → Create
 - **Bitbucket**: Profile → Manage Account → HTTP access tokens → Create (permissions: project read, repository read/write)
+- **Zephyr Scale Server/DC**: Use a Jira/Zephyr-compatible PAT with Zephyr permissions
 
 ### 2. Configure server URLs
 
@@ -110,6 +111,7 @@ Generate tokens from your Atlassian instances:
 atls config set profiles.default.jira_url https://your-jira.example.com
 atls config set profiles.default.confluence_url https://your-confluence.example.com
 atls config set profiles.default.bitbucket_url https://your-bitbucket.example.com
+atls config set profiles.default.zephyr_url https://your-jira.example.com
 ```
 
 Or via environment variables:
@@ -118,6 +120,7 @@ Or via environment variables:
 export ATLS_DEFAULT_JIRA_URL="https://your-jira.example.com"
 export ATLS_DEFAULT_CONFLUENCE_URL="https://your-confluence.example.com"
 export ATLS_DEFAULT_BITBUCKET_URL="https://your-bitbucket.example.com"
+export ATLS_DEFAULT_ZEPHYR_URL="https://your-jira.example.com"
 ```
 
 For non-default profiles, replace `DEFAULT` with the profile name (e.g. `ATLS_CORP_JIRA_URL`).
@@ -140,6 +143,7 @@ For multi-profile setups:
 export ATLS_CORP_JIRA_TOKEN="..."
 export ATLS_CORP_CONFLUENCE_TOKEN="..."
 export ATLS_CORP_BITBUCKET_TOKEN="..."
+export ATLS_CORP_ZEPHYR_TOKEN="..."
 ```
 
 <details>
@@ -171,7 +175,7 @@ Press `Win + R` → type `sysdm.cpl` → **Advanced** tab → **Environment Vari
 - `JIRA_PERSONAL_TOKEN` = `<your-pat>`
 - `CONFLUENCE_PERSONAL_TOKEN` = `<your-pat>`
 - `BITBUCKET_TOKEN` = `<your-http-access-token>`
-- `ATLS_DEFAULT_JIRA_URL` = `https://your-jira.example.com` (and `*_CONFLUENCE_URL`, `*_BITBUCKET_URL`)
+- `ATLS_DEFAULT_JIRA_URL` = `https://your-jira.example.com` (and `*_CONFLUENCE_URL`, `*_BITBUCKET_URL`, `*_ZEPHYR_URL`)
 
 Open a *new* terminal afterward — existing shells and IDEs do not see the change until restarted.
 
@@ -216,10 +220,10 @@ Or persist in config:
 atls config set profiles.default.auth.jira basic
 ```
 
-The same `*_AUTH=basic` / `*_USER` / `*_TOKEN` triple works for `jira`, `confluence`, and `bitbucket`. On Windows, set the three variables via the GUI or `setx` as shown above.
+The same `*_AUTH=basic` / `*_USER` / `*_TOKEN` triple works for `jira`, `confluence`, `bitbucket`, and `zephyr`. On Windows, set the three variables via the GUI or `setx` as shown above.
 </details>
 
-**Priority**: CLI flags > `ATLS_*` vars > standard names (`JIRA_PERSONAL_TOKEN`, `CONFLUENCE_PERSONAL_TOKEN`, `BITBUCKET_TOKEN`) > config file
+**Priority**: CLI flags > `ATLS_*` vars > standard names (`JIRA_PERSONAL_TOKEN`, `CONFLUENCE_PERSONAL_TOKEN`, `BITBUCKET_TOKEN`) > config file. Zephyr uses `ATLS_*_ZEPHYR_*` only.
 
 ### 4. Verify
 
@@ -232,13 +236,14 @@ atls auth status
 ### 1. Set up your AI agent
 
 ```bash
-atls setup all        # installs atls skill for Claude Code + Codex
+atls setup all        # installs atls skill for Claude Code + Codex + GigaCode
 atls auth status      # verify connection
 ```
 
 **What gets installed:**
 - **Claude Code**: `~/.claude/commands/atls.md` (full usage guide, load with `/atls`) + preference directive in `~/.claude/CLAUDE.md` (active every conversation, tells Claude to route Atlassian work through atls and navigate with `--help`).
 - **Codex**: `~/.agents/skills/atls/SKILL.md` (auto-loaded skill with command tree, format rules, write-safety protocol) + routing directive in `~/.codex/AGENTS.md`.
+- **GigaCode**: `~/.gigacode/skills/atls/SKILL.md` (same atls skill guide used for CLI routing, format rules, and write-safety protocol).
 - Run `atls setup status` to check what is installed.
 - Run `atls setup paths` to see every resolved install path for your platform.
 
@@ -250,6 +255,7 @@ atls auth status      # verify connection
 |---|---|---|---|
 | Claude config dir | `CLAUDE_CONFIG_DIR` | `C:\Users\<you>\.claude` | `~/.claude` |
 | Codex config dir | `CODEX_HOME` | `C:\Users\<you>\.codex` | `~/.codex` |
+| GigaCode config dir | `GIGACODE_HOME` | `C:\Users\<you>\.gigacode` | `~/.gigacode` |
 | Agents skill dir | `AGENTS_HOME` | `C:\Users\<you>\.agents` | `~/.agents` |
 
 To customize at install time, run any setup command with `--interactive` (or `-i`):
@@ -316,6 +322,12 @@ atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-pro
 atls jira comment add PROJ-1 --body-file=comment.md --body-format=md
 atls jira comment edit PROJ-1 12345 --body-file=comment.md --body-format=md
 atls jira worklog add PROJ-1 --time-spent-seconds 1800 --comment "$(cat note.md)" --comment-format=md
+
+# Zephyr Scale Server/DC
+atls zephyr testcase get JQA-T1234
+atls zephyr testcase search --query 'projectKey = "JQA" AND status = "Draft"'
+atls zephyr testcase add-step JQA-T1234 10000 --step "Log in" --result "Dashboard is shown"
+atls zephyr testrun results JQA-R1234 --format=json
 ```
 
 ### Agent usage tips
@@ -400,10 +412,20 @@ atls jira issue get PROJ-1 --format=json
 
 > All write commands support `--dry-run`. PR diff and file get treat `--format=md` as raw text passthrough.
 
+### Zephyr Scale Server/DC
+- `zephyr testcase get|search|create|update|delete|latest-result|steps|add-step|add-steps`
+- `zephyr testplan get|create|search`
+- `zephyr testrun get|create|search|results|create-result|update-result|bulk-results`
+- `zephyr testresult create`
+- `zephyr environment list|create`
+- `zephyr issuelink testcases`
+
+> Zephyr uses `/rest/atm/1.0` on the configured Jira/Zephyr Server/DC URL. Write commands accept `--data-json` and support `--dry-run`.
+
 ### Utility
 - `auth login|status|list`
 - `config get|set|path`
-- `setup codex|claude|all|status|paths` (add `--interactive` to customize install paths per-platform)
+- `setup codex|gigacode|claude|all|status|paths` (add `--interactive` to customize install paths per-platform)
 - `upgrade`
 - `version [--check]` — show installed version; `--check` compares against the latest PyPI release (exit 1 if outdated)
 
