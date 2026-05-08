@@ -33,12 +33,8 @@ def _claude_md_block() -> str:
     return f"""{_ATLS_CLAUDE_BLOCK_START}
 <!-- ATLS:VERSION:{ver} -->
 ## Atlassian (atls)
-- Use `atls` CLI for all Atlassian (Jira, Confluence) operations instead of mcp-atlassian MCP.
-- Usage: load the full guide with `/atls`, or run `atls <command> --help`.
-- Always run `--dry-run` before write operations.
-- Default output is compact (minimal tokens). Use `--format=md` for body reading, `--format=json` for parsing.
-- `--format` works both globally (`atls --format=json ...`) and locally on subcommands (`... --format=json`).
-- Some commands use `-f` for file input (e.g. `page push-md`), so use the long form `--format` for output format.
+- Atlassian work (Jira/Confluence/Bitbucket/지라/컨플루언스/비트버킷) → load the `atls` skill BEFORE the first atls command.
+- This file only routes. Do NOT infer atls flags or syntax from here — the skill is the single source of truth.
 {_ATLS_CLAUDE_BLOCK_END}"""
 
 
@@ -48,12 +44,8 @@ def _codex_agents_block() -> str:
     return f"""{_ATLS_CODEX_BLOCK_START}
 <!-- ATLS:VERSION:{ver} -->
 ## Atlassian via atls
-- Prefer `atls` CLI over Atlassian MCP tools for all Jira/Confluence operations.
-- Use the `$atls` skill for detailed format selection, write safety rules, and workflows.
-- Always run `--dry-run` before write operations.
-- Listing/scanning: compact (default). Body reading: `--format=md`. Parsing: `--format=json`. Raw: `--format=raw`.
-- `--format` works both globally and locally on Jira/Confluence subcommands.
-- Some commands use `-f` for file input (e.g. `page push-md`), so use the long form `--format` for output format.
+- Atlassian work (Jira/Confluence/Bitbucket/지라/컨플루언스/비트버킷) → load the `$atls` skill BEFORE the first atls command.
+- This file only routes. Do NOT infer atls flags or syntax from here — the skill is the single source of truth.
 {_ATLS_CODEX_BLOCK_END}"""
 
 
@@ -130,8 +122,13 @@ def _get_codex_agents_path() -> Path:
     return _get_codex_config_dir() / "AGENTS.md"
 
 
-def _get_claude_target() -> Path:
-    """Default Claude command target: <config>/commands/atls.md (user-level)."""
+def _get_claude_skill_target() -> Path:
+    """Primary Claude skill target: <config>/skills/atls/SKILL.md (user-level)."""
+    return _get_claude_config_dir() / "skills" / "atls" / "SKILL.md"
+
+
+def _get_claude_command_target() -> Path:
+    """Legacy Claude slash command location, kept for detection only."""
     return _get_claude_config_dir() / "commands" / "atls.md"
 
 
@@ -208,6 +205,29 @@ def _inject_codex_agents_block() -> str:
     )
 
 
+def _legacy_claude_command_notice() -> str | None:
+    """Return a guidance message if a legacy ~/.claude/commands/atls.md is present."""
+    path = _get_claude_command_target()
+    if not path.exists():
+        return None
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        content = ""
+    skill_path = _get_claude_skill_target()
+    if "installed-by: atls" in content:
+        return (
+            f"  ⚠ Legacy atls slash command found: {path}\n"
+            f"    atls now installs as a Claude Skill: {skill_path}\n"
+            f"    Remove the old command if no longer needed: rm {path}"
+        )
+    return (
+        f"  ⚠ Custom file at {path} (no installed-by marker).\n"
+        f"    atls now installs as a Claude Skill: {skill_path}\n"
+        f"    Inspect the file before removing manually."
+    )
+
+
 def _prompt_override(label: str, key: str, current: Path) -> None:
     """Ask the user to accept or override a detected path."""
     source = (
@@ -248,19 +268,23 @@ def _prompt_all_overrides() -> None:
 def _show_paths() -> None:
     """Print all resolved install paths without running setup."""
     typer.echo(f"Platform: {_detect_platform()}")
-    typer.echo(f"  Claude config dir      : {_get_claude_config_dir()}")
-    typer.echo(f"  Claude command target  : {_get_claude_target()}")
-    typer.echo(f"  CLAUDE.md path         : {_get_claude_md_path()}")
-    typer.echo(f"  Codex config dir       : {_get_codex_config_dir()}")
-    typer.echo(f"  Codex AGENTS.md path   : {_get_codex_agents_path()}")
-    typer.echo(f"  Codex skill target     : {_get_codex_skill_target()}")
-    typer.echo(f"  Codex legacy target    : {_get_codex_legacy_target()}")
+    typer.echo(f"  Claude config dir         : {_get_claude_config_dir()}")
+    typer.echo(f"  Claude skill target       : {_get_claude_skill_target()}")
+    typer.echo(f"  Claude command (legacy)   : {_get_claude_command_target()}")
+    typer.echo(f"  CLAUDE.md path            : {_get_claude_md_path()}")
+    typer.echo(f"  Codex config dir          : {_get_codex_config_dir()}")
+    typer.echo(f"  Codex AGENTS.md path      : {_get_codex_agents_path()}")
+    typer.echo(f"  Codex skill target        : {_get_codex_skill_target()}")
+    typer.echo(f"  Codex legacy skill target : {_get_codex_legacy_target()}")
     typer.echo("")
     typer.echo("Override via environment variables:")
     typer.echo("  CLAUDE_CONFIG_DIR  — Claude Code config directory")
     typer.echo("  CODEX_HOME         — Codex config directory")
     typer.echo("  AGENTS_HOME        — Agents skill directory")
     typer.echo("Or run `atls setup <target> --interactive` to override at install time.")
+
+
+_CANONICAL_SKILL_DIR = ASSETS_DIR / "skills" / "atls"
 
 
 @setup_app.command("codex")
@@ -270,10 +294,9 @@ def setup_codex(
     """Install atls skill for Codex and inject a global AGENTS.md routing block."""
     if interactive:
         _prompt_all_overrides()
-    source_dir = ASSETS_DIR / "codex"
-    for msg in _install_tree(source_dir, _get_codex_skill_target().parent):
+    for msg in _install_tree(_CANONICAL_SKILL_DIR, _get_codex_skill_target().parent):
         typer.echo(msg)
-    for msg in _install_tree(source_dir, _get_codex_legacy_target().parent):
+    for msg in _install_tree(_CANONICAL_SKILL_DIR, _get_codex_legacy_target().parent):
         typer.echo(msg)
     typer.echo(_inject_codex_agents_block())
 
@@ -282,17 +305,20 @@ def setup_codex(
 def setup_claude(
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Prompt for path overrides"),
 ) -> None:
-    """Install atls command and CLAUDE.md block for Claude Code."""
+    """Install atls skill for Claude Code and inject a CLAUDE.md routing block."""
     if interactive:
         _prompt_all_overrides()
-    # 1. Install slash command (/atls)
-    source = ASSETS_DIR / "claude" / "atls.md"
-    msg1 = _install(source, _get_claude_target())
-    typer.echo(msg1)
+    # 1. Install Claude Skill (~/.claude/skills/atls/)
+    for msg in _install_tree(_CANONICAL_SKILL_DIR, _get_claude_skill_target().parent):
+        typer.echo(msg)
 
     # 2. Inject ATLS block into the resolved CLAUDE.md
-    msg2 = _inject_claude_md_block()
-    typer.echo(msg2)
+    typer.echo(_inject_claude_md_block())
+
+    # 3. Warn about any legacy slash command (do not delete automatically)
+    legacy = _legacy_claude_command_notice()
+    if legacy:
+        typer.echo(legacy)
 
 
 @setup_app.command("all")
@@ -316,9 +342,10 @@ def setup_paths() -> None:
 def setup_status() -> None:
     """Check installation status."""
     for name, target in [
+        ("Claude skill", _get_claude_skill_target()),
+        ("Claude command (legacy)", _get_claude_command_target()),
         ("Codex skill", _get_codex_skill_target()),
         ("Codex legacy skill", _get_codex_legacy_target()),
-        ("Claude command", _get_claude_target()),
     ]:
         if target.exists():
             content = target.read_text(encoding="utf-8")
@@ -330,6 +357,10 @@ def setup_status() -> None:
                 typer.echo(f"  {name}: found at {target} (no version marker)")
         else:
             typer.echo(f"  {name}: not installed ({target})")
+
+    legacy = _legacy_claude_command_notice()
+    if legacy:
+        typer.echo(legacy)
 
     for name, path in [("Codex AGENTS.md", _get_codex_agents_path()), ("CLAUDE.md", _get_claude_md_path())]:
         if path.exists():

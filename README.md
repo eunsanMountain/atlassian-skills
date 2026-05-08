@@ -13,7 +13,7 @@ mcp-atlassian is great for Cloud setups, but on Server/DC its MCP protocol overh
 
 **atlassian-skills** re-implements the same Jira and Confluence operations as a lightweight CLI with compact output, achieving **≥50% token reduction**. It uses [cfxmark](https://github.com/eunsanMountain/cfxmark) for **lossless Confluence XHTML ↔ Markdown conversion**, enabling agents to pull a page as Markdown, edit it, and push it back without any content loss.
 
-First-class integration with **Claude Code** and **Codex**. `atls setup all` registers atls as the default Atlassian tool for both — a comprehensive usage guide (command tree, format decision rules, write safety) is loaded via Claude's `/atls` slash command or Codex's auto-loaded skill, while a short preference directive in `CLAUDE.md` / `AGENTS.md` keeps the routing rule active in every conversation. Your agent translates "read PROJ-123" or "update the API page" into the right CLI call without further configuration.
+First-class integration with **Claude Code** and **Codex**. `atls setup all` registers atls as the default Atlassian tool for both — the comprehensive usage guide (command tree, format decision rules, write safety) ships as an auto-loaded Skill on each platform, while a short preference directive in `CLAUDE.md` / `AGENTS.md` keeps the routing rule active in every conversation. Your agent translates "read PROJ-123" or "update the API page" into the right CLI call without further configuration.
 
 ## Why atlassian-skills?
 
@@ -237,10 +237,12 @@ atls auth status      # verify connection
 ```
 
 **What gets installed:**
-- **Claude Code**: `~/.claude/commands/atls.md` (full usage guide, load with `/atls`) + preference directive in `~/.claude/CLAUDE.md` (active every conversation, tells Claude to route Atlassian work through atls and navigate with `--help`).
-- **Codex**: `~/.agents/skills/atls/SKILL.md` (auto-loaded skill with command tree, format rules, write-safety protocol) + routing directive in `~/.codex/AGENTS.md`.
+- **Claude Code**: `~/.claude/skills/atls/SKILL.md` (auto-loaded skill with command tree, format rules, write-safety protocol) + preference directive in `~/.claude/CLAUDE.md` (active every conversation, reinforces atls as the default Atlassian tool).
+- **Codex**: `~/.agents/skills/atls/SKILL.md` (auto-loaded skill, same canonical content) + routing directive in `~/.codex/AGENTS.md`.
 - Run `atls setup status` to check what is installed.
 - Run `atls setup paths` to see every resolved install path for your platform.
+
+> Upgrading from ≤0.2.4? The old `~/.claude/commands/atls.md` slash command is no longer installed but is **not removed automatically**. `atls setup status` will warn you if it still exists; remove it manually with `rm ~/.claude/commands/atls.md` if no longer needed.
 
 **Install paths (Windows / macOS / Linux):**
 
@@ -277,7 +279,7 @@ export CLAUDE_CONFIG_DIR=~/work/claude
 atls setup all
 ```
 
-**Codex users note:** the Codex skill installs to `<AGENTS_HOME>/skills/atls/` (primary) and `<CODEX_HOME>/skills/atls/` (legacy compatibility). The routing directive in `AGENTS.md` keeps `atls` as the default Atlassian tool across conversations. Codex's session-start mechanism auto-loads `SKILL.md` — no manual load required.
+**Skill auto-load:** Both Claude Code and Codex auto-load `SKILL.md` based on its `description` — Atlassian-related prompts (Jira / Confluence / Bitbucket / 지라 / 컨플루언스 / 비트버킷) trigger the skill without any explicit `/atls` invocation. The Codex skill installs to both `<AGENTS_HOME>/skills/atls/` (primary) and `<CODEX_HOME>/skills/atls/` (legacy compatibility); the Claude skill installs to `<CLAUDE_CONFIG_DIR>/skills/atls/`.
 
 ### 2. Talk to your agent in natural language
 
@@ -491,8 +493,8 @@ uv build
 
 ## Roadmap
 
-- **0.1.x** (current): Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, skills, GitHub Actions CI/release
-- **0.2.0**: Bitbucket Server/DC — PR workflow (create, review, comment, merge, diff, tasks, build status)
+- **0.1.x**: Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, GitHub Actions CI/release
+- **0.2.x** (current): Bitbucket Server/DC PR workflow + Skill-first Claude/Codex integration. See CHANGELOG for per-version detail.
 - **0.3.0**: Bamboo + workflow skills
 - **0.4.0+**: Async client, caching
 

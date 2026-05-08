@@ -20,6 +20,42 @@ the same commands — on Windows they run identically in PowerShell or cmd.
 
 ---
 
+## [0.2.5] - 2026-05-08
+
+> ℹ️ **Migration note**: `atls setup claude` no longer installs `~/.claude/commands/atls.md`
+> — it now installs an auto-loaded Claude Skill at `~/.claude/skills/atls/SKILL.md`.
+> The old slash-command file is **not removed automatically**. After `atls upgrade`, run
+> `atls setup status` to check; remove manually with `rm ~/.claude/commands/atls.md`
+> if you no longer need it.
+
+### Changed
+- **Claude integration is now Skill-first.** The atls guide installs as
+  `~/.claude/skills/atls/SKILL.md` so Claude auto-loads it on Atlassian-related
+  prompts, instead of requiring the user to type `/atls` each time.
+- **Single canonical SKILL.md** at `_assets/skills/atls/SKILL.md` is now shared by
+  both Claude and Codex setup, replacing the separate `_assets/claude/atls.md` and
+  `_assets/codex/SKILL.md`.
+- **Routing blocks in `CLAUDE.md` and `AGENTS.md` are now pure routers** — both
+  shrunk to 2 lines that direct the agent to load the skill first and forbid
+  inferring atls flags from the routing file. Inline examples (like `--format=md`,
+  `-f` warnings) are removed, since they were giving agents false confidence and
+  causing them to guess wrong flag names (e.g. `--jql` for `jira issue search`).
+- **Skill `description` rewritten as a load-trigger** — failure-mode style ("you
+  WILL guess wrong without this body") plus Korean trigger keywords (지라/
+  컨플루언스/비트버킷/아틀라시안) so the skill auto-loads on Korean prompts too.
+
+### Added
+- `atls setup status` and `atls setup claude` now warn when a legacy
+  `~/.claude/commands/atls.md` is detected, with guidance to remove it manually.
+  Files with the `installed-by: atls` marker get a different message than
+  user-modified files, so manual edits are not silently flagged for deletion.
+- `atls setup paths` now shows both the new Claude skill target and the legacy
+  command path side by side.
+
+### Removed
+- `_assets/claude/atls.md` and `_assets/codex/SKILL.md` are gone — replaced by
+  the canonical `_assets/skills/atls/SKILL.md`.
+
 ## [0.2.4] - 2026-04-20
 
 > ⚠️ **Upgrading from v0.2.3 on a uv tool install**: `atls upgrade` itself is the bug

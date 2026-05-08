@@ -1,14 +1,20 @@
 ---
 name: atls
-description: Use when the task involves Jira, Confluence, or Bitbucket and the preferred path is the atls CLI rather than Atlassian MCP tools. Covers command selection, output formats, dry-run safety, and markdown push/pull workflows.
+description: |
+  ALL Atlassian work — Jira, Confluence, Bitbucket on Server/DC
+  (지라/컨플루언스/비트버킷). Load BEFORE the first atls command.
+
+  Without this body, you WILL guess atls conventions wrong: JQL/CQL is
+  positional (not --jql), --format=json (not -f json — `-f` is
+  --md-file), push-md vs page update, exit 5 = stale-version.
+
+  TRIGGER: Jira, Confluence, Bitbucket, atls, JQL, CQL, PROJ-123,
+  지라, 컨플루언스, 비트버킷, 아틀라시안.
 ---
 
 # atls — Atlassian CLI Dispatcher
 
-<!-- installed-by: atls 0.1.0 -->
-
-## When to use
-Use `atls` instead of `mcp__mcp-atlassian__*` tools for ALL Atlassian operations (Jira, Confluence, Bitbucket).
+<!-- installed-by: atls 0.2.5 -->
 
 ## Upgrade
 On missing command/flag or CHANGELOG-fixed behavior, run `atls version --check`; exit 1 → suggest `atls upgrade`.
@@ -47,14 +53,6 @@ atls
 │   ├── file         get
 │   ├── comment      add, reply, update, delete, resolve, reopen
 │   └── task         list, get, create, update, delete
-```
-
-When unsure, navigate with `--help`:
-```bash
-atls jira --help              # subgroups: issue, epic, comment, sprint, ...
-atls jira issue --help        # actions: get, search, create, ...
-atls bitbucket --help         # subgroups: project, repo, pr, branch, file, comment, task
-atls bitbucket pr --help      # actions: list, get, diff, create, merge, ...
 ```
 
 ## Format selection

@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.2.0 (Jira/Confluence read+write, full MCP replacement)
+- **Current version**: 0.2.5 (Jira/Confluence/Bitbucket read+write, Skill-first agent integration)
 
 ## Build & Run
 
@@ -60,7 +60,7 @@ tests/
 ├── snapshot/               # syrupy CLI output regression
 └── benchmarks/             # tiktoken token measurements
 
-skills/atls/SKILL.md        # Claude Code dispatcher skill
+src/atlassian_skills/_assets/skills/atls/SKILL.md   # canonical SKILL.md installed by `atls setup` for both Claude Code and Codex
 docs/                       # design docs and analyses
 ```
 
