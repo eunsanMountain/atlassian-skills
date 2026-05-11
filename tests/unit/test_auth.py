@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import base64
 import os
-from unittest.mock import patch
+import subprocess
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -386,3 +387,131 @@ class TestEnvVarNaming:
         monkeypatch.setenv("ATLS_CORP_JIRA_TOKEN", "upper-tok")
         # Pass lowercase — the helper must uppercase them
         assert get_env_token("corp", "jira") == "upper-tok"
+
+
+class TestResolveCredentialProviders:
+    """Keyring and shell command credential providers."""
+
+    # --- keyring ---
+
+    def test_keyring_token_resolved(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="keyring")
+
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = "keyring-token"
+
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            cred = resolve_credential("corp", "jira", profile)
+
+        mock_keyring.get_password.assert_called_once_with("atls-corp", "jira_token")
+        assert cred.token == "keyring-token"
+
+    def test_keyring_not_installed_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="keyring")
+
+        with patch.dict("sys.modules", {"keyring": None}), pytest.raises(AuthError) as exc_info:
+            resolve_credential("corp", "jira", profile)
+
+        assert "atlassian-skills[keyring]" in (exc_info.value.hint or "")
+
+    def test_env_wins_over_keyring(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ATLS_CORP_JIRA_TOKEN", "env-token")
+        profile = Profile(storage="keyring")
+
+        mock_keyring = MagicMock()
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            cred = resolve_credential("corp", "jira", profile)
+
+        assert cred.token == "env-token"
+        mock_keyring.get_password.assert_not_called()
+
+    # --- command ---
+
+    def test_command_token_resolved(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="command", credential_command="echo test-token")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "test-token\n"
+        mock_result.stderr = ""
+
+        with patch("atlassian_skills.core.auth.subprocess.run", return_value=mock_result) as mock_run:
+            cred = resolve_credential("corp", "jira", profile)
+
+        mock_run.assert_called_once_with("echo test-token", shell=True, capture_output=True, text=True, timeout=5)
+        assert cred.token == "test-token"
+
+    def test_command_stdout_is_stripped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="command", credential_command="get-secret")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "  my-token  \n"
+        mock_result.stderr = ""
+
+        with patch("atlassian_skills.core.auth.subprocess.run", return_value=mock_result):
+            cred = resolve_credential("corp", "jira", profile)
+
+        assert cred.token == "my-token"
+
+    def test_command_nonzero_exit_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="command", credential_command="bad-cmd")
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        mock_result.stderr = "command not found"
+
+        with (
+            patch("atlassian_skills.core.auth.subprocess.run", return_value=mock_result),
+            pytest.raises(AuthError) as exc_info,
+        ):
+            resolve_credential("corp", "jira", profile)
+
+        assert "command not found" in (exc_info.value.hint or "")
+
+    def test_command_timeout_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="command", credential_command="slow-cmd")
+
+        with (
+            patch(
+                "atlassian_skills.core.auth.subprocess.run",
+                side_effect=subprocess.TimeoutExpired("slow-cmd", 5),
+            ),
+            pytest.raises(AuthError) as exc_info,
+        ):
+            resolve_credential("corp", "jira", profile)
+
+        assert "timed out" in str(exc_info.value).lower()
+
+    def test_command_without_credential_command_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="command")
+
+        with pytest.raises(AuthError) as exc_info:
+            resolve_credential("corp", "jira", profile)
+
+        assert "credential_command" in (exc_info.value.hint or "")
+
+    def test_env_wins_over_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ATLS_CORP_JIRA_TOKEN", "env-token")
+        profile = Profile(storage="command", credential_command="echo command-token")
+
+        with patch("atlassian_skills.core.auth.subprocess.run") as mock_run:
+            cred = resolve_credential("corp", "jira", profile)
+
+        assert cred.token == "env-token"
+        mock_run.assert_not_called()

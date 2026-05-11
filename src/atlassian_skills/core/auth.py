@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import subprocess
 from dataclasses import dataclass
 from typing import Literal
 
@@ -28,6 +29,48 @@ class Credential:
         return {"Authorization": f"Basic {encoded}"}
 
 
+def _resolve_token_from_provider(profile_name: str, product: str, profile: Profile) -> str | None:
+    """Resolve token via keyring or shell command, based on profile.storage."""
+    if profile.storage == "keyring":
+        try:
+            import keyring
+        except ImportError as exc:
+            raise AuthError(
+                f"storage='keyring' configured for profile '{profile_name}' but the keyring package is not installed.",
+                hint="pip install 'atlassian-skills[keyring]'",
+            ) from exc
+        return keyring.get_password(f"atls-{profile_name}", f"{product}_token")
+
+    if profile.storage == "command":
+        if not profile.credential_command:
+            raise AuthError(
+                f"storage='command' configured for profile '{profile_name}' but credential_command is not set.",
+                hint='Add credential_command = "<shell command>" to the profile in config.toml.',
+            )
+        try:
+            result = subprocess.run(
+                profile.credential_command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AuthError(
+                f"credential_command timed out for profile '{profile_name}', product '{product}'.",
+                hint=f"Check that this command completes promptly: {profile.credential_command}",
+            ) from exc
+        if result.returncode != 0:
+            detail = result.stderr.strip() or profile.credential_command
+            raise AuthError(
+                f"credential_command exited {result.returncode} for profile '{profile_name}', product '{product}'.",
+                hint=f"stderr: {detail}",
+            )
+        return result.stdout.strip() or None
+
+    return None
+
+
 def resolve_credential(
     profile_name: str,
     product: str,
@@ -37,7 +80,7 @@ def resolve_credential(
     cli_user: str | None = None,
     cli_auth: str | None = None,
 ) -> Credential:
-    """Resolve credentials with priority: CLI flags > env vars > config plaintext.
+    """Resolve credentials with priority: CLI flags > env vars > provider (keyring/command).
 
     Args:
         profile_name: Profile name (e.g. "corp") — used to build env var names.
@@ -53,14 +96,15 @@ def resolve_credential(
     Raises:
         AuthError: If token is missing or basic auth is missing a username.
     """
-    # Determine auth method: CLI flag > env var > profile config
     env_auth = get_env_auth_method(profile_name, product)
     raw_method = cli_auth or env_auth or getattr(profile.auth, product, "pat")
     method: Literal["pat", "basic"] = "basic" if raw_method == "basic" else "pat"
 
-    # Determine token: CLI flag > env var > (config plaintext not yet supported)
     env_token = get_env_token(profile_name, product)
     token = cli_token or env_token
+
+    if not token and profile.storage in ("keyring", "command"):
+        token = _resolve_token_from_provider(profile_name, product, profile)
 
     if not token:
         env_key = f"ATLS_{profile_name.upper()}_{product.upper()}_TOKEN"

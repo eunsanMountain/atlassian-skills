@@ -114,14 +114,33 @@ docs/                       # design docs and analyses
 # Environment variables (default, recommended)
 export ATLS_CORP_JIRA_TOKEN="your-pat"
 export ATLS_CORP_CONFLUENCE_TOKEN="your-pat"
-
-# config.toml
-# ~/.config/atlassian-skills/config.toml
-# [profiles.corp]
-# jira_url = "https://jira.corp.example.com"
 ```
 
-Priority: CLI flag > env var > keyring > plaintext config
+```toml
+# ~/.config/atlassian-skills/config.toml
+
+# Env vars (default)
+[profiles.corp]
+jira_url = "https://jira.corp.example.com"
+
+# System keyring — uses platform native store (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+# Requires: pip install "atlassian-skills[keyring]"
+[profiles.corp]
+jira_url = "https://jira.corp.example.com"
+storage = "keyring"
+
+# Shell command — cross-platform; the command is whatever your OS/secret manager supports
+# Examples: "op read op://vault/jira/token" (1Password, all platforms)
+#           "security find-generic-password -s my-jira-token -w" (macOS)
+#           "pass show jira/pat" (Linux)
+#           "powershell -Command \"(Get-StoredCredential -Target jira-pat).GetNetworkCredential().Password\"" (Windows)
+[profiles.corp]
+jira_url = "https://jira.corp.example.com"
+storage = "command"
+credential_command = "op read op://vault/jira/token"
+```
+
+Priority: CLI flag > env var > keyring > shell command > plaintext config
 
 ## Release Process
 

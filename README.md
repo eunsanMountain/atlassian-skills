@@ -189,6 +189,66 @@ atls auth status        # equivalent to the Auth section of `atls doctor`
 
 </details>
 
+<details>
+<summary>System keyring and shell-command providers (no persistent env vars)</summary>
+
+Instead of storing tokens in environment variables, you can have atls fetch them on demand from your system keyring or a custom shell command. The token is retrieved only at call time and never stored in the environment. These are opt-in via the profile's `storage` setting — env vars remain the default and always take priority.
+
+**System keyring** — requires the optional `keyring` extra. Uses the platform's native credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). Save tokens once, then point the profile at the keyring:
+
+```bash
+# Install with keyring support (match your installer)
+uv tool install --force "atlassian-skills[keyring]"   # uv tool users
+pipx inject atlassian-skills keyring                  # pipx users
+pip install "atlassian-skills[keyring]"               # plain pip / venv
+
+# Save tokens to the system keyring (run once per token — works on all platforms)
+python -c "import keyring; keyring.set_password('atls-default', 'jira_token', 'your-jira-pat')"
+python -c "import keyring; keyring.set_password('atls-default', 'confluence_token', 'your-confluence-pat')"
+```
+
+The keyring service name is `atls-<profile>` and the account is `<product>_token` (e.g. service `atls-default`, account `jira_token`).
+
+```toml
+# ~/.config/atlassian-skills/config.toml
+[profiles.default]
+jira_url = "https://your-jira.example.com"
+storage = "keyring"
+```
+
+**Shell command** — run any command that prints the token to stdout. The feature is cross-platform; the command itself is whatever your OS and secret manager support:
+
+```toml
+# ~/.config/atlassian-skills/config.toml
+[profiles.default]
+jira_url = "https://your-jira.example.com"
+storage = "command"
+
+# One command for all products (1Password CLI)
+credential_command = "op read op://vault/atlassian/token"
+
+# …or a different command per product (takes priority over credential_command)
+jira_command       = "op read op://vault/jira/token"
+confluence_command = "op read op://vault/confluence/token"
+bitbucket_command  = "op read op://vault/bitbucket/token"
+
+# macOS Keychain    : security find-generic-password -s my-jira-token -w
+# Linux (pass)      : pass show jira/pat
+# Bitwarden CLI     : bw get password jira
+# Windows PowerShell: powershell -NoProfile -Command "(Get-StoredCredential -Target jira-pat).GetNetworkCredential().Password"
+```
+
+The command runs with a 5-second timeout; exit code must be 0 and stdout is used as the token.
+
+Inspect what each product resolves to (probes keyring / runs the command — may prompt for Touch ID or a passphrase):
+
+```bash
+atls auth status            # configured-only (does not run keyring/command)
+atls auth status --resolve  # actually probes each provider
+```
+
+</details>
+
 ## Quick Start
 
 ```bash

@@ -33,7 +33,8 @@ class Profile(BaseModel):
     bitbucket_url: str | None = None
     bamboo_url: str | None = None
     auth: AuthConfig = AuthConfig()
-    storage: Literal["env", "keyring", "plaintext"] = "env"
+    storage: Literal["env", "keyring", "plaintext", "command"] = "env"
+    credential_command: str | None = None
     ca_bundle: str | None = None
 
 
