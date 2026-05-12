@@ -239,6 +239,7 @@ atls auth status      # verify connection
 **What gets installed:**
 - **Claude Code**: `~/.claude/skills/atls/SKILL.md` (auto-loaded skill with command tree, format rules, write-safety protocol) + preference directive in `~/.claude/CLAUDE.md` (active every conversation, reinforces atls as the default Atlassian tool).
 - **Codex**: `~/.agents/skills/atls/SKILL.md` (auto-loaded skill, same canonical content) + routing directive in `~/.codex/AGENTS.md`.
+- **Github Copilot**: `~/.agents/skills/atls/SKILL.md` (auto-loaded skill, same canonical content - copilot supports adding skills via `~/.agents/skills` as well, see [docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills)) 
 - Run `atls setup status` to check what is installed.
 - Run `atls setup paths` to see every resolved install path for your platform.
 
