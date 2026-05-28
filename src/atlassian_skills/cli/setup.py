@@ -630,31 +630,39 @@ def _set_profile_storage(storage: str, *, commands: dict[str, str] | None = None
 
 
 def _cleanup_old_file_storage(products: list[str]) -> None:
-    """When switching from file/env storage to keyring/command, offer to remove the old
-    `~/.secrets/*_pat` files + the atls-managed shell rc block, and unshadow the current
-    process env so the wizard's final --resolve verification actually exercises the new
-    provider instead of the lingering env var.
+    """When switching *specific* products from file/env storage to keyring/command, offer to
+    remove just those products' `~/.secrets/*_pat` files, rebuild the shell rc block from the
+    token files that remain (so products you didn't migrate keep their export lines), and
+    unshadow the current process env for the migrated products so the wizard's final --resolve
+    verification exercises the new provider instead of a lingering env var.
+
+    Only the migrated products are touched — migrating Jira to keyring must not strip the
+    Confluence/Bitbucket exports that are still file-backed.
     """
     secrets = _secrets_dir()
     existing_files = [secrets / f"{p}_pat" for p in products if (secrets / f"{p}_pat").exists()]
     rc = _shell_rc_path() if sys.platform != "win32" else None
-    has_rc_block = False
+    rc_has_migrated_export = False
     if rc and rc.exists():
         try:
-            has_rc_block = _SHELL_RC_BLOCK_START in rc.read_text(encoding="utf-8", errors="replace")
+            rc_text = rc.read_text(encoding="utf-8", errors="replace")
+            rc_has_migrated_export = _SHELL_RC_BLOCK_START in rc_text and any(
+                re.search(rf"export\s+{re.escape(_TOKEN_ENV_NAMES[p])}\b", rc_text) for p in products
+            )
         except OSError:
-            has_rc_block = False
+            rc_has_migrated_export = False
     env_set = [p for p in products if os.environ.get(_TOKEN_ENV_NAMES[p])]
 
-    if not (existing_files or has_rc_block or env_set):
+    if not (existing_files or rc_has_migrated_export or env_set):
         return
 
+    migrated_csv = ", ".join(products)
     typer.echo("")
-    typer.echo("  Old file-based artifacts found from a previous setup:")
+    typer.echo(f"  Old file/env artifacts for {migrated_csv} from a previous setup:")
     for f in existing_files:
         typer.echo(f"    • {f}")
-    if has_rc_block and rc:
-        typer.echo(f"    • atls-managed env block in {rc}")
+    if rc_has_migrated_export and rc:
+        typer.echo(f"    • export line(s) for {migrated_csv} in the atls env block in {rc}")
     if env_set:
         typer.echo(f"    • env var(s) live in this shell: {', '.join(_TOKEN_ENV_NAMES[p] for p in env_set)}")
     remove = _prompt_agent_install("Remove these so the new storage is actually used", default=False)
@@ -673,18 +681,28 @@ def _cleanup_old_file_storage(products: list[str]) -> None:
             typer.echo(f"    → removed {f}")
         except OSError as e:
             typer.echo(f"    ⚠ could not remove {f}: {e}", err=True)
-    if has_rc_block and rc:
+
+    # Rebuild the rc block from the token files that REMAIN so non-migrated products keep
+    # their exports. Strip the block entirely only when no token files are left.
+    if rc is not None and rc.exists():
         try:
-            content = rc.read_text(encoding="utf-8", errors="replace")
-            pattern = re.compile(
-                re.escape(_SHELL_RC_BLOCK_START) + r".*?" + re.escape(_SHELL_RC_BLOCK_END) + r"\n?",
-                re.DOTALL,
-            )
-            rc.write_text(pattern.sub("", content), encoding="utf-8")
-            typer.echo(f"    → stripped atls env block from {rc}")
+            remaining = _existing_secrets_paths()
+            if remaining:
+                _inject_shell_env_block(remaining)
+                typer.echo(f"    → rebuilt atls env block in {rc} (kept: {', '.join(sorted(remaining))})")
+            elif _SHELL_RC_BLOCK_START in rc.read_text(encoding="utf-8", errors="replace"):
+                content = rc.read_text(encoding="utf-8", errors="replace")
+                pattern = re.compile(
+                    re.escape(_SHELL_RC_BLOCK_START) + r".*?" + re.escape(_SHELL_RC_BLOCK_END) + r"\n?",
+                    re.DOTALL,
+                )
+                rc.write_text(pattern.sub("", content), encoding="utf-8")
+                typer.echo(f"    → removed now-empty atls env block from {rc}")
         except OSError as e:
             typer.echo(f"    ⚠ could not edit {rc}: {e}", err=True)
-    # Current-process unshadow so the final --resolve verification sees the new provider.
+
+    # Current-process unshadow (migrated products only) so the final --resolve verification
+    # sees the new provider. Non-migrated products keep their env vars.
     for p in env_set:
         os.environ.pop(_TOKEN_ENV_NAMES[p], None)
 
