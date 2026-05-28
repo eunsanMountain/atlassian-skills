@@ -5,7 +5,7 @@ import os
 import typer
 
 from atlassian_skills.core.auth import resolve_credential
-from atlassian_skills.core.config import get_env_token, get_profile, load_config
+from atlassian_skills.core.config import _LEGACY_TOKEN_VARS, get_env_token, get_profile, load_config
 from atlassian_skills.core.errors import AuthError
 
 auth_app = typer.Typer(help="Manage authentication credentials", no_args_is_help=True)
@@ -77,6 +77,18 @@ def render_auth_status(profile_name: str = "default", *, resolve: bool = False) 
         env_token = get_env_token(profile_name, product)
         if env_token:
             typer.echo(f"  [{product}] token: set (length={len(env_token)}, source=env)")
+            # Shadow guard: storage points at keyring/command but an env var is winning, so the
+            # configured provider is never consulted. Flag it explicitly — the symptom (source=env
+            # while Storage says otherwise) is easy to miss.
+            if prof.storage in ("keyring", "command"):
+                atls_var = f"ATLS_{profile_name.upper()}_{product.upper()}_TOKEN"
+                legacy = _LEGACY_TOKEN_VARS.get(product)
+                names = f"{atls_var} / {legacy}" if legacy else atls_var
+                typer.echo(
+                    f"    ⚠ storage={prof.storage} but an env var is shadowing it — "
+                    f"{prof.storage} is NOT used.\n"
+                    f"      Unset {names} (and remove it from your shell rc / open a new terminal)."
+                )
             continue
 
         if prof.storage == "keyring":

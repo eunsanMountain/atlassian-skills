@@ -42,6 +42,9 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   probe the configured provider (may prompt for Touch ID / a passphrase, or run the shell
   command). Without the flag, both report the configured source only and never touch the
   provider — safe to run repeatedly.
+- **Env-shadow warning** — when `storage` is `keyring`/`command` but a live env var resolves
+  first (so the configured provider is silently never used), `auth status` / `doctor` now flag
+  it explicitly and name the variable to unset.
 
 ### Notes
 - Priority is **CLI flag > env var > the profile's configured provider**. `storage` selects a
