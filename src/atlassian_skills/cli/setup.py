@@ -956,13 +956,14 @@ def _prompt_storage_choice(current: str, platform_name: str) -> str:
             typer.echo("    [3] command or [1] env is usually more reliable here.", err=True)
             if not _prompt_agent_install("Use keyring anyway", default=False):
                 return _prompt_storage_choice(current, platform_name)
-        # Fail fast if the optional dep is missing — before we collect any secret.
+        # keyring is a base dependency as of 0.2.8 — a missing import here means a broken or
+        # stripped-down install. Defensive guard: surface a repair hint before collecting a secret.
         try:
             import keyring  # noqa: F401, PLC0415
         except ImportError:
             typer.echo(
-                "  ✗ the 'keyring' package is not installed. Install the extra and re-run:\n"
-                f"      {_keyring_install_hint()}",
+                "  ✗ the 'keyring' package could not be imported (it ships with atls by default —\n"
+                f"    your install may be broken). Reinstall, e.g.: {_keyring_install_hint()}",
                 err=True,
             )
             if not _prompt_agent_install("Pick a different storage instead", default=True):

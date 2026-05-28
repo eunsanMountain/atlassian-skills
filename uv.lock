@@ -41,6 +41,7 @@ source = { editable = "." }
 dependencies = [
     { name = "cfxmark" },
     { name = "httpx" },
+    { name = "keyring" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "rich" },
@@ -70,6 +71,7 @@ dev = [
 requires-dist = [
     { name = "cfxmark", specifier = ">=0.4" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "keyring", specifier = ">=24" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
     { name = "platformdirs" },
     { name = "pydantic", specifier = ">=2.5" },

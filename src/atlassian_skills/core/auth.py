@@ -36,8 +36,9 @@ def _resolve_token_from_provider(profile_name: str, product: str, profile: Profi
             import keyring
         except ImportError as exc:
             raise AuthError(
-                f"storage='keyring' configured for profile '{profile_name}' but the keyring package is not installed.",
-                hint="Install the extra: uv tool install --force 'atlassian-skills[keyring]'  "
+                f"storage='keyring' configured for profile '{profile_name}' but the keyring package "
+                "could not be imported (it ships with atls by default — your install may be broken).",
+                hint="Reinstall, e.g.: uv tool install --force 'atlassian-skills[keyring]' "
                 "(pipx: pipx inject atlassian-skills keyring; pip: pip install 'atlassian-skills[keyring]')",
             ) from exc
         return keyring.get_password(f"atls-{profile_name}", f"{product}_token")
