@@ -13,7 +13,7 @@ mcp-atlassian is great for Cloud setups, but on Server/DC its MCP protocol overh
 
 **atlassian-skills** re-implements the same Jira and Confluence operations as a lightweight CLI with compact output, achieving **≥50% token reduction**. It uses [cfxmark](https://github.com/eunsanMountain/cfxmark) for **lossless Confluence XHTML ↔ Markdown conversion**, enabling agents to pull a page as Markdown, edit it, and push it back without any content loss.
 
-First-class integration with **Claude Code** and **Codex**. A single `atls setup` wizard configures URLs, tokens, and the auto-loaded Skill for both agents in one pass.
+First-class integration with **Claude Code**, **Codex**, and **GitHub Copilot**. A single `atls setup` wizard configures URLs, tokens, and the auto-loaded Skill for all three agents in one pass.
 
 ## Why atlassian-skills?
 
@@ -26,7 +26,7 @@ First-class integration with **Claude Code** and **Codex**. A single `atls setup
 | Confluence markup round-trip | Lossy (XHTML re-serialization) | Lossless via cfxmark (XHTML ↔ Markdown) |
 | Jira body preservation | Drops special chars | Byte-preserving |
 | Server/DC support | Partial | Full (primary target) |
-| AI agent setup | Manual MCP config | One interactive wizard (`atls setup`) for Claude Code + Codex |
+| AI agent setup | Manual MCP config | One interactive wizard (`atls setup`) for Claude Code + Codex + GitHub Copilot |
 | Bitbucket Server | Not supported | Full (0.2.0) — PR workflow, comments, tasks, build status |
 | Bamboo | Not supported | Planned (0.3.0) |
 
@@ -34,7 +34,7 @@ First-class integration with **Claude Code** and **Codex**. A single `atls setup
 
 ```bash
 uv tool install atlassian-skills    # or: pipx install atlassian-skills / pip install atlassian-skills
-atls setup                          # interactive wizard — URLs, tokens, Claude/Codex skill
+atls setup                          # interactive wizard — URLs, tokens, Claude/Codex/Copilot skill
 atls doctor                         # verify configuration + auth
 ```
 
@@ -89,9 +89,10 @@ After `ensurepath`, open a new terminal so the updated `PATH` is picked up.
    - `r` (remove) on a `config`-sourced URL clears it from `config.toml` and leaves the token file in place with a manual-removal hint. On an `env`-sourced URL it warns that the wizard cannot permanently unset shell env vars.
 4. **Orphan file banner** (Linux / macOS) — env vars are the single source of truth. If the wizard finds a `~/.secrets/{p}_pat` file whose corresponding env var isn't loaded in the current shell, it prints a banner up front explaining the three ways to resolve it: `source ~/.zshrc` to activate, re-enter a PAT to overwrite, or pick `r` to delete the stale file. Picking `r` always deletes the file too, so the orphan state is easy to clean up.
 5. **Shadowing warning** (Linux / macOS) — if the wizard finds a manual `export JIRA_PERSONAL_TOKEN=…` outside the atls block in your shell rc, it warns at the end: depending on line order the manual export can override the wizard-managed token. (Multi-profile `ATLS_DEFAULT_*_TOKEN` shadowing is intentionally not checked — that's an advanced setup; see the priority table under *Manual setup*.)
-6. **[4/4] AI agent skills** — `[Y/n]` (default `Y`) for each:
-   - Claude Code: `~/.claude/skills/atls/SKILL.md` + routing block in `~/.claude/CLAUDE.md`
-   - Codex: `~/.codex/skills/atls/SKILL.md` + routing block in `~/.codex/AGENTS.md`
+6. **[4/4] AI agent skills** — `[Y/n]` prompt for each:
+   - Claude Code (default `Y`): `~/.claude/skills/atls/SKILL.md` + routing block in `~/.claude/CLAUDE.md`
+   - Codex (default `Y`): `~/.codex/skills/atls/SKILL.md` + routing block in `~/.codex/AGENTS.md`
+   - GitHub Copilot (default `n`, opt-in): `~/.copilot/skills/atls/SKILL.md` (Copilot auto-discovers `SKILL.md` here per the [Copilot Skills docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills); no routing file needed)
 7. **Verify** — runs `auth status` inline so you see whether URL + token resolution is working before you exit.
 
 Re-run `atls setup` any time. Every step's default is non-destructive (`k` for existing, `s` for not-yet-configured, `Y` for agent install), so a pure-Enter run preserves whatever you already had.
