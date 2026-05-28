@@ -114,11 +114,11 @@ class TestUpgradeUv:
         assert result.exit_code == 0
         assert commands == [
             ["/usr/bin/uv", "tool", "upgrade", "atlassian-skills"],
-            ["/usr/local/bin/atls", "setup", "all"],
+            ["/usr/local/bin/atls", "setup", "--skills-only"],
         ]
-        assert len(captured_kwargs) == 2  # upgrade + setup all
+        assert len(captured_kwargs) == 2  # upgrade + setup --skills-only
         assert "detected uv install" in result.output
-        assert "Refreshing Claude/Codex setup with `atls setup all`..." in result.output
+        assert "Refreshing Claude/Codex skill assets with `atls setup --skills-only`..." in result.output
 
     def test_uv_path_falls_back_to_current_executable_for_setup(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -147,7 +147,7 @@ class TestUpgradeUv:
         result = runner.invoke(app, ["upgrade"])
 
         assert result.exit_code == 0
-        assert commands[-1] == [str(current_atls), "setup", "all"]
+        assert commands[-1] == [str(current_atls), "setup", "--skills-only"]
 
     def test_uv_path_fails_when_uv_is_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.cli.upgrade as upgrade_mod
@@ -184,7 +184,7 @@ class TestUpgradePip:
         assert result.exit_code == 0
         assert commands == [
             ["/usr/bin/python3", "-m", "pip", "install", "--upgrade", "atlassian-skills"],
-            ["/usr/local/bin/atls", "setup", "all"],
+            ["/usr/local/bin/atls", "setup", "--skills-only"],
         ]
         assert "detected pip install" in result.output
         assert "uv tool install atlassian-skills" in result.output  # hint shown
@@ -236,7 +236,7 @@ class TestUpgradePipx:
         assert result.exit_code == 0
         assert commands == [
             ["/usr/local/bin/pipx", "upgrade", "atlassian-skills"],
-            ["/usr/local/bin/atls", "setup", "all"],
+            ["/usr/local/bin/atls", "setup", "--skills-only"],
         ]
         assert "detected pipx install" in result.output
 

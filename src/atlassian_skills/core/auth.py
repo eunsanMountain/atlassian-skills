@@ -14,6 +14,12 @@ class Credential:
     token: str
     username: str | None = None
 
+    def __repr__(self) -> str:
+        """Redact the raw token in repr / debug output to avoid leaks via tracebacks / logs."""
+        return f"Credential(method={self.method!r}, token=***redacted***, username={self.username!r})"
+
+    __str__ = __repr__
+
     def to_header(self) -> dict[str, str]:
         """Return the Authorization header dict for this credential."""
         if self.method == "pat":
