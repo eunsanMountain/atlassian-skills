@@ -81,6 +81,7 @@ def _register_sub_apps() -> None:
     from atlassian_skills.cli.bitbucket import bitbucket_app
     from atlassian_skills.cli.config import config_app
     from atlassian_skills.cli.confluence import confluence_app
+    from atlassian_skills.cli.doctor import doctor
     from atlassian_skills.cli.jira import jira_app
     from atlassian_skills.cli.setup import setup_app
     from atlassian_skills.cli.upgrade import upgrade
@@ -92,6 +93,7 @@ def _register_sub_apps() -> None:
     app.add_typer(confluence_app, name="confluence")
     app.add_typer(jira_app, name="jira")
     app.add_typer(setup_app, name="setup")
+    app.command("doctor")(doctor)
     app.command("upgrade")(upgrade)
     app.command("version")(version)
 

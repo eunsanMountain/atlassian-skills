@@ -39,14 +39,8 @@ def auth_login(
     typer.echo(f"export {upper}_AUTH=basic")
 
 
-@auth_app.command("status")
-def auth_status(
-    ctx: typer.Context,
-    profile: str = typer.Option(None, "--profile", "-p", help="Profile name (overrides global)"),
-) -> None:
-    """Report credential source and connectivity for the current profile."""
-    ctx.ensure_object(dict)
-    profile_name = profile or ctx.obj.get("profile", "default")
+def render_auth_status(profile_name: str = "default") -> None:
+    """Print credential resolution status. Shared by `auth status`, `doctor`, and the setup wizard."""
     config = load_config()
     prof = get_profile(config, profile_name)
 
@@ -69,6 +63,17 @@ def auth_status(
             typer.echo(f"  [{product}] token: set (length={len(token)})")
         else:
             typer.echo(f"  [{product}] token: NOT SET")
+
+
+@auth_app.command("status")
+def auth_status(
+    ctx: typer.Context,
+    profile: str = typer.Option(None, "--profile", "-p", help="Profile name (overrides global)"),
+) -> None:
+    """Report credential source and connectivity for the current profile."""
+    ctx.ensure_object(dict)
+    profile_name = profile or ctx.obj.get("profile", "default")
+    render_auth_status(profile_name)
 
 
 @auth_app.command("list")

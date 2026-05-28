@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.2.6 (Jira/Confluence/Bitbucket read+write, Skill-first agent integration)
+- **Current version**: 0.2.7 (interactive `atls setup` wizard, `atls doctor` diagnostic; legacy `setup all/codex/claude/paths/status` deprecated for removal in 0.3.0)
 
 ## Build & Run
 

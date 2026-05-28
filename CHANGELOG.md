@@ -14,11 +14,66 @@ pipx upgrade atlassian-skills            # for pipx installs
 pip install -U atlassian-skills          # for plain pip installs
 ```
 
-After a manual upgrade, rerun `atls setup all` to refresh the bundled skill files
-(`atls upgrade` already does this automatically). Windows, macOS, and Linux all use
-the same commands — on Windows they run identically in PowerShell or cmd.
+After a manual upgrade, rerun `atls setup --skills-only` to refresh the bundled skill
+files (`atls upgrade` already does this automatically). Windows, macOS, and Linux all
+use the same commands — on Windows they run identically in PowerShell, cmd, or Git Bash.
 
 ---
+
+## [0.2.7] - 2026-05-28
+
+> ⚠️ **Heads-up for 0.3.0**: `atls setup all/codex/claude/paths/status` still work in
+> 0.2.7 but emit a deprecation warning on stderr. They will be **removed in 0.3.0**.
+> The replacement for all five is `atls setup` (interactive wizard) plus `atls doctor`
+> (diagnostic). Migrate any automation now.
+
+### Added
+- **`atls setup` — single interactive wizard.** One command configures Jira / Confluence
+  / Bitbucket URLs, Personal Access Tokens, and Claude / Codex skill installation in one
+  pass. Replaces the previous 5-step install → URL × 3 → token × 3 → `setup all` flow
+  with `install → setup → go`.
+- **`atls setup --skills-only`** — silent non-interactive skill refresh. `atls upgrade`
+  now invokes this instead of `atls setup all`, so upgrades no longer surface the
+  deprecation warning.
+- **`atls doctor`** — diagnostic command that prints platform, shell, all resolved
+  install paths, skill version markers, legacy notices, and auth resolution in one
+  screen. Replaces the diagnostic side of `setup status` / `setup paths`.
+- **Token-exposure guards (4-layer)**:
+  1. Wizard refuses to run when stdin is not a TTY — protects against AI-agent shell
+     tools that would otherwise hang the prompt and surface a token through chat.
+  2. `Credential.__repr__` / `__str__` now redact the raw token — tracebacks and logs
+     can no longer leak it.
+  3. `core/auth.py:Credential` repr/str tests guard against regression.
+  4. Wizard explicitly never echoes a freshly-entered token to stdout/stderr; a
+     dedicated test asserts the input string never appears in command output.
+- **Cross-platform token storage** (configured automatically by the wizard):
+  - Linux / macOS: `~/.secrets/{jira,confluence,bitbucket}_pat` (chmod 600) +
+    idempotent `# >>> atls env >>>` block in `~/.zshrc` or `~/.bashrc`.
+  - Windows: `HKCU\Environment` registry values + `WM_SETTINGCHANGE` broadcast +
+    current-process `os.environ` update — works identically from cmd, PowerShell 5/7,
+    and Git Bash.
+
+### Changed
+- **`atls upgrade`** now calls `atls setup --skills-only` (was: `atls setup all`).
+  Same behaviour, no deprecation noise.
+- **`Credential.__repr__`** is now redacted by default; any code relying on the old
+  full-token repr must read `.token` explicitly.
+
+### Deprecated
+- `atls setup all` — use `atls setup` (wizard).
+- `atls setup codex` — use `atls setup`.
+- `atls setup claude` — use `atls setup`.
+- `atls setup paths` — use `atls doctor`.
+- `atls setup status` — use `atls doctor`.
+
+All five remain functional in 0.2.7 and emit a stderr warning on each call. They will
+be removed in 0.3.0.
+
+### Notes
+- **fish shell is detected but not yet supported** by the wizard's token-saving step
+  (fish uses `set -gx` instead of `export`). The wizard prints a clear workaround and
+  aborts before any prompt; `atls setup --skills-only` still works. Full fish support
+  is planned for 0.4.0.
 
 ## [0.2.6] - 2026-05-28
 

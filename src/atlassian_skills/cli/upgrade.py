@@ -112,5 +112,28 @@ def upgrade() -> None:
         )
 
     atls = _resolve_atls_executable()
-    typer.echo("Refreshing Claude/Codex setup with `atls setup all`...")
-    _run_checked([atls, "setup", "all"], step_name="atls setup all")
+    typer.echo("Refreshing Claude/Codex skill assets with `atls setup --skills-only`...")
+    # Subprocess invocation runs the NEW atls binary so it sees the updated `_assets/`.
+    # On Windows, pip can fail to replace `atls.exe` while it's running — the package
+    # files update but the .exe stays at the old version. We hint at that failure mode
+    # if the refresh step rejects --skills-only (a flag only the new binary knows).
+    result = subprocess.run(
+        [atls, "setup", "--skills-only"],
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
+    _echo_process_output(result)
+    if result.returncode != 0:
+        if sys.platform == "win32" and "no such option" in (result.stderr or "").lower():
+            typer.echo(
+                "\nIt looks like the `atls.exe` on your PATH is still the OLD version.\n"
+                "  This usually means pip couldn't replace the running binary on Windows.\n"
+                "  Open a NEW terminal and run `atls setup --skills-only` once to finish "
+                "the upgrade.",
+                err=True,
+            )
+        typer.echo(f"atls setup --skills-only failed with exit code {result.returncode}.", err=True)
+        raise typer.Exit(result.returncode or 1)
