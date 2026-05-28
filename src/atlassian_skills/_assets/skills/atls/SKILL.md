@@ -14,7 +14,7 @@ description: |
 
 # atls — Atlassian CLI Dispatcher
 
-<!-- installed-by: atls 0.2.7 -->
+<!-- installed-by: atls 0.2.8 -->
 
 ## Upgrade
 On missing command/flag or CHANGELOG-fixed behavior, run `atls version --check`; exit 1 → suggest `atls upgrade`.
