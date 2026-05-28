@@ -187,10 +187,13 @@ atls auth status        # equivalent to the Auth section of `atls doctor`
 - URLs — CLI flags > `ATLS_*` env > config.toml
 - Tokens — CLI flags > `ATLS_*` env > `JIRA_PERSONAL_TOKEN` / `CONFLUENCE_PERSONAL_TOKEN` / `BITBUCKET_TOKEN`
 
+> Prefer not to keep tokens in env vars? See **System keyring and shell-command providers** below
+> to store them in the OS keyring or fetch them from 1Password / `pass` / Bitwarden on demand.
+
 </details>
 
 <details>
-<summary>System keyring and shell-command providers (no persistent env vars)</summary>
+<summary><b>System keyring and shell-command providers (no persistent env vars)</b></summary>
 
 Instead of storing tokens in environment variables, you can have atls fetch them on demand from your system keyring or a custom shell command. The token is retrieved only at call time and never stored in the environment. These are opt-in via the profile's `storage` setting — env vars remain the default and always take priority.
 
