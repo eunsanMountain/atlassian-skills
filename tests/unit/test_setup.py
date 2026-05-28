@@ -1120,3 +1120,39 @@ class TestAuthStatusResolve:
             render_auth_status("default", resolve=False)
 
         mock_run.assert_not_called()
+
+    def test_env_shadowing_configured_keyring_is_warned(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """storage=keyring but a live env var resolves first → explicit shadow warning."""
+        import atlassian_skills.core.config as config_mod
+        from atlassian_skills.cli.auth import render_auth_status
+
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        monkeypatch.setenv("ATLS_DEFAULT_JIRA_TOKEN", "shadowing-env-token")
+        _write_config(tmp_path, storage="keyring", jira_url="https://jira.example.com")
+
+        render_auth_status("default", resolve=False)
+
+        out = capsys.readouterr().out
+        assert "source=env" in out
+        assert "shadowing it" in out
+        assert "storage=keyring" in out
+        assert "ATLS_DEFAULT_JIRA_TOKEN" in out
+
+    def test_env_source_no_warning_when_storage_is_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """With storage=env, source=env is expected — no shadow warning should appear."""
+        import atlassian_skills.core.config as config_mod
+        from atlassian_skills.cli.auth import render_auth_status
+
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        monkeypatch.setenv("ATLS_DEFAULT_JIRA_TOKEN", "env-token")
+        _write_config(tmp_path, storage="env", jira_url="https://jira.example.com")
+
+        render_auth_status("default", resolve=False)
+
+        out = capsys.readouterr().out
+        assert "source=env" in out
+        assert "shadowing" not in out
