@@ -4,7 +4,9 @@ import os
 
 import typer
 
+from atlassian_skills.core.auth import resolve_credential
 from atlassian_skills.core.config import get_env_token, get_profile, load_config
+from atlassian_skills.core.errors import AuthError
 
 auth_app = typer.Typer(help="Manage authentication credentials", no_args_is_help=True)
 
@@ -39,8 +41,21 @@ def auth_login(
     typer.echo(f"export {upper}_AUTH=basic")
 
 
-def render_auth_status(profile_name: str = "default") -> None:
-    """Print credential resolution status. Shared by `auth status`, `doctor`, and the setup wizard."""
+def _command_for(prof: object, product: str) -> str | None:
+    """Return the effective command for a product under storage='command'."""
+    return getattr(prof, f"{product}_command", None) or getattr(prof, "credential_command", None)
+
+
+def render_auth_status(profile_name: str = "default", *, resolve: bool = False) -> None:
+    """Print credential resolution status. Shared by `auth status`, `doctor`, and the setup wizard.
+
+    resolve=False (default): report the *configured* token source only. Never executes a
+    keyring lookup or shell command — safe to run repeatedly (no Touch ID / passphrase prompt,
+    no 5s timeout per product).
+    resolve=True: actually probe each provider. May trigger an OS credential prompt or run the
+    user's shell command. Used by `auth status --resolve`, `doctor --resolve-credentials`, and
+    the setup wizard's final verification (where probing is the point).
+    """
     config = load_config()
     prof = get_profile(config, profile_name)
 
@@ -58,9 +73,34 @@ def render_auth_status(profile_name: str = "default") -> None:
     typer.echo(f"  Storage:        {prof.storage}")
 
     for product in products:
-        token = get_env_token(profile_name, product)
-        if token:
-            typer.echo(f"  [{product}] token: set (length={len(token)})")
+        # Env always takes priority and never needs probing — report it directly.
+        env_token = get_env_token(profile_name, product)
+        if env_token:
+            typer.echo(f"  [{product}] token: set (length={len(env_token)}, source=env)")
+            continue
+
+        if prof.storage == "keyring":
+            if not resolve:
+                typer.echo(f"  [{product}] storage=keyring (configured — run with --resolve to verify)")
+                continue
+            try:
+                cred = resolve_credential(profile_name, product, prof)
+                typer.echo(f"  [{product}] token: set (length={len(cred.token)}, source=keyring)")
+            except AuthError as e:
+                typer.echo(f"  [{product}] keyring: {e.message}")
+
+        elif prof.storage == "command":
+            cmd = _command_for(prof, product)
+            disp = (cmd[:40] + "…") if cmd and len(cmd) > 40 else (cmd or "(no command)")
+            if not resolve:
+                typer.echo(f"  [{product}] storage=command (configured: {disp})")
+                continue
+            try:
+                cred = resolve_credential(profile_name, product, prof)
+                typer.echo(f"  [{product}] token: set (length={len(cred.token)}, source=command)")
+            except AuthError as e:
+                typer.echo(f"  [{product}] command failed: {e.message}")
+
         else:
             typer.echo(f"  [{product}] token: NOT SET")
 
@@ -69,11 +109,16 @@ def render_auth_status(profile_name: str = "default") -> None:
 def auth_status(
     ctx: typer.Context,
     profile: str = typer.Option(None, "--profile", "-p", help="Profile name (overrides global)"),
+    resolve: bool = typer.Option(
+        False,
+        "--resolve",
+        help="Probe keyring/command providers (may prompt for Touch ID / passphrase or run a shell command).",
+    ),
 ) -> None:
     """Report credential source and connectivity for the current profile."""
     ctx.ensure_object(dict)
     profile_name = profile or ctx.obj.get("profile", "default")
-    render_auth_status(profile_name)
+    render_auth_status(profile_name, resolve=resolve)
 
 
 @auth_app.command("list")

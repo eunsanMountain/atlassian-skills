@@ -124,7 +124,8 @@ export ATLS_CORP_CONFLUENCE_TOKEN="your-pat"
 jira_url = "https://jira.corp.example.com"
 
 # System keyring — uses platform native store (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-# Requires: pip install "atlassian-skills[keyring]"
+# Requires the keyring extra (e.g. uv tool install --force "atlassian-skills[keyring]")
+# Keyring entry: service="atls-<profile>", account="<product>_token"
 [profiles.corp]
 jira_url = "https://jira.corp.example.com"
 storage = "keyring"
@@ -133,14 +134,16 @@ storage = "keyring"
 # Examples: "op read op://vault/jira/token" (1Password, all platforms)
 #           "security find-generic-password -s my-jira-token -w" (macOS)
 #           "pass show jira/pat" (Linux)
-#           "powershell -Command \"(Get-StoredCredential -Target jira-pat).GetNetworkCredential().Password\"" (Windows)
+#           "powershell -NoProfile -Command \"(Get-StoredCredential -Target jira-pat).GetNetworkCredential().Password\"" (Windows)
 [profiles.corp]
 jira_url = "https://jira.corp.example.com"
 storage = "command"
-credential_command = "op read op://vault/jira/token"
+credential_command = "op read op://vault/atlassian/token"      # shared across products
+# jira_command / confluence_command / bitbucket_command override per product (optional)
 ```
 
-Priority: CLI flag > env var > keyring > shell command > plaintext config
+Priority: CLI flag > env var > the profile's configured `storage` provider (keyring **or** command).
+`storage` selects a single provider — it is not a fallback chain. `plaintext` is reserved (not yet implemented).
 
 ## Release Process
 

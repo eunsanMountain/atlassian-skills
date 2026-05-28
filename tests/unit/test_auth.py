@@ -515,3 +515,58 @@ class TestResolveCredentialProviders:
 
         assert cred.token == "env-token"
         mock_run.assert_not_called()
+
+    # --- per-product command (jira_command / confluence_command / bitbucket_command) ---
+
+    def test_per_product_command_wins_over_shared(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(
+            storage="command",
+            credential_command="echo shared",
+            jira_command="echo jira-specific",
+        )
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "jira-token\n"
+        mock_result.stderr = ""
+
+        with patch("atlassian_skills.core.auth.subprocess.run", return_value=mock_result) as mock_run:
+            cred = resolve_credential("corp", "jira", profile)
+
+        # The product-specific command must be the one executed, not credential_command.
+        mock_run.assert_called_once_with("echo jira-specific", shell=True, capture_output=True, text=True, timeout=5)
+        assert cred.token == "jira-token"
+
+    def test_falls_back_to_shared_credential_command(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_CONFLUENCE_TOKEN", raising=False)
+        monkeypatch.delenv("CONFLUENCE_PERSONAL_TOKEN", raising=False)
+        # jira_command set but we resolve confluence → must use shared credential_command.
+        profile = Profile(
+            storage="command",
+            credential_command="echo shared",
+            jira_command="echo jira-only",
+        )
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = "shared-token\n"
+        mock_result.stderr = ""
+
+        with patch("atlassian_skills.core.auth.subprocess.run", return_value=mock_result) as mock_run:
+            cred = resolve_credential("corp", "confluence", profile)
+
+        mock_run.assert_called_once_with("echo shared", shell=True, capture_output=True, text=True, timeout=5)
+        assert cred.token == "shared-token"
+
+    def test_per_product_only_other_product_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ATLS_CORP_BITBUCKET_TOKEN", raising=False)
+        monkeypatch.delenv("BITBUCKET_TOKEN", raising=False)
+        # Only jira_command set, no shared command → resolving bitbucket must raise.
+        profile = Profile(storage="command", jira_command="echo jira-only")
+
+        with pytest.raises(AuthError) as exc_info:
+            resolve_credential("corp", "bitbucket", profile)
+
+        assert "bitbucket_command" in (exc_info.value.hint or "")

@@ -37,19 +37,23 @@ def _resolve_token_from_provider(profile_name: str, product: str, profile: Profi
         except ImportError as exc:
             raise AuthError(
                 f"storage='keyring' configured for profile '{profile_name}' but the keyring package is not installed.",
-                hint="pip install 'atlassian-skills[keyring]'",
+                hint="Install the extra: uv tool install --force 'atlassian-skills[keyring]'  "
+                "(pipx: pipx inject atlassian-skills keyring; pip: pip install 'atlassian-skills[keyring]')",
             ) from exc
         return keyring.get_password(f"atls-{profile_name}", f"{product}_token")
 
     if profile.storage == "command":
-        if not profile.credential_command:
+        # Per-product command wins over the shared credential_command.
+        command = getattr(profile, f"{product}_command", None) or profile.credential_command
+        if not command:
             raise AuthError(
-                f"storage='command' configured for profile '{profile_name}' but credential_command is not set.",
-                hint='Add credential_command = "<shell command>" to the profile in config.toml.',
+                f"storage='command' configured for profile '{profile_name}' but no command is set "
+                f"for product '{product}'.",
+                hint=f'Add {product}_command = "<shell command>" (or a shared credential_command) to the profile.',
             )
         try:
             result = subprocess.run(
-                profile.credential_command,
+                command,
                 shell=True,
                 capture_output=True,
                 text=True,
@@ -57,13 +61,13 @@ def _resolve_token_from_provider(profile_name: str, product: str, profile: Profi
             )
         except subprocess.TimeoutExpired as exc:
             raise AuthError(
-                f"credential_command timed out for profile '{profile_name}', product '{product}'.",
-                hint=f"Check that this command completes promptly: {profile.credential_command}",
+                f"credential command timed out for profile '{profile_name}', product '{product}'.",
+                hint=f"Check that this command completes promptly: {command}",
             ) from exc
         if result.returncode != 0:
-            detail = result.stderr.strip() or profile.credential_command
+            detail = result.stderr.strip() or command
             raise AuthError(
-                f"credential_command exited {result.returncode} for profile '{profile_name}', product '{product}'.",
+                f"credential command exited {result.returncode} for profile '{profile_name}', product '{product}'.",
                 hint=f"stderr: {detail}",
             )
         return result.stdout.strip() or None

@@ -35,6 +35,12 @@ class Profile(BaseModel):
     auth: AuthConfig = AuthConfig()
     storage: Literal["env", "keyring", "plaintext", "command"] = "env"
     credential_command: str | None = None
+    # Per-product command overrides for storage="command". When set, each takes
+    # priority over the shared `credential_command` for that product — lets one
+    # profile pull jira/confluence/bitbucket tokens from different vault entries.
+    jira_command: str | None = None
+    confluence_command: str | None = None
+    bitbucket_command: str | None = None
     ca_bundle: str | None = None
 
 
