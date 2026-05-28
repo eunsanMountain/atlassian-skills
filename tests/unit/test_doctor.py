@@ -41,9 +41,7 @@ class TestDoctor:
         assert "not installed" in result.output  # no skill files exist
         assert "NOT SET" in result.output  # no token env vars
 
-    def test_doctor_shows_installed_version_marker(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_doctor_shows_installed_version_marker(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.core.config as config_mod
 
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
@@ -59,9 +57,7 @@ class TestDoctor:
         assert result.exit_code == 0
         assert "v0.2.7" in result.output
 
-    def test_doctor_shows_url_and_token_sources(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_doctor_shows_url_and_token_sources(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.core.config as config_mod
 
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))

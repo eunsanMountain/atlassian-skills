@@ -366,9 +366,7 @@ class TestSkillsOnly:
 
 
 @pytest.fixture
-def wizard_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bypass_tty_guard: None
-) -> Path:
+def wizard_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bypass_tty_guard: None) -> Path:
     """Common wizard sandbox: tmp HOME, stub all install paths, neutralise Windows path."""
     import atlassian_skills.cli.setup as setup_mod
     import atlassian_skills.core.config as config_mod
@@ -479,9 +477,7 @@ class TestWizardURLs:
         assert prof.confluence_url == "https://conf.seed"
         assert prof.bitbucket_url is None
 
-    def test_remove_env_sourced_url_emits_noop_warning(
-        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_remove_env_sourced_url_emits_noop_warning(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         from atlassian_skills.cli.main import app
         from atlassian_skills.core.config import load_config
 
@@ -541,9 +537,7 @@ class TestWizardTokens:
 
 
 class TestWizardWindows:
-    def test_windows_calls_save_tokens_with_env_vars(
-        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_windows_calls_save_tokens_with_env_vars(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.cli.setup as setup_mod
 
         captured: dict[str, str] = {}
@@ -664,9 +658,7 @@ class TestOrphanTokenFiles:
     surfaces as a banner — never as 'set' — and can be deleted with `r`.
     """
 
-    def test_existing_tokens_returns_zero_when_env_unset_even_if_file_exists(
-        self, wizard_env: Path
-    ) -> None:
+    def test_existing_tokens_returns_zero_when_env_unset_even_if_file_exists(self, wizard_env: Path) -> None:
         from atlassian_skills.cli.setup import _existing_tokens
 
         secrets = wizard_env / ".secrets"
@@ -777,9 +769,7 @@ class TestTTYGuard:
         assert result.exit_code == 1
         assert "interactive terminal" in result.output
 
-    def test_tty_guard_passes_when_is_tty_true(
-        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_tty_guard_passes_when_is_tty_true(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Sanity: if _is_tty returns True, the guard does NOT exit — wizard proceeds.
 
         Uses the wizard_env fixture so the rest of the wizard has its tmp paths.
@@ -804,9 +794,7 @@ class TestTTYGuard:
 
 
 class TestFishGuard:
-    def test_fish_aborts_before_any_prompt(
-        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fish_aborts_before_any_prompt(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("FISH_VERSION", "3.7.0")
 
         from atlassian_skills.cli.main import app
@@ -862,7 +850,9 @@ class TestCopilotInstall:
 
         runner = CliRunner()
         # Claude=n, Codex=n, Copilot=Enter (default Y)
-        result = runner.invoke(app, ["setup"], input=_wizard_input(install_claude="n", install_codex="n", install_copilot=""))
+        result = runner.invoke(
+            app, ["setup"], input=_wizard_input(install_claude="n", install_codex="n", install_copilot="")
+        )
 
         assert result.exit_code == 0
         assert (wizard_env / ".copilot" / "skills" / "atls" / "SKILL.md").exists()
@@ -886,9 +876,7 @@ class TestCopilotInstall:
         assert (tmp_path / ".codex" / "skills" / "atls" / "SKILL.md").exists()
         assert not (tmp_path / ".copilot" / "skills" / "atls" / "SKILL.md").exists()
 
-    def test_skills_only_refreshes_copilot_when_present(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_skills_only_refreshes_copilot_when_present(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """If Copilot SKILL.md already exists, --skills-only must refresh it (so `atls upgrade`
         keeps it in sync with Claude/Codex)."""
         import atlassian_skills.cli.setup as setup_mod

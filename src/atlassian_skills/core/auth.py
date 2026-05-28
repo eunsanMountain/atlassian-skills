@@ -16,10 +16,7 @@ class Credential:
 
     def __repr__(self) -> str:
         """Redact the raw token in repr / debug output to avoid leaks via tracebacks / logs."""
-        return (
-            f"Credential(method={self.method!r}, token=***redacted***, "
-            f"username={self.username!r})"
-        )
+        return f"Credential(method={self.method!r}, token=***redacted***, username={self.username!r})"
 
     __str__ = __repr__
 

@@ -408,8 +408,7 @@ _CANONICAL_SKILL_DIR = ASSETS_DIR / "skills" / "atls"
 def _emit_deprecation(command: str) -> None:
     """Stderr-only deprecation warning for legacy `setup <command>` calls."""
     typer.echo(
-        f"⚠ deprecated: 'atls setup {command}' will be removed in 0.3.0. "
-        f"Use 'atls setup' (wizard) instead.",
+        f"⚠ deprecated: 'atls setup {command}' will be removed in 0.3.0. Use 'atls setup' (wizard) instead.",
         err=True,
     )
 
@@ -748,11 +747,15 @@ def _prompt_agent_install(label: str, default: bool = True) -> bool:
     marker = "Y" if default else "n"
     # `prompt_suffix=":"` is typer's default; we render the choices + default ourselves
     # because `typer.confirm` would otherwise inject "[Y/n]" itself, duplicating the marker.
-    answer = typer.prompt(
-        f"  {label}? [y/n] [default={marker}]",
-        default=marker,
-        show_default=False,
-    ).strip().lower()
+    answer = (
+        typer.prompt(
+            f"  {label}? [y/n] [default={marker}]",
+            default=marker,
+            show_default=False,
+        )
+        .strip()
+        .lower()
+    )
     return answer in ("y", "yes")
 
 
@@ -963,9 +966,7 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
     total_steps = len(_PRODUCTS) + 1  # +1 for AI agent step
 
     for idx, product in enumerate(_PRODUCTS, start=1):
-        (url, action), token = _wizard_product_step(
-            product, idx, total_steps, url_state, token_state, file_state
-        )
+        (url, action), token = _wizard_product_step(product, idx, total_steps, url_state, token_state, file_state)
         url_actions[product] = (url, action)
         if token is not None:
             new_tokens[product] = token
