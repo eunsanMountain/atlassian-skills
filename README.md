@@ -35,10 +35,14 @@ First-class integration with **Claude Code**, **Codex**, and **GitHub Copilot**.
 ```bash
 uv tool install atlassian-skills    # or: pipx install atlassian-skills / pip install atlassian-skills
 atls setup                          # interactive wizard — URLs, tokens, Claude/Codex/Copilot skill
-atls doctor                         # verify configuration + auth
+# → with the default env storage, open a NEW terminal (or `source ~/.zshrc`) so the token
+#   exports take effect before the next step. (keyring/command storage take effect immediately.)
+atls doctor                         # verify configuration + auth  (run in the new terminal)
 ```
 
 That's it. The wizard detects your platform/shell and writes config + secrets + shell rc + agent skills in one pass.
+
+> ℹ️ With the default **env** storage, tokens are exported from `~/.zshrc` / `~/.bashrc`, so they only become visible in a **new** shell (or after `source`-ing your rc). Running `atls doctor` in the *same* shell right after `atls setup` will show tokens as `NOT SET` until then — that's expected. The `keyring` and `command` storage options don't need a shell reload; check them with `atls auth status --resolve`.
 
 > ⚠️ Run `atls setup` **directly in your terminal** — never through an AI agent's shell tool. The wizard refuses non-TTY stdin and prompts hide token input from terminal echo; running it through an agent would force the agent to fulfil the token prompt from chat, leaking the value into LLM context.
 
