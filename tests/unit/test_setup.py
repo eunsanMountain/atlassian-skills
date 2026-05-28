@@ -1072,6 +1072,56 @@ class TestWizardStorage:
         assert not (secrets / "jira_pat").exists()  # old file removed
         assert os.environ.get("JIRA_PERSONAL_TOKEN") is None  # current-process unshadow
 
+    def test_partial_keyring_migration_preserves_other_product_exports(
+        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """REGRESSION: migrating ONLY jira to keyring must not delete the confluence/bitbucket
+        files or strip their export lines from the shell rc (the whole atls block used to be
+        stripped, orphaning the untouched products)."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        secrets = wizard_env / ".secrets"
+        secrets.mkdir(mode=0o700, exist_ok=True)
+        for product, env_name in (
+            ("jira", "JIRA_PERSONAL_TOKEN"),
+            ("confluence", "CONFLUENCE_PERSONAL_TOKEN"),
+            ("bitbucket", "BITBUCKET_TOKEN"),
+        ):
+            (secrets / f"{product}_pat").write_text(f"old-{product}", encoding="utf-8")
+            monkeypatch.setenv(env_name, f"old-{product}")
+        # Seed the shell rc with the canonical atls block covering all three products.
+        setup_mod._inject_shell_env_block(setup_mod._existing_secrets_paths())
+        zshrc = wizard_env / ".zshrc"
+        seeded = zshrc.read_text(encoding="utf-8")
+        assert all(n in seeded for n in ("JIRA_PERSONAL_TOKEN", "CONFLUENCE_PERSONAL_TOKEN", "BITBUCKET_TOKEN"))
+
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = "new-jira-pat"
+        runner = CliRunner()
+        # storage "2" keyring, migrate ONLY jira (add url+pat), conf s, bb s, cleanup "y", agents n n n
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            result = runner.invoke(
+                app,
+                ["setup"],
+                input="2\na\nhttps://jira.example.com\nnew-jira-pat\ns\ns\ny\nn\nn\nn\n",
+            )
+
+        assert result.exit_code == 0, result.output
+        # jira migrated → its file + env + rc export are gone
+        assert not (secrets / "jira_pat").exists()
+        assert os.environ.get("JIRA_PERSONAL_TOKEN") is None
+        # confluence + bitbucket were NOT migrated → files, rc exports, and env stay intact
+        assert (secrets / "confluence_pat").exists()
+        assert (secrets / "bitbucket_pat").exists()
+        rc_text = zshrc.read_text(encoding="utf-8")
+        assert "JIRA_PERSONAL_TOKEN" not in rc_text
+        assert "CONFLUENCE_PERSONAL_TOKEN" in rc_text
+        assert "BITBUCKET_TOKEN" in rc_text
+        assert os.environ.get("CONFLUENCE_PERSONAL_TOKEN") == "old-confluence"
+        assert os.environ.get("BITBUCKET_TOKEN") == "old-bitbucket"
+
 
 class TestAuthStatusResolve:
     """`render_auth_status` must not probe providers unless resolve=True."""
