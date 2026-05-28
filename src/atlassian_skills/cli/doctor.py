@@ -17,6 +17,8 @@ from atlassian_skills.cli.setup import (
     _get_codex_config_dir,
     _get_codex_legacy_target,
     _get_codex_skill_target,
+    _get_copilot_config_dir,
+    _get_copilot_skill_target,
     _is_fish,
     _is_git_bash,
     _legacy_claude_command_notice,
@@ -86,6 +88,8 @@ def doctor() -> None:
     typer.echo(f"  Codex config dir    : {_get_codex_config_dir()}")
     typer.echo(f"  Codex AGENTS.md path: {_get_codex_agents_path()}")
     typer.echo(f"  Codex skill target  : {_get_codex_skill_target()}  (canonical)")
+    typer.echo(f"  Copilot config dir  : {_get_copilot_config_dir()}")
+    typer.echo(f"  Copilot skill target: {_get_copilot_skill_target()}")
     if _get_claude_command_target().exists() or _get_codex_legacy_target().exists():
         typer.echo("  legacy paths (only shown when present):")
         if _get_claude_command_target().exists():
@@ -99,6 +103,7 @@ def doctor() -> None:
     _print_skill_status("Claude command (legacy)", _get_claude_command_target(), hide_when_absent=True)
     _print_skill_status("Codex skill", _get_codex_skill_target())
     _print_skill_status("Codex legacy skill", _get_codex_legacy_target(), hide_when_absent=True)
+    _print_skill_status("Copilot skill", _get_copilot_skill_target())
 
     legacy_cmd = _legacy_claude_command_notice()
     if legacy_cmd:

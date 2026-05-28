@@ -153,6 +153,19 @@ def _get_codex_config_dir() -> Path:
     return Path.home() / ".codex"
 
 
+def _get_copilot_config_dir() -> Path:
+    """GitHub Copilot skills directory. Resolution: COPILOT_HOME > ~/.copilot.
+
+    Per the Copilot Skills documentation, Copilot scans `~/.copilot/skills` and
+    `~/.agents/skills` for personal skills. We target the canonical `~/.copilot`
+    location; users who prefer the shared `~/.agents` tree can set COPILOT_HOME.
+    """
+    env_dir = os.environ.get("COPILOT_HOME")
+    if env_dir:
+        return Path(env_dir).expanduser()
+    return Path.home() / ".copilot"
+
+
 def _get_agents_dir() -> Path:
     """Legacy ~/.agents directory (detection only)."""
     env_agents = os.environ.get("AGENTS_HOME")
@@ -164,6 +177,11 @@ def _get_agents_dir() -> Path:
 def _get_codex_skill_target() -> Path:
     """Canonical Codex skill target: <codex_home>/skills/atls/SKILL.md."""
     return _get_codex_config_dir() / "skills" / "atls" / "SKILL.md"
+
+
+def _get_copilot_skill_target() -> Path:
+    """Canonical GitHub Copilot skill target: <copilot_home>/skills/atls/SKILL.md."""
+    return _get_copilot_config_dir() / "skills" / "atls" / "SKILL.md"
 
 
 def _get_codex_legacy_target() -> Path:
@@ -693,8 +711,13 @@ def _prompt_agent_install(label: str, default: bool = True) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _refresh_skills(*, claude: bool, codex: bool) -> list[str]:
-    """Install canonical SKILL.md tree + inject routing blocks. Returns status messages."""
+def _refresh_skills(*, claude: bool, codex: bool, copilot: bool = False) -> list[str]:
+    """Install canonical SKILL.md tree + inject routing blocks. Returns status messages.
+
+    Copilot has no equivalent of CLAUDE.md / AGENTS.md routing — Copilot auto-discovers
+    skills by scanning `~/.copilot/skills` (and `~/.agents/skills`), so only the SKILL.md
+    tree is copied for that target.
+    """
     msgs: list[str] = []
     if codex:
         msgs.extend(_install_tree(_CANONICAL_SKILL_DIR, _get_codex_skill_target().parent))
@@ -708,6 +731,8 @@ def _refresh_skills(*, claude: bool, codex: bool) -> list[str]:
         legacy = _legacy_claude_command_notice()
         if legacy:
             msgs.append(legacy)
+    if copilot:
+        msgs.extend(_install_tree(_CANONICAL_SKILL_DIR, _get_copilot_skill_target().parent))
     return msgs
 
 
@@ -927,12 +952,15 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
         for warning in _detect_atls_default_shadowing(list(new_tokens.keys())):
             typer.echo(f"⚠ {warning}", err=True)
 
-    # AI agent step — defaults to Yes for both, so first-time users can blast through it
+    # AI agent step — defaults to Yes for Claude/Codex (the canonical pair), No for Copilot
+    # (opt-in: Copilot users are a smaller slice and Copilot has no routing-block side effect
+    # to undo, so a stray Y wouldn't pollute their dotfiles).
     typer.echo(f"[{len(_PRODUCTS) + 1}/{total_steps}] AI agent skills")
     install_claude = _prompt_agent_install("Install Claude Code skill", default=True)
     install_codex = _prompt_agent_install("Install Codex skill", default=True)
-    if install_claude or install_codex:
-        for msg in _refresh_skills(claude=install_claude, codex=install_codex):
+    install_copilot = _prompt_agent_install("Install GitHub Copilot skill", default=False)
+    if install_claude or install_codex or install_copilot:
+        for msg in _refresh_skills(claude=install_claude, codex=install_codex, copilot=install_copilot):
             typer.echo(f"  {msg.strip()}")
     typer.echo("")
 
@@ -977,7 +1005,7 @@ def setup_entry(
     if ctx.invoked_subcommand is not None:
         return
     if skills_only:
-        for msg in _refresh_skills(claude=True, codex=True):
+        for msg in _refresh_skills(claude=True, codex=True, copilot=_get_copilot_skill_target().exists()):
             typer.echo(msg)
         return
     # Reject non-default --profile: the wizard's URL/token storage paths are all keyed

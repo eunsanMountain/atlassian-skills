@@ -29,9 +29,17 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ### Added
 - **`atls setup` — single interactive wizard.** One command configures Jira / Confluence
-  / Bitbucket URLs, Personal Access Tokens, and Claude / Codex skill installation in one
-  pass. Replaces the previous 5-step install → URL × 3 → token × 3 → `setup all` flow
-  with `install → setup → go`.
+  / Bitbucket URLs, Personal Access Tokens, and Claude / Codex / GitHub Copilot skill
+  installation in one pass. Replaces the previous 5-step install → URL × 3 → token × 3 →
+  `setup all` flow with `install → setup → go`.
+- **GitHub Copilot Skill install target** — wizard step [4/4] now offers a third
+  install target (`~/.copilot/skills/atls/SKILL.md`, opt-in default `n`). Copilot
+  auto-discovers `SKILL.md` files in `~/.copilot/skills` per the
+  [Copilot Skills docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills);
+  no routing file (the Claude/Codex `CLAUDE.md` / `AGENTS.md` equivalent) is needed.
+  `atls upgrade` (`--skills-only`) refreshes the Copilot skill only when it is
+  already installed, so users who never opted in are never surprise-installed.
+  Closes #7; the original idea + first PR (#10) came from @akreit — thanks!
 - **`atls setup --skills-only`** — silent non-interactive skill refresh. `atls upgrade`
   now invokes this instead of `atls setup all`, so upgrades no longer surface the
   deprecation warning.
