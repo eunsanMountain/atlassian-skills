@@ -27,7 +27,7 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   setting now functions beyond env vars:
   - `storage = "keyring"` reads tokens from the OS keyring (macOS Keychain, Windows
     Credential Manager, Linux Secret Service) under service `atls-<profile>`, account
-    `<product>_token`. Requires the optional `keyring` extra.
+    `<product>_token`. The `keyring` package is now a base dependency (bundled by default).
   - `storage = "command"` runs a shell command that prints the token to stdout
     (1Password `op`, `pass`, Bitwarden `bw`, PowerShell, …), with a 5-second timeout.
 - **Per-product credential commands** — `jira_command` / `confluence_command` /
@@ -46,8 +46,8 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 ### Notes
 - Priority is **CLI flag > env var > the profile's configured provider**. `storage` selects a
   single provider, not a fallback chain. Env vars remain the default and always win.
-- The optional dependency installs with `uv tool install --force "atlassian-skills[keyring]"`
-  (uv), `pipx inject atlassian-skills keyring` (pipx), or `pip install "atlassian-skills[keyring]"`.
+- `keyring` is now bundled by default (promoted from optional extra). The `[keyring]` extra is
+  retained as a no-op alias so the pre-0.2.8 `pip install "atlassian-skills[keyring]"` keeps working.
 
 Co-authored-by: Doyle <873891+chrisdoyle@users.noreply.github.com>
 

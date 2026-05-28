@@ -124,7 +124,7 @@ export ATLS_CORP_CONFLUENCE_TOKEN="your-pat"
 jira_url = "https://jira.corp.example.com"
 
 # System keyring — uses platform native store (macOS Keychain, Windows Credential Manager, Linux Secret Service)
-# Requires the keyring extra (e.g. uv tool install --force "atlassian-skills[keyring]")
+# The keyring package is a base dependency (bundled by default — no extra needed)
 # Keyring entry: service="atls-<profile>", account="<product>_token"
 [profiles.corp]
 jira_url = "https://jira.corp.example.com"

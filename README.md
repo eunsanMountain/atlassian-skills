@@ -194,22 +194,17 @@ atls auth status        # equivalent to the Auth section of `atls doctor`
 
 Instead of storing tokens in environment variables, you can have atls fetch them on demand from your system keyring or a custom shell command. The token is retrieved only at call time and never stored in the environment. These are opt-in via the profile's `storage` setting — env vars remain the default and always take priority.
 
-| `storage` | platform | when to use | extra dependency |
-|---|---|---|---|
-| `env` (default) | all | simple; works headless / CI / Docker | none |
-| `keyring` | macOS, Linux desktop, Windows | personal machine, dotfile-synced configs | `atlassian-skills[keyring]` |
-| `command` | all (bring your own tool) | already using 1Password / `pass` / `bw` / PowerShell | none |
+| `storage` | platform | when to use |
+|---|---|---|
+| `env` (default) | all | simple; works headless / CI / Docker |
+| `keyring` | macOS, Linux desktop, Windows | personal machine, dotfile-synced configs |
+| `command` | all (bring your own tool) | already using 1Password / `pass` / `bw` / PowerShell |
 
 `storage` selects a **single** provider — it is not a fallback chain. The resolution order is **CLI flag → env var → the configured provider**.
 
-**System keyring** — requires the optional `keyring` extra. Uses the platform's native credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). Save tokens once, then point the profile at the keyring:
+**System keyring** — uses the platform's native credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). The `keyring` package ships with atls by default (no extra needed). Save tokens once, then point the profile at the keyring:
 
 ```bash
-# Install with keyring support (match your installer)
-uv tool install --force "atlassian-skills[keyring]"   # uv tool users
-pipx inject atlassian-skills keyring                  # pipx users
-pip install "atlassian-skills[keyring]"               # plain pip / venv
-
 # Save tokens to the system keyring (run once per token — works on all platforms)
 python -c "import keyring; keyring.set_password('atls-default', 'jira_token', 'your-jira-pat')"
 python -c "import keyring; keyring.set_password('atls-default', 'confluence_token', 'your-confluence-pat')"
