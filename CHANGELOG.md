@@ -20,6 +20,37 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.2.8] - 2026-05-29
+
+### Added
+- **System keyring + shell-command credential storage** (closes #9). A profile's `storage`
+  setting now functions beyond env vars:
+  - `storage = "keyring"` reads tokens from the OS keyring (macOS Keychain, Windows
+    Credential Manager, Linux Secret Service) under service `atls-<profile>`, account
+    `<product>_token`. Requires the optional `keyring` extra.
+  - `storage = "command"` runs a shell command that prints the token to stdout
+    (1Password `op`, `pass`, Bitwarden `bw`, PowerShell, …), with a 5-second timeout.
+- **Per-product credential commands** — `jira_command` / `confluence_command` /
+  `bitbucket_command` override a shared `credential_command`, so one profile can pull each
+  product's token from a different vault entry.
+- **`atls setup` storage selection** — the wizard now asks once, up-front, where tokens
+  should live (env / keyring / command). `[1]` keeps the 0.2.7 file/registry flow and stays
+  the default, so existing setups are unaffected. Switching to keyring/command offers to
+  remove old `~/.secrets/*_pat` files and the atls-managed shell rc block, and warns about
+  headless environments (Docker / WSL / no D-Bus / text-only SSH) where a keyring can't unlock.
+- **`atls auth status --resolve`** and **`atls doctor --resolve-credentials`** — actually
+  probe the configured provider (may prompt for Touch ID / a passphrase, or run the shell
+  command). Without the flag, both report the configured source only and never touch the
+  provider — safe to run repeatedly.
+
+### Notes
+- Priority is **CLI flag > env var > the profile's configured provider**. `storage` selects a
+  single provider, not a fallback chain. Env vars remain the default and always win.
+- The optional dependency installs with `uv tool install --force "atlassian-skills[keyring]"`
+  (uv), `pipx inject atlassian-skills keyring` (pipx), or `pip install "atlassian-skills[keyring]"`.
+
+Co-authored-by: Doyle <873891+chrisdoyle@users.noreply.github.com>
+
 ## [0.2.7] - 2026-05-28
 
 > ⚠️ **Heads-up for 0.3.0**: `atls setup all/codex/claude/paths/status` still work in

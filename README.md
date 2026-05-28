@@ -194,6 +194,14 @@ atls auth status        # equivalent to the Auth section of `atls doctor`
 
 Instead of storing tokens in environment variables, you can have atls fetch them on demand from your system keyring or a custom shell command. The token is retrieved only at call time and never stored in the environment. These are opt-in via the profile's `storage` setting — env vars remain the default and always take priority.
 
+| `storage` | platform | when to use | extra dependency |
+|---|---|---|---|
+| `env` (default) | all | simple; works headless / CI / Docker | none |
+| `keyring` | macOS, Linux desktop, Windows | personal machine, dotfile-synced configs | `atlassian-skills[keyring]` |
+| `command` | all (bring your own tool) | already using 1Password / `pass` / `bw` / PowerShell | none |
+
+`storage` selects a **single** provider — it is not a fallback chain. The resolution order is **CLI flag → env var → the configured provider**.
+
 **System keyring** — requires the optional `keyring` extra. Uses the platform's native credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). Save tokens once, then point the profile at the keyring:
 
 ```bash
@@ -464,9 +472,10 @@ uv build
 
 - **0.1.x** — Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, GitHub Actions CI/release
 - **0.2.x** — Bitbucket Server/DC PR workflow + Skill-first Claude/Codex integration
-- **0.2.7 (current)** — `atls setup` interactive wizard + `atls doctor`; `setup all/codex/claude/paths/status` deprecated
+- **0.2.7** — `atls setup` interactive wizard + `atls doctor`; `setup all/codex/claude/paths/status` deprecated
+- **0.2.8 (current)** — OS keyring + shell-command credential storage (per-product commands), wizard storage selection, `atls auth status --resolve`
 - **0.3.0** — Bamboo + workflow skills; remove deprecated `setup` subcommands
-- **0.4.0+** — Async client, caching, non-interactive `atls setup`, fish shell support, keyring-backed tokens
+- **0.4.0+** — Async client, caching, non-interactive `atls setup`, fish shell support, multi-profile wizard
 
 ## License
 
