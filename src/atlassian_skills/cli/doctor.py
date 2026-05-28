@@ -68,7 +68,13 @@ def _print_routing_block_version(label: str, path: Path) -> None:
         typer.echo(f"  {label}: no ATLS block at {path}")
 
 
-def doctor() -> None:
+def doctor(
+    resolve_credentials: bool = typer.Option(
+        False,
+        "--resolve-credentials",
+        help="Probe keyring/command providers when reporting auth (may prompt or run a shell command).",
+    ),
+) -> None:
     """Diagnose atls installation: platform, paths, skill status, auth resolution."""
     platform_name = _detect_platform()
     shell = _detect_shell()
@@ -120,4 +126,4 @@ def doctor() -> None:
     typer.echo("")
 
     typer.echo("Auth:")
-    render_auth_status("default")
+    render_auth_status("default", resolve=resolve_credentials)

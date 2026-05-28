@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -403,13 +404,17 @@ def _wizard_input(
     install_claude: str = "n",
     install_codex: str = "n",
     install_copilot: str = "n",
+    storage: str = "",
 ) -> str:
     """Build wizard stdin.
 
-    Each product tuple is (action,) or (action, url, pat). The product-block walks
-    Jira → Confluence → Bitbucket, then the agent step asks claude/codex/copilot.
+    `storage` answers the up-front storage prompt ('' = Enter = keep current = env, the
+    0.2.7 file flow; '2' = keyring; '3' = command). Each product tuple is (action,) or
+    (action, url, pat) — for command storage the third element is the retrieval command.
+    The product-block walks Jira → Confluence → Bitbucket, then the agent step asks
+    claude/codex/copilot.
     """
-    lines: list[str] = []
+    lines: list[str] = [storage]
     for spec in (jira, conf, bb):
         lines.extend(spec)
     lines += [install_claude, install_codex, install_copilot]
@@ -447,9 +452,10 @@ class TestWizardURLs:
         save_config(config)
 
         runner = CliRunner()
-        # default for each product (existing) is 'k'; for agent install all three default Y.
-        # Enter × 3 (jira/conf/bb) + 'n' × 3 to explicitly decline asset installs (no asset_root stubbed here)
-        result = runner.invoke(app, ["setup"], input="\n\n\nn\nn\nn\n")
+        # Leading Enter answers the storage prompt (keep current = env). Then default for each
+        # product (existing) is 'k'; for agent install all three default Y.
+        # storage Enter + Enter × 3 (jira/conf/bb) + 'n' × 3 to explicitly decline asset installs
+        result = runner.invoke(app, ["setup"], input="\n\n\n\nn\nn\nn\n")
 
         assert result.exit_code == 0
         prof = load_config().profiles["default"]
@@ -787,7 +793,8 @@ class TestTTYGuard:
         from atlassian_skills.cli.main import app
 
         runner = CliRunner()
-        result = runner.invoke(app, ["setup"], input="s\ns\ns\nn\nn\nn\n")
+        # Leading "\n" answers the storage prompt (Enter = keep current = env).
+        result = runner.invoke(app, ["setup"], input="\ns\ns\ns\nn\nn\nn\n")
 
         assert result.exit_code == 0
         assert "interactive terminal" not in result.output
@@ -908,3 +915,208 @@ class TestDoctorShowsCopilot:
         # When not installed, doctor must still show the status line
         assert "Copilot skill" in result.output
         assert "not installed" in result.output
+
+
+# ---------------------------------------------------------------------------
+# 0.2.8 — storage selection (keyring / command), headless guard, cleanup
+# ---------------------------------------------------------------------------
+
+
+def _write_config(tmp_path: Path, **profile_kwargs: object) -> None:
+    """Write a config.toml with a single [profiles.default] for resolve tests."""
+    from atlassian_skills.core.config import Config, Profile, save_config
+
+    config = Config(profiles={"default": Profile(**profile_kwargs)})  # type: ignore[arg-type]
+    save_config(config, tmp_path / "config.toml")
+
+
+class TestWizardStorage:
+    """0.2.8 storage selection: keyring + command modes, headless guard, transition cleanup."""
+
+    def test_keyring_set_password_args_match_reader(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """REGRESSION GUARD: the wizard must store under the exact key core.auth reads —
+        keyring.set_password('atls-default', '<product>_token', token). If this drifts, the
+        wizard saves a token the resolver can never find.
+        """
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import load_config
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = "jira-pat-xyz"  # for the final --resolve verify
+
+        runner = CliRunner()
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            result = runner.invoke(
+                app,
+                ["setup"],
+                input=_wizard_input(storage="2", jira=("a", "https://jira.example.com", "jira-pat-xyz")),
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_keyring.set_password.assert_any_call("atls-default", "jira_token", "jira-pat-xyz")
+        assert load_config().profiles["default"].storage == "keyring"
+
+    def test_keyring_missing_dep_aborts_with_installer_hint(
+        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When keyring isn't installed and the user declines to pick another storage, abort
+        with a non-zero exit and an install hint."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        runner = CliRunner()
+        # storage "2" → keyring import fails → "pick a different storage?" → "n" → abort.
+        with patch.dict("sys.modules", {"keyring": None}):
+            result = runner.invoke(app, ["setup"], input="2\nn\n")
+
+        assert result.exit_code == 1
+        assert "atlassian-skills[keyring]" in result.output
+
+    def test_command_storage_saves_per_product_command(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """storage='command' stores a per-product *_command (validated by running it once),
+        and does NOT write a token file."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import load_config
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        runner = CliRunner()
+        # `echo` is a real, fast command so _validate_command (and the final --resolve) pass
+        # without mocking the shell.
+        result = runner.invoke(
+            app,
+            ["setup"],
+            input=_wizard_input(storage="3", jira=("a", "https://jira.example.com", "echo jira-secret")),
+        )
+
+        assert result.exit_code == 0, result.output
+        prof = load_config().profiles["default"]
+        assert prof.storage == "command"
+        assert prof.jira_command == "echo jira-secret"
+        assert prof.confluence_command is None
+        # No token file written for command storage.
+        assert not (wizard_env / ".secrets" / "jira_pat").exists()
+
+    def test_command_validation_failure_then_skip(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A command that fails validation re-prompts; declining retry skips the product."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import load_config
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        runner = CliRunner()
+        # storage "3"; jira: add url, failing command ('false' exits 1), decline retry "n" → skipped;
+        # conf s, bb s, agents n n n.
+        result = runner.invoke(
+            app,
+            ["setup"],
+            input="3\na\nhttps://jira.example.com\nfalse\nn\ns\ns\nn\nn\nn\n",
+        )
+
+        assert result.exit_code == 0, result.output
+        prof = load_config().profiles["default"]
+        assert prof.jira_command is None  # nothing captured for jira
+        assert "command failed" in result.output
+
+    def test_headless_warns_before_keyring(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When headless signals are present, picking keyring shows a warning + confirm prompt."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: ["running inside Docker (/.dockerenv present)"])
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = "tok"
+        runner = CliRunner()
+        # storage "2" → headless warning → "Use keyring anyway?" "y" → jira add url+pat → skip → agents
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            result = runner.invoke(
+                app,
+                ["setup"],
+                input="2\ny\na\nhttps://jira.example.com\njira-pat\ns\ns\nn\nn\nn\n",
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "may not be able to unlock" in result.output
+        assert "Docker" in result.output
+        mock_keyring.set_password.assert_any_call("atls-default", "jira_token", "jira-pat")
+
+    def test_switch_to_keyring_cleans_old_file_and_unshadows_env(
+        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Switching file→keyring offers to remove ~/.secrets/*_pat and unshadow the live env var."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        # Seed an old file-based token + a live env var that would shadow keyring.
+        secrets = wizard_env / ".secrets"
+        secrets.mkdir(mode=0o700, exist_ok=True)
+        (secrets / "jira_pat").write_text("old-token", encoding="utf-8")
+        monkeypatch.setenv("JIRA_PERSONAL_TOKEN", "old-token")
+
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = "new-pat"
+        runner = CliRunner()
+        # storage "2", jira add url+new-pat, conf s, bb s, cleanup "y", agents n n n
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            result = runner.invoke(
+                app,
+                ["setup"],
+                input="2\na\nhttps://jira.example.com\nnew-pat\ns\ns\ny\nn\nn\nn\n",
+            )
+
+        assert result.exit_code == 0, result.output
+        assert not (secrets / "jira_pat").exists()  # old file removed
+        assert os.environ.get("JIRA_PERSONAL_TOKEN") is None  # current-process unshadow
+
+
+class TestAuthStatusResolve:
+    """`render_auth_status` must not probe providers unless resolve=True."""
+
+    def test_resolve_false_does_not_touch_keyring(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.core.config as config_mod
+        from atlassian_skills.cli.auth import render_auth_status
+
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        for v in ("ATLS_DEFAULT_JIRA_TOKEN", "JIRA_PERSONAL_TOKEN"):
+            monkeypatch.delenv(v, raising=False)
+        _write_config(tmp_path, storage="keyring", jira_url="https://jira.example.com")
+
+        mock_keyring = MagicMock()
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            render_auth_status("default", resolve=False)
+
+        mock_keyring.get_password.assert_not_called()
+
+    def test_resolve_true_probes_keyring(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.core.config as config_mod
+        from atlassian_skills.cli.auth import render_auth_status
+
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        for v in ("ATLS_DEFAULT_JIRA_TOKEN", "JIRA_PERSONAL_TOKEN"):
+            monkeypatch.delenv(v, raising=False)
+        _write_config(tmp_path, storage="keyring", jira_url="https://jira.example.com")
+
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = "resolved-tok"
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            render_auth_status("default", resolve=True)
+
+        mock_keyring.get_password.assert_any_call("atls-default", "jira_token")
+
+    def test_resolve_false_does_not_run_command(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.core.config as config_mod
+        from atlassian_skills.cli.auth import render_auth_status
+
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        for v in ("ATLS_DEFAULT_JIRA_TOKEN", "JIRA_PERSONAL_TOKEN"):
+            monkeypatch.delenv(v, raising=False)
+        _write_config(tmp_path, storage="command", jira_command="echo should-not-run")
+
+        with patch("atlassian_skills.core.auth.subprocess.run") as mock_run:
+            render_auth_status("default", resolve=False)
+
+        mock_run.assert_not_called()
