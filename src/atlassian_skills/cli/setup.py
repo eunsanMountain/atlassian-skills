@@ -19,6 +19,8 @@ _ATLS_CLAUDE_BLOCK_START = "<!-- ATLS-CLAUDE:START -->"
 _ATLS_CLAUDE_BLOCK_END = "<!-- ATLS-CLAUDE:END -->"
 _ATLS_CODEX_BLOCK_START = "<!-- ATLS-CODEX:START -->"
 _ATLS_CODEX_BLOCK_END = "<!-- ATLS-CODEX:END -->"
+_ATLS_COPILOT_BLOCK_START = "<!-- ATLS-COPILOT:START -->"
+_ATLS_COPILOT_BLOCK_END = "<!-- ATLS-COPILOT:END -->"
 
 _SHELL_RC_BLOCK_START = "# >>> atls env >>>"
 _SHELL_RC_BLOCK_END = "# <<< atls env <<<"
@@ -69,6 +71,22 @@ def _codex_agents_block() -> str:
 {_ATLS_CODEX_BLOCK_END}"""
 
 
+def _copilot_instructions_block() -> str:
+    """Generate the ATLS block to inject into Copilot's copilot-instructions.md.
+
+    Copilot CLI does not have a magic skill-loader directive like Codex's `$atls` —
+    it reads `copilot-instructions.md` as plain global guidance. The text below tells
+    Copilot to defer to the SKILL.md content rather than fabricate atls syntax.
+    """
+    ver = _get_version()
+    return f"""{_ATLS_COPILOT_BLOCK_START}
+<!-- ATLS:VERSION:{ver} -->
+## Atlassian via atls
+- Atlassian work (Jira/Confluence/Bitbucket/지라/컨플루언스/비트버킷) → read the `atls` skill at `~/.copilot/skills/atls/SKILL.md` BEFORE the first atls command.
+- This file only routes. Do NOT infer atls flags or syntax from here — the skill is the single source of truth.
+{_ATLS_COPILOT_BLOCK_END}"""
+
+
 # ---------------------------------------------------------------------------
 # Platform / shell detection
 # ---------------------------------------------------------------------------
@@ -97,6 +115,17 @@ def _is_fish() -> bool:
         return True
     shell = os.environ.get("SHELL", "")
     return shell.endswith("/fish")
+
+
+def _is_wsl() -> bool:
+    """Detect Windows Subsystem for Linux. `~/.copilot` here lives in the WSL filesystem,
+    invisible to a native Windows Copilot CLI install — worth warning the user."""
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        return "microsoft" in Path("/proc/version").read_text(encoding="utf-8", errors="replace").lower()
+    except OSError:
+        return False
 
 
 def _detect_shell() -> str:
@@ -182,6 +211,16 @@ def _get_codex_skill_target() -> Path:
 def _get_copilot_skill_target() -> Path:
     """Canonical GitHub Copilot skill target: <copilot_home>/skills/atls/SKILL.md."""
     return _get_copilot_config_dir() / "skills" / "atls" / "SKILL.md"
+
+
+def _get_copilot_instructions_path() -> Path:
+    """GitHub Copilot CLI's user-global instructions file.
+
+    Per https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions,
+    Copilot CLI reads `$HOME/.copilot/copilot-instructions.md`. Equivalent to
+    Claude's `CLAUDE.md` and Codex's `AGENTS.md` for routing-block injection.
+    """
+    return _get_copilot_config_dir() / "copilot-instructions.md"
 
 
 def _get_codex_legacy_target() -> Path:
@@ -290,6 +329,17 @@ def _inject_codex_agents_block() -> str:
         end_marker=_ATLS_CODEX_BLOCK_END,
         block=_codex_agents_block(),
         label="ATLS Codex block",
+    )
+
+
+def _inject_copilot_instructions_block() -> str:
+    """Inject or replace the ATLS block in ~/.copilot/copilot-instructions.md."""
+    return _inject_marked_block(
+        path=_get_copilot_instructions_path(),
+        start_marker=_ATLS_COPILOT_BLOCK_START,
+        end_marker=_ATLS_COPILOT_BLOCK_END,
+        block=_copilot_instructions_block(),
+        label="ATLS Copilot block",
     )
 
 
@@ -712,12 +762,7 @@ def _prompt_agent_install(label: str, default: bool = True) -> bool:
 
 
 def _refresh_skills(*, claude: bool, codex: bool, copilot: bool = False) -> list[str]:
-    """Install canonical SKILL.md tree + inject routing blocks. Returns status messages.
-
-    Copilot has no equivalent of CLAUDE.md / AGENTS.md routing — Copilot auto-discovers
-    skills by scanning `~/.copilot/skills` (and `~/.agents/skills`), so only the SKILL.md
-    tree is copied for that target.
-    """
+    """Install canonical SKILL.md tree + inject routing blocks. Returns status messages."""
     msgs: list[str] = []
     if codex:
         msgs.extend(_install_tree(_CANONICAL_SKILL_DIR, _get_codex_skill_target().parent))
@@ -733,6 +778,7 @@ def _refresh_skills(*, claude: bool, codex: bool, copilot: bool = False) -> list
             msgs.append(legacy)
     if copilot:
         msgs.extend(_install_tree(_CANONICAL_SKILL_DIR, _get_copilot_skill_target().parent))
+        msgs.append(_inject_copilot_instructions_block())
     return msgs
 
 
@@ -952,16 +998,22 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
         for warning in _detect_atls_default_shadowing(list(new_tokens.keys())):
             typer.echo(f"⚠ {warning}", err=True)
 
-    # AI agent step — defaults to Yes for Claude/Codex (the canonical pair), No for Copilot
-    # (opt-in: Copilot users are a smaller slice and Copilot has no routing-block side effect
-    # to undo, so a stray Y wouldn't pollute their dotfiles).
+    # AI agent step — defaults to Yes for all three agents. `atls upgrade` (--skills-only)
+    # still respects opt-in: it only refreshes Copilot when SKILL.md already exists, so
+    # existing Claude+Codex users aren't surprise-installed during a routine upgrade.
     typer.echo(f"[{len(_PRODUCTS) + 1}/{total_steps}] AI agent skills")
     install_claude = _prompt_agent_install("Install Claude Code skill", default=True)
     install_codex = _prompt_agent_install("Install Codex skill", default=True)
-    install_copilot = _prompt_agent_install("Install GitHub Copilot skill", default=False)
+    install_copilot = _prompt_agent_install("Install GitHub Copilot skill", default=True)
     if install_claude or install_codex or install_copilot:
         for msg in _refresh_skills(claude=install_claude, codex=install_codex, copilot=install_copilot):
             typer.echo(f"  {msg.strip()}")
+    if install_copilot and _is_wsl():
+        typer.echo(
+            "  ⚠ WSL detected: ~/.copilot lives in your WSL filesystem and is invisible to a\n"
+            "    native Windows Copilot CLI install. If you use Copilot CLI on Windows directly,\n"
+            "    re-run `atls setup` from a Windows shell (cmd / PowerShell / Git Bash)."
+        )
     typer.echo("")
 
     # Final guidance — shell-agnostic. "Open a new terminal" is the universal answer:

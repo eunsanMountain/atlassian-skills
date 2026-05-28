@@ -12,6 +12,7 @@ from atlassian_skills.cli.setup import (
     _claude_md_block,
     _inject_claude_md_block,
     _inject_codex_agents_block,
+    _inject_copilot_instructions_block,
     _install,
 )
 
@@ -164,6 +165,62 @@ class TestInjectCodexAgentsBlock:
         assert "appended" in msg
 
 
+class TestInjectCopilotInstructionsBlock:
+    """Mirror of TestInjectCodexAgentsBlock — Copilot's ~/.copilot/copilot-instructions.md
+    is the routing-block equivalent of AGENTS.md / CLAUDE.md."""
+
+    def test_creates_copilot_instructions_if_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+
+        instructions = tmp_path / ".copilot" / "copilot-instructions.md"
+        monkeypatch.setattr(setup_mod, "_get_copilot_instructions_path", lambda: instructions)
+
+        msg = _inject_copilot_instructions_block()
+
+        assert instructions.exists()
+        content = instructions.read_text(encoding="utf-8")
+        assert "ATLS-COPILOT:START" in content
+        assert "ATLS-COPILOT:END" in content
+        # Copilot CLI reads this as plain global guidance — must point at SKILL.md
+        assert "skills/atls/SKILL.md" in content
+        assert "created" in msg
+
+    def test_appends_copilot_block_to_existing_instructions(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+
+        instructions = tmp_path / ".copilot" / "copilot-instructions.md"
+        instructions.parent.mkdir(parents=True)
+        instructions.write_text("# Personal Copilot rules\n\nExisting content.\n", encoding="utf-8")
+        monkeypatch.setattr(setup_mod, "_get_copilot_instructions_path", lambda: instructions)
+
+        msg = _inject_copilot_instructions_block()
+
+        content = instructions.read_text(encoding="utf-8")
+        assert content.startswith("# Personal Copilot rules")
+        assert "ATLS-COPILOT:START" in content
+        assert "appended" in msg
+
+    def test_replaces_existing_copilot_block_on_reinstall(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Re-running `atls setup` must update the ATLS block in-place, not duplicate it."""
+        import atlassian_skills.cli.setup as setup_mod
+
+        instructions = tmp_path / ".copilot" / "copilot-instructions.md"
+        monkeypatch.setattr(setup_mod, "_get_copilot_instructions_path", lambda: instructions)
+
+        _inject_copilot_instructions_block()
+        first = instructions.read_text(encoding="utf-8")
+        _inject_copilot_instructions_block()
+        second = instructions.read_text(encoding="utf-8")
+
+        # Exactly one START marker (no duplication)
+        assert second.count("ATLS-COPILOT:START") == 1
+        assert first == second  # Idempotent — same version, same content
+
+
 # ---------------------------------------------------------------------------
 # Shim subcommands — deprecation warning + behaviour preserved (0.2.7 → 0.3.0)
 # ---------------------------------------------------------------------------
@@ -189,6 +246,9 @@ def _stub_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, asset_root: Pat
     monkeypatch.setattr(setup_mod, "_get_claude_md_path", lambda: tmp_path / ".claude" / "CLAUDE.md")
     monkeypatch.setattr(
         setup_mod, "_get_copilot_skill_target", lambda: tmp_path / ".copilot" / "skills" / "atls" / "SKILL.md"
+    )
+    monkeypatch.setattr(
+        setup_mod, "_get_copilot_instructions_path", lambda: tmp_path / ".copilot" / "copilot-instructions.md"
     )
 
 
@@ -389,8 +449,8 @@ class TestWizardURLs:
         save_config(config)
 
         runner = CliRunner()
-        # default for each product (existing) is 'k'; for agent install Claude/Codex default Y, Copilot default n.
-        # Enter × 3 (jira/conf/bb) + 'n' × 3 to avoid asset installs (no asset_root stubbed here)
+        # default for each product (existing) is 'k'; for agent install all three default Y.
+        # Enter × 3 (jira/conf/bb) + 'n' × 3 to explicitly decline asset installs (no asset_root stubbed here)
         result = runner.invoke(app, ["setup"], input="\n\n\nn\nn\nn\n")
 
         assert result.exit_code == 0
@@ -765,7 +825,7 @@ class TestFishGuard:
 class TestCopilotInstall:
     """GitHub Copilot skill install — wizard prompt, --skills-only refresh, doctor display."""
 
-    def test_wizard_install_copilot_writes_skill_md(self, wizard_env: Path) -> None:
+    def test_wizard_install_copilot_writes_skill_md_and_instructions(self, wizard_env: Path) -> None:
         from atlassian_skills.cli.main import app
 
         runner = CliRunner()
@@ -777,9 +837,13 @@ class TestCopilotInstall:
         target = wizard_env / ".copilot" / "skills" / "atls" / "SKILL.md"
         assert target.exists()
         assert "installed-by: atls" in target.read_text(encoding="utf-8")
-        # Copilot has NO routing-block side effect — must not create ~/.copilot/AGENTS.md or similar
-        assert not (wizard_env / ".copilot" / "AGENTS.md").exists()
-        assert not (wizard_env / ".copilot" / "COPILOT.md").exists()
+        # Routing block — Copilot CLI's user-global instructions file (mirrors AGENTS.md / CLAUDE.md)
+        instructions = wizard_env / ".copilot" / "copilot-instructions.md"
+        assert instructions.exists()
+        content = instructions.read_text(encoding="utf-8")
+        assert "ATLS-COPILOT:START" in content
+        assert "ATLS-COPILOT:END" in content
+        assert "atls" in content.lower()
 
     def test_wizard_decline_copilot_does_not_install(self, wizard_env: Path) -> None:
         from atlassian_skills.cli.main import app
@@ -792,16 +856,17 @@ class TestCopilotInstall:
         assert result.exit_code == 0
         assert not (wizard_env / ".copilot" / "skills" / "atls" / "SKILL.md").exists()
 
-    def test_wizard_copilot_prompt_defaults_no(self, wizard_env: Path) -> None:
-        """Pressing Enter at the Copilot prompt must NOT install (default is opt-in `n`)."""
+    def test_wizard_copilot_prompt_defaults_yes(self, wizard_env: Path) -> None:
+        """Pressing Enter at the Copilot prompt installs (default `Y` — first-class with Claude/Codex)."""
         from atlassian_skills.cli.main import app
 
         runner = CliRunner()
-        # Claude=n, Codex=n, Copilot=Enter (default)
+        # Claude=n, Codex=n, Copilot=Enter (default Y)
         result = runner.invoke(app, ["setup"], input=_wizard_input(install_claude="n", install_codex="n", install_copilot=""))
 
         assert result.exit_code == 0
-        assert not (wizard_env / ".copilot" / "skills" / "atls" / "SKILL.md").exists()
+        assert (wizard_env / ".copilot" / "skills" / "atls" / "SKILL.md").exists()
+        assert (wizard_env / ".copilot" / "copilot-instructions.md").exists()
 
     def test_skills_only_does_not_install_copilot_when_absent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

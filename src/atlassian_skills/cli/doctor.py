@@ -18,6 +18,7 @@ from atlassian_skills.cli.setup import (
     _get_codex_legacy_target,
     _get_codex_skill_target,
     _get_copilot_config_dir,
+    _get_copilot_instructions_path,
     _get_copilot_skill_target,
     _is_fish,
     _is_git_bash,
@@ -90,6 +91,7 @@ def doctor() -> None:
     typer.echo(f"  Codex skill target  : {_get_codex_skill_target()}  (canonical)")
     typer.echo(f"  Copilot config dir  : {_get_copilot_config_dir()}")
     typer.echo(f"  Copilot skill target: {_get_copilot_skill_target()}")
+    typer.echo(f"  Copilot instructions: {_get_copilot_instructions_path()}")
     if _get_claude_command_target().exists() or _get_codex_legacy_target().exists():
         typer.echo("  legacy paths (only shown when present):")
         if _get_claude_command_target().exists():
@@ -114,6 +116,7 @@ def doctor() -> None:
 
     _print_routing_block_version("Codex AGENTS.md", _get_codex_agents_path())
     _print_routing_block_version("CLAUDE.md", _get_claude_md_path())
+    _print_routing_block_version("Copilot instructions", _get_copilot_instructions_path())
     typer.echo("")
 
     typer.echo("Auth:")

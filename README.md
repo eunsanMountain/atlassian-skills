@@ -92,7 +92,7 @@ After `ensurepath`, open a new terminal so the updated `PATH` is picked up.
 6. **[4/4] AI agent skills** — `[Y/n]` prompt for each:
    - Claude Code (default `Y`): `~/.claude/skills/atls/SKILL.md` + routing block in `~/.claude/CLAUDE.md`
    - Codex (default `Y`): `~/.codex/skills/atls/SKILL.md` + routing block in `~/.codex/AGENTS.md`
-   - GitHub Copilot (default `n`, opt-in): `~/.copilot/skills/atls/SKILL.md` (Copilot auto-discovers `SKILL.md` here per the [Copilot Skills docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills); no routing file needed)
+   - GitHub Copilot (default `Y`): `~/.copilot/skills/atls/SKILL.md` + routing block in [`~/.copilot/copilot-instructions.md`](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions). Cross-platform via `Path.home()` — works identically on Linux, macOS, and Windows (`%USERPROFILE%\.copilot\...`). WSL note: `~/.copilot` here lives in the WSL filesystem and is invisible to a native Windows Copilot CLI install; the wizard prints a one-line warning when this is detected.
 7. **Verify** — runs `auth status` inline so you see whether URL + token resolution is working before you exit.
 
 Re-run `atls setup` any time. Every step's default is non-destructive (`k` for existing, `s` for not-yet-configured, `Y` for agent install), so a pure-Enter run preserves whatever you already had.

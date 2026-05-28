@@ -33,12 +33,18 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   installation in one pass. Replaces the previous 5-step install → URL × 3 → token × 3 →
   `setup all` flow with `install → setup → go`.
 - **GitHub Copilot Skill install target** — wizard step [4/4] now offers a third
-  install target (`~/.copilot/skills/atls/SKILL.md`, opt-in default `n`). Copilot
+  install target (`~/.copilot/skills/atls/SKILL.md`, default `Y` like Claude/Codex). Copilot
   auto-discovers `SKILL.md` files in `~/.copilot/skills` per the
-  [Copilot Skills docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills);
-  no routing file (the Claude/Codex `CLAUDE.md` / `AGENTS.md` equivalent) is needed.
+  [Copilot Skills docs](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills),
+  and the wizard also injects a routing block into
+  [`~/.copilot/copilot-instructions.md`](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions)
+  — the Copilot CLI equivalent of Claude's `CLAUDE.md` / Codex's `AGENTS.md`.
   `atls upgrade` (`--skills-only`) refreshes the Copilot skill only when it is
   already installed, so users who never opted in are never surprise-installed.
+  Cross-platform: `Path.home()` resolves to `%USERPROFILE%\.copilot` on Windows
+  natively, no extra branching. WSL is detected and a one-line note advises the
+  user that `~/.copilot` lives in the WSL filesystem (invisible to a native
+  Windows Copilot CLI install). `COPILOT_HOME` env var overrides the default.
   Closes #7; the original idea + first PR (#10) came from @akreit — thanks!
 - **`atls setup --skills-only`** — silent non-interactive skill refresh. `atls upgrade`
   now invokes this instead of `atls setup all`, so upgrades no longer surface the
