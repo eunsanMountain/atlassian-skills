@@ -20,6 +20,29 @@ the same commands — on Windows they run identically in PowerShell or cmd.
 
 ---
 
+## [0.2.6] - 2026-05-28
+
+> ℹ️ **Migration note**: `atls setup codex` now installs the skill **only** to the
+> canonical Codex skills directory `~/.codex/skills/atls/` (`$CODEX_HOME/skills`) —
+> the directory Codex shows in its Enable/Disable Skills view. Earlier versions also
+> wrote a copy under `~/.agents/skills/atls/`, which Codex now treats as a legacy root
+> and which shows up as a **duplicate** skill. The old copy is **not removed
+> automatically**; run `atls setup status` to check, then remove it manually with
+> `rm -rf ~/.agents/skills/atls` if you no longer need it.
+
+### Fixed
+- **Codex skill installs to the canonical `~/.codex/skills/atls/` only.** Previously
+  `atls setup codex` mislabeled `~/.agents/skills` as the primary target and
+  `~/.codex/skills` as legacy — the reverse of how Codex actually resolves user-level
+  skills. Installing to both roots made Codex's Enable/Disable Skills list show `atls`
+  twice. Setup now writes one canonical copy and leaves `~/.agents/skills` for
+  detection/cleanup only.
+
+### Changed
+- `atls setup status` now warns when a legacy `~/.agents/skills/atls/` install is
+  present (matching the existing legacy-slash-command warning), pointing at the
+  canonical location and the manual removal command. No files are deleted automatically.
+
 ## [0.2.5] - 2026-05-08
 
 > ℹ️ **Migration note**: `atls setup claude` no longer installs `~/.claude/commands/atls.md`

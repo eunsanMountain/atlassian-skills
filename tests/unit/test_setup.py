@@ -165,11 +165,12 @@ class TestSetupCodex:
         (source_dir / "SKILL.md").write_text("<!-- installed-by: atls 0.1.0 -->", encoding="utf-8")
 
         monkeypatch.setattr(setup_mod, "ASSETS_DIR", asset_root)
+        # Canonical Codex skills live under ~/.codex/skills; ~/.agents/skills is legacy.
         monkeypatch.setattr(
-            setup_mod, "_get_codex_skill_target", lambda: tmp_path / ".agents" / "skills" / "atls" / "SKILL.md"
+            setup_mod, "_get_codex_skill_target", lambda: tmp_path / ".codex" / "skills" / "atls" / "SKILL.md"
         )
         monkeypatch.setattr(
-            setup_mod, "_get_codex_legacy_target", lambda: tmp_path / ".codex" / "skills" / "atls" / "SKILL.md"
+            setup_mod, "_get_codex_legacy_target", lambda: tmp_path / ".agents" / "skills" / "atls" / "SKILL.md"
         )
         monkeypatch.setattr(setup_mod, "_get_codex_agents_path", lambda: tmp_path / ".codex" / "AGENTS.md")
 
@@ -177,8 +178,10 @@ class TestSetupCodex:
         result = runner.invoke(setup_mod.setup_app, ["codex"])
 
         assert result.exit_code == 0
-        assert (tmp_path / ".agents" / "skills" / "atls" / "SKILL.md").exists()
+        # Installs to the canonical dir only.
         assert (tmp_path / ".codex" / "skills" / "atls" / "SKILL.md").exists()
+        # The legacy ~/.agents path is never written by setup.
+        assert not (tmp_path / ".agents" / "skills" / "atls" / "SKILL.md").exists()
         agents_content = (tmp_path / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
         assert "ATLS-CODEX:START" in agents_content
         assert "ATLS Codex block" in result.output
@@ -197,8 +200,8 @@ class TestStatus:
 
     def test_status_installed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-        # Create a fake installed file with version marker
-        codex_target = tmp_path / ".agents" / "skills" / "atls" / "SKILL.md"
+        # Create a fake installed file with version marker in the canonical Codex skills dir
+        codex_target = tmp_path / ".codex" / "skills" / "atls" / "SKILL.md"
         codex_target.parent.mkdir(parents=True)
         codex_target.write_text("<!-- installed-by: atls 0.1.0 -->", encoding="utf-8")
 

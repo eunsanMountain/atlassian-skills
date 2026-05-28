@@ -108,13 +108,20 @@ def _get_agents_dir() -> Path:
 
 
 def _get_codex_skill_target() -> Path:
-    """Primary Codex skill target: <agents_dir>/skills/atls/SKILL.md (user-level)."""
-    return _get_agents_dir() / "skills" / "atls" / "SKILL.md"
+    """Canonical Codex skill target: <codex_home>/skills/atls/SKILL.md.
+
+    Codex discovers user-level skills under $CODEX_HOME/skills (default ~/.codex/skills).
+    This is the directory shown in Codex's Enable/Disable Skills UI.
+    """
+    return _get_codex_config_dir() / "skills" / "atls" / "SKILL.md"
 
 
 def _get_codex_legacy_target() -> Path:
-    """Legacy Codex/OMX-compatible skill target kept for compatibility."""
-    return _get_codex_config_dir() / "skills" / "atls" / "SKILL.md"
+    """Historical legacy Codex skill location (~/.agents/skills/atls/).
+
+    Kept for detection/cleanup only — `atls setup codex` no longer writes here.
+    """
+    return _get_agents_dir() / "skills" / "atls" / "SKILL.md"
 
 
 def _get_codex_agents_path() -> Path:
@@ -228,6 +235,35 @@ def _legacy_claude_command_notice() -> str | None:
     )
 
 
+def _legacy_codex_skill_notice() -> str | None:
+    """Return guidance if a legacy ~/.agents/skills/atls install is present.
+
+    atls now installs to the canonical Codex skills dir; a leftover copy under
+    ~/.agents/skills makes Codex's Enable/Disable Skills show a duplicate. We warn
+    but never auto-delete — the directory may hold files we did not write.
+    """
+    legacy_dir = _get_codex_legacy_target().parent
+    if not legacy_dir.exists():
+        return None
+    canonical_dir = _get_codex_skill_target().parent
+    skill_md = _get_codex_legacy_target()
+    try:
+        content = skill_md.read_text(encoding="utf-8", errors="replace") if skill_md.exists() else ""
+    except OSError:
+        content = ""
+    if "installed-by: atls" in content:
+        return (
+            f"  ⚠ Legacy atls skill found: {legacy_dir}\n"
+            f"    atls now installs to the canonical Codex skills dir: {canonical_dir}\n"
+            f"    Codex may show a duplicate until you remove the old copy: rm -rf {legacy_dir}"
+        )
+    return (
+        f"  ⚠ Skill files at {legacy_dir} (no atls install marker).\n"
+        f"    atls now installs to: {canonical_dir}\n"
+        f"    Inspect before removing manually."
+    )
+
+
 def _prompt_override(label: str, key: str, current: Path) -> None:
     """Ask the user to accept or override a detected path."""
     source = (
@@ -260,8 +296,8 @@ def _prompt_all_overrides() -> None:
     """Interactive walkthrough of all configurable paths."""
     typer.echo(f"Detected platform: {_detect_platform()}")
     _prompt_override("Claude config dir", "claude", _get_claude_config_dir())
-    _prompt_override("Codex config dir", "codex", _get_codex_config_dir())
-    _prompt_override("Agents dir (Codex skill target)", "agents", _get_agents_dir())
+    _prompt_override("Codex config dir (canonical skill target)", "codex", _get_codex_config_dir())
+    _prompt_override("Agents dir (legacy Codex skill, detection only)", "agents", _get_agents_dir())
     typer.echo("")
 
 
@@ -274,13 +310,13 @@ def _show_paths() -> None:
     typer.echo(f"  CLAUDE.md path            : {_get_claude_md_path()}")
     typer.echo(f"  Codex config dir          : {_get_codex_config_dir()}")
     typer.echo(f"  Codex AGENTS.md path      : {_get_codex_agents_path()}")
-    typer.echo(f"  Codex skill target        : {_get_codex_skill_target()}")
-    typer.echo(f"  Codex legacy skill target : {_get_codex_legacy_target()}")
+    typer.echo(f"  Codex skill target        : {_get_codex_skill_target()}  (canonical)")
+    typer.echo(f"  Codex legacy skill target : {_get_codex_legacy_target()}  (detection only)")
     typer.echo("")
     typer.echo("Override via environment variables:")
     typer.echo("  CLAUDE_CONFIG_DIR  — Claude Code config directory")
-    typer.echo("  CODEX_HOME         — Codex config directory")
-    typer.echo("  AGENTS_HOME        — Agents skill directory")
+    typer.echo("  CODEX_HOME         — Codex config directory (canonical skills live here)")
+    typer.echo("  AGENTS_HOME        — legacy Codex skill directory (detection only)")
     typer.echo("Or run `atls setup <target> --interactive` to override at install time.")
 
 
@@ -294,11 +330,14 @@ def setup_codex(
     """Install atls skill for Codex and inject a global AGENTS.md routing block."""
     if interactive:
         _prompt_all_overrides()
+    # Install only to the canonical Codex skills dir ($CODEX_HOME/skills, default ~/.codex/skills).
     for msg in _install_tree(_CANONICAL_SKILL_DIR, _get_codex_skill_target().parent):
         typer.echo(msg)
-    for msg in _install_tree(_CANONICAL_SKILL_DIR, _get_codex_legacy_target().parent):
-        typer.echo(msg)
     typer.echo(_inject_codex_agents_block())
+    # Warn about (never auto-delete) a leftover legacy ~/.agents/skills install.
+    legacy = _legacy_codex_skill_notice()
+    if legacy:
+        typer.echo(legacy)
 
 
 @setup_app.command("claude")
@@ -361,6 +400,10 @@ def setup_status() -> None:
     legacy = _legacy_claude_command_notice()
     if legacy:
         typer.echo(legacy)
+
+    legacy_codex = _legacy_codex_skill_notice()
+    if legacy_codex:
+        typer.echo(legacy_codex)
 
     for name, path in [("Codex AGENTS.md", _get_codex_agents_path()), ("CLAUDE.md", _get_claude_md_path())]:
         if path.exists():

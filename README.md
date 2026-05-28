@@ -238,7 +238,7 @@ atls auth status      # verify connection
 
 **What gets installed:**
 - **Claude Code**: `~/.claude/skills/atls/SKILL.md` (auto-loaded skill with command tree, format rules, write-safety protocol) + preference directive in `~/.claude/CLAUDE.md` (active every conversation, reinforces atls as the default Atlassian tool).
-- **Codex**: `~/.agents/skills/atls/SKILL.md` (auto-loaded skill, same canonical content) + routing directive in `~/.codex/AGENTS.md`.
+- **Codex**: `~/.codex/skills/atls/SKILL.md` (auto-loaded skill, same canonical content) + routing directive in `~/.codex/AGENTS.md`.
 - Run `atls setup status` to check what is installed.
 - Run `atls setup paths` to see every resolved install path for your platform.
 
@@ -251,8 +251,8 @@ atls auth status      # verify connection
 | Target | Env var override | Default (Windows) | Default (macOS / Linux) |
 |---|---|---|---|
 | Claude config dir | `CLAUDE_CONFIG_DIR` | `C:\Users\<you>\.claude` | `~/.claude` |
-| Codex config dir | `CODEX_HOME` | `C:\Users\<you>\.codex` | `~/.codex` |
-| Agents skill dir | `AGENTS_HOME` | `C:\Users\<you>\.agents` | `~/.agents` |
+| Codex config dir (Codex skill installs to `<here>/skills/atls/`) | `CODEX_HOME` | `C:\Users\<you>\.codex` | `~/.codex` |
+| Legacy Codex skill dir (detection/cleanup only, not installed to) | `AGENTS_HOME` | `C:\Users\<you>\.agents` | `~/.agents` |
 
 To customize at install time, run any setup command with `--interactive` (or `-i`):
 
@@ -279,7 +279,7 @@ export CLAUDE_CONFIG_DIR=~/work/claude
 atls setup all
 ```
 
-**Skill auto-load:** Both Claude Code and Codex auto-load `SKILL.md` based on its `description` — Atlassian-related prompts (Jira / Confluence / Bitbucket / 지라 / 컨플루언스 / 비트버킷) trigger the skill without any explicit `/atls` invocation. The Codex skill installs to both `<AGENTS_HOME>/skills/atls/` (primary) and `<CODEX_HOME>/skills/atls/` (legacy compatibility); the Claude skill installs to `<CLAUDE_CONFIG_DIR>/skills/atls/`.
+**Skill auto-load:** Both Claude Code and Codex auto-load `SKILL.md` based on its `description` — Atlassian-related prompts (Jira / Confluence / Bitbucket / 지라 / 컨플루언스 / 비트버킷) trigger the skill without any explicit `/atls` invocation. The Codex skill installs to the canonical `<CODEX_HOME>/skills/atls/` (default `~/.codex/skills/atls/`), the directory Codex shows in its Enable/Disable Skills view; the Claude skill installs to `<CLAUDE_CONFIG_DIR>/skills/atls/`. A pre-0.2.6 install under `~/.agents/skills/atls/` is left in place but flagged by `atls setup status` so you can remove the duplicate.
 
 ### 2. Talk to your agent in natural language
 
