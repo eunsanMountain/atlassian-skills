@@ -531,6 +531,165 @@ def _save_tokens_windows(env_vars: dict[str, str]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Token storage — keyring + command (0.2.8)
+# ---------------------------------------------------------------------------
+
+
+def _current_storage(profile_name: str = "default") -> str:
+    """Return the configured storage mode for the profile ('env' if unset)."""
+    from atlassian_skills.core.config import get_profile, load_config
+
+    return get_profile(load_config(), profile_name).storage
+
+
+def _detect_headless() -> list[str]:
+    """Return advisory signals that an OS keyring backend may be locked / unavailable.
+
+    None of these are definitive — they are hints the wizard surfaces before the user
+    commits to keyring storage in an environment where it frequently cannot unlock
+    (Docker, WSL, headless server, text-only SSH). The user can still proceed.
+    """
+    signals: list[str] = []
+    if Path("/.dockerenv").exists():
+        signals.append("running inside Docker (/.dockerenv present)")
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        signals.append("WSL2 — the native Windows credential store is separate from this session")
+    if sys.platform.startswith("linux") and not os.environ.get("DBUS_SESSION_BUS_ADDRESS"):
+        signals.append("no D-Bus session bus — likely no desktop session, so GNOME Keyring / KWallet stays locked")
+    if os.environ.get("SSH_CONNECTION") and not os.environ.get("DISPLAY"):
+        signals.append("SSH session without DISPLAY (text-only)")
+    return signals
+
+
+def _detect_installer() -> str:
+    """Best-effort guess at how atls was installed, to print the matching keyring-extra command."""
+    exe = str(Path(sys.executable).resolve()).replace("\\", "/")
+    if "/uv/tools/" in exe or "/uv/tool/" in exe:
+        return "uv"
+    if "pipx" in exe:
+        return "pipx"
+    return "pip"
+
+
+def _keyring_install_hint() -> str:
+    """The exact install command for the optional keyring extra, matched to the installer."""
+    return {
+        "uv": 'uv tool install --force "atlassian-skills[keyring]"',
+        "pipx": "pipx inject atlassian-skills keyring",
+        "pip": 'pip install "atlassian-skills[keyring]"',
+    }[_detect_installer()]
+
+
+def _save_token_keyring(profile_name: str, product: str, token: str) -> None:
+    """Store a token in the OS keyring under the exact key the resolver reads.
+
+    Service `atls-<profile>`, account `<product>_token` — must stay in lockstep with
+    `core.auth._resolve_token_from_provider`, which calls
+    `keyring.get_password(f"atls-{profile_name}", f"{product}_token")`.
+    """
+    import keyring  # noqa: PLC0415 — optional dep, imported lazily; ImportError handled by caller
+
+    keyring.set_password(f"atls-{profile_name}", f"{product}_token", token)
+
+
+def _validate_command(command: str) -> tuple[bool, str]:
+    """Run a credential command once, exactly as the resolver will (shell=True, 5s timeout).
+
+    Returns (ok, detail). `ok` is True only when exit==0 and stdout is non-empty — the same
+    contract `core.auth` enforces at call time. stderr is truncated to keep secrets/noise short.
+    """
+    import subprocess  # noqa: PLC0415
+
+    try:
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        return False, "timed out after 5s"
+    except OSError as e:
+        return False, f"failed to launch: {e}"
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip()[:80] or f"exit {result.returncode}"
+        return False, detail
+    if not result.stdout.strip():
+        return False, "produced empty output (exit 0 but nothing on stdout)"
+    return True, f"ok ({len(result.stdout.strip())} chars on stdout)"
+
+
+def _set_profile_storage(storage: str, *, commands: dict[str, str] | None = None) -> None:
+    """Persist storage mode (and optional per-product commands) to [profiles.default]."""
+    from atlassian_skills.core.config import Profile, load_config, save_config
+
+    config = load_config()
+    if "default" not in config.profiles:
+        config.profiles["default"] = Profile()
+    prof = config.profiles["default"]
+    prof.storage = storage  # type: ignore[assignment]  # validated set: env|keyring|command
+    if commands:
+        for product, cmd in commands.items():
+            setattr(prof, f"{product}_command", cmd)
+    save_config(config)
+
+
+def _cleanup_old_file_storage(products: list[str]) -> None:
+    """When switching from file/env storage to keyring/command, offer to remove the old
+    `~/.secrets/*_pat` files + the atls-managed shell rc block, and unshadow the current
+    process env so the wizard's final --resolve verification actually exercises the new
+    provider instead of the lingering env var.
+    """
+    secrets = _secrets_dir()
+    existing_files = [secrets / f"{p}_pat" for p in products if (secrets / f"{p}_pat").exists()]
+    rc = _shell_rc_path() if sys.platform != "win32" else None
+    has_rc_block = False
+    if rc and rc.exists():
+        try:
+            has_rc_block = _SHELL_RC_BLOCK_START in rc.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            has_rc_block = False
+    env_set = [p for p in products if os.environ.get(_TOKEN_ENV_NAMES[p])]
+
+    if not (existing_files or has_rc_block or env_set):
+        return
+
+    typer.echo("")
+    typer.echo("  Old file-based artifacts found from a previous setup:")
+    for f in existing_files:
+        typer.echo(f"    • {f}")
+    if has_rc_block and rc:
+        typer.echo(f"    • atls-managed env block in {rc}")
+    if env_set:
+        typer.echo(f"    • env var(s) live in this shell: {', '.join(_TOKEN_ENV_NAMES[p] for p in env_set)}")
+    remove = _prompt_agent_install("Remove these so the new storage is actually used", default=False)
+    if not remove:
+        if env_set:
+            typer.echo(
+                "  ⚠ env var(s) still set in this shell will keep shadowing the new storage "
+                "until you unset them / open a new terminal.",
+                err=True,
+            )
+        return
+
+    for f in existing_files:
+        try:
+            f.unlink()
+            typer.echo(f"    → removed {f}")
+        except OSError as e:
+            typer.echo(f"    ⚠ could not remove {f}: {e}", err=True)
+    if has_rc_block and rc:
+        try:
+            content = rc.read_text(encoding="utf-8", errors="replace")
+            pattern = re.compile(
+                re.escape(_SHELL_RC_BLOCK_START) + r".*?" + re.escape(_SHELL_RC_BLOCK_END) + r"\n?",
+                re.DOTALL,
+            )
+            rc.write_text(pattern.sub("", content), encoding="utf-8")
+            typer.echo(f"    → stripped atls env block from {rc}")
+        except OSError as e:
+            typer.echo(f"    ⚠ could not edit {rc}: {e}", err=True)
+    # Current-process unshadow so the final --resolve verification sees the new provider.
+    for p in env_set:
+        os.environ.pop(_TOKEN_ENV_NAMES[p], None)
+
+
+# ---------------------------------------------------------------------------
 # Wizard state — URL/token resolution
 # ---------------------------------------------------------------------------
 
@@ -759,6 +918,83 @@ def _prompt_agent_install(label: str, default: bool = True) -> bool:
     return answer in ("y", "yes")
 
 
+def _prompt_storage_choice(current: str, platform_name: str) -> str:
+    """Ask where tokens should live. Returns 'env', 'keyring', or 'command'.
+
+    UI labels are platform-specific (Unix file/rc vs Windows registry) but the stored
+    value for option [1] is always 'env' — the 0.2.7 file/registry flow is unchanged, only
+    re-labelled. keyring/command are opt-in. Enter keeps the current storage.
+    """
+    if platform_name == "windows":
+        opt1 = "Windows user env (HKCU\\Environment)   — simple, works in cmd / PowerShell / Git Bash"
+        opt2 = "OS keyring (Credential Manager)        — encrypted, DPAPI-backed"
+    else:
+        opt1 = "~/.secrets/*_pat + shell rc           — simple, works headless / CI / Docker"
+        opt2 = "OS keyring                             — encrypted (macOS Keychain / GNOME Keyring / KWallet)"
+    opt3 = "command (1Password / pass / bw / …)    — bring your own secret manager"
+
+    label_to_value = {"1": "env", "2": "keyring", "3": "command"}
+    value_to_label = {"env": "1", "keyring": "2", "command": "3"}
+    default_label = value_to_label.get(current, "1")
+
+    typer.echo("")
+    typer.echo(f"Where to store tokens?  (current: {current})")
+    typer.echo(f"  [1] {opt1}")
+    typer.echo(f"  [2] {opt2}")
+    typer.echo(f"  [3] {opt3}")
+    choice = (
+        typer.prompt(f"  Choice [default={default_label}]", default=default_label, show_default=False).strip().lower()
+    )
+    storage = label_to_value.get(choice, current if current in label_to_value.values() else "env")
+
+    if storage == "keyring":
+        signals = _detect_headless()
+        if signals:
+            typer.echo("  ⚠ This session may not be able to unlock an OS keyring:", err=True)
+            for s in signals:
+                typer.echo(f"      - {s}", err=True)
+            typer.echo("    [3] command or [1] env is usually more reliable here.", err=True)
+            if not _prompt_agent_install("Use keyring anyway", default=False):
+                return _prompt_storage_choice(current, platform_name)
+        # Fail fast if the optional dep is missing — before we collect any secret.
+        try:
+            import keyring  # noqa: F401, PLC0415
+        except ImportError:
+            typer.echo(
+                "  ✗ the 'keyring' package is not installed. Install the extra and re-run:\n"
+                f"      {_keyring_install_hint()}",
+                err=True,
+            )
+            if not _prompt_agent_install("Pick a different storage instead", default=True):
+                raise typer.Exit(1) from None
+            return _prompt_storage_choice(current, platform_name)
+
+    return storage
+
+
+def _prompt_credential_command(product: str) -> str | None:
+    """Prompt for a shell command that prints the token to stdout, validating once.
+
+    The command is not a secret (it names a vault entry), so input is shown. Returns the
+    validated command, or None if the user skips. Re-prompts on validation failure.
+    """
+    label = product.capitalize()
+    typer.echo(
+        f"  Examples: op read op://vault/{product}/token   |   pass show atlassian/{product}   |   bw get password {product}"
+    )
+    while True:
+        command: str = typer.prompt(f"  {label} token command (blank to skip)", default="", show_default=False).strip()
+        if not command:
+            return None
+        ok, detail = _validate_command(command)
+        if ok:
+            typer.echo(f"    ✓ {detail}")
+            return command
+        typer.echo(f"    ✗ command failed: {detail}", err=True)
+        if not _prompt_agent_install("Try a different command", default=True):
+            return None
+
+
 # ---------------------------------------------------------------------------
 # Skill refresh — used by wizard AND `setup --skills-only` (upgrade path)
 # ---------------------------------------------------------------------------
@@ -808,12 +1044,14 @@ def _wizard_product_step(  # noqa: C901 — sequential prompt narrative reads be
     url_state: dict[str, tuple[str | None, str | None]],
     token_state: dict[str, int],
     file_state: dict[str, bool],
+    storage: str = "env",
 ) -> tuple[tuple[str | None, str], str | None]:
-    """Walk one product (Jira/Confluence/Bitbucket) through its URL+PAT prompts.
+    """Walk one product (Jira/Confluence/Bitbucket) through its URL + secret prompts.
 
-    Returns ((url, url_action), new_token_or_None). `url_action` ∈ {'set', 'keep', 'skip',
-    'clear-config', 'clear-env-noop'}. `new_token` is a freshly-entered raw token, or None
-    if the user kept the existing one / had none to begin with.
+    Returns ((url, url_action), new_secret_or_None). `url_action` ∈ {'set', 'keep', 'skip',
+    'clear-config', 'clear-env-noop'}. The second element is the freshly-entered secret:
+    a raw PAT for storage in ('env', 'keyring'), or a validated shell command for
+    storage == 'command'. None when the user kept the existing one / skipped.
     """
     label = product.capitalize()
     current_url, source = url_state[product]
@@ -908,6 +1146,13 @@ def _wizard_product_step(  # noqa: C901 — sequential prompt narrative reads be
             typer.echo("")
             return (None, "skip"), None
 
+        # storage == 'command' collects a retrieval command instead of a raw secret;
+        # 'env'/'keyring' collect the PAT itself (hidden input).
+        if storage == "command":
+            secret = _prompt_credential_command(product)
+            typer.echo("")
+            return (new_url_raw, "set"), secret
+
         # PAT issuer hint — written instruction, no guessed URL (varies by deployment)
         typer.echo(f"  Generate a PAT: {_pat_issuer_hint(product)}")
 
@@ -957,46 +1202,70 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
                 f"  To delete the file(s):  pick [r]emove below, or run: rm {files_csv}\n"
             )
 
+    # Storage choice — asked once, up-front, so command mode prompts for retrieval
+    # commands instead of raw PATs in the per-product loop. [1] keeps the 0.2.7 flow.
+    current_storage = _current_storage()
+    storage = _prompt_storage_choice(current_storage, platform_name)
+
     url_state = _existing_url_state()
     token_state = _existing_tokens()
     file_state = _existing_file_state()
 
     url_actions: dict[str, tuple[str | None, str]] = {}
-    new_tokens: dict[str, str] = {}
+    new_secrets: dict[str, str] = {}  # token (env/keyring) or command (command), keyed by product
     total_steps = len(_PRODUCTS) + 1  # +1 for AI agent step
 
     for idx, product in enumerate(_PRODUCTS, start=1):
-        (url, action), token = _wizard_product_step(product, idx, total_steps, url_state, token_state, file_state)
+        (url, action), secret = _wizard_product_step(
+            product, idx, total_steps, url_state, token_state, file_state, storage=storage
+        )
         url_actions[product] = (url, action)
-        if token is not None:
-            new_tokens[product] = token
+        if secret is not None:
+            new_secrets[product] = secret
 
     _apply_url_changes(url_actions)
 
-    # Save tokens — Unix rebuilds the rc block from ALL existing ~/.secrets files so a
-    # product that wasn't touched in this run keeps its export line (Bug 1 fix).
-    if new_tokens:
-        if platform_name == "windows":
-            env_vars = {_TOKEN_ENV_NAMES[p]: t for p, t in new_tokens.items()}
+    # Persist the chosen storage mode even when no new secret was entered (the user may
+    # be switching modes for already-stored credentials).
+    if storage != current_storage:
+        _set_profile_storage(storage)
+        typer.echo(f"  → storage mode set to '{storage}' in config.toml")
+
+    if new_secrets:
+        if storage == "keyring":
+            try:
+                for product, token in new_secrets.items():
+                    _save_token_keyring("default", product, token)
+            except ImportError:
+                typer.echo(f"  ✗ keyring not available — install it: {_keyring_install_hint()}", err=True)
+                raise typer.Exit(1) from None
+            typer.echo(f"  → saved {len(new_secrets)} token(s) to the OS keyring (service 'atls-default')")
+            if platform_name == "macos":
+                typer.echo('    macOS: click "Always Allow" on first access so atls isn\'t re-prompted each call.')
+            _cleanup_old_file_storage(list(new_secrets.keys()))
+        elif storage == "command":
+            _set_profile_storage("command", commands=new_secrets)
+            typer.echo(f"  → saved {len(new_secrets)} credential command(s) to config.toml (tokens not stored)")
+            _cleanup_old_file_storage(list(new_secrets.keys()))
+        elif platform_name == "windows":
+            env_vars = {_TOKEN_ENV_NAMES[p]: t for p, t in new_secrets.items()}
             _save_tokens_windows(env_vars)
             typer.echo("  → tokens saved to Windows user env (HKCU\\Environment)")
         else:
-            for product, token in new_tokens.items():
+            # env (file) — rebuild the rc block from ALL existing ~/.secrets files so a
+            # product that wasn't touched in this run keeps its export line (Bug 1 fix).
+            for product, token in new_secrets.items():
                 _save_token_unix(product, token)
             msg = _inject_shell_env_block_from_disk()
             typer.echo(f"  {msg.strip()}")
         typer.echo("")
 
-    # B1 warning — manual exports outside the atls block can shadow wizard-managed tokens
-    if platform_name != "windows":
+    # Shadow warnings only matter for env storage — keyring/command don't read the rc block.
+    if storage == "env" and platform_name != "windows":
         for warning in _detect_rc_shadowing():
             typer.echo(f"⚠ {warning}", err=True)
-
-    # ATLS_DEFAULT_*_TOKEN shadowing: the advanced-multi-profile env var takes priority
-    # over the legacy `JIRA_PERSONAL_TOKEN` etc., so saving a new token via the wizard
-    # has no effect until the ATLS_* form is unset.
-    if new_tokens:
-        for warning in _detect_atls_default_shadowing(list(new_tokens.keys())):
+    if storage == "env" and new_secrets:
+        for warning in _detect_atls_default_shadowing(list(new_secrets.keys())):
             typer.echo(f"⚠ {warning}", err=True)
 
     # AI agent step — defaults to Yes for all three agents. `atls upgrade` (--skills-only)
@@ -1021,10 +1290,15 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
     # it works regardless of zsh/bash/cmd/PowerShell/Git Bash and skips the rc-file
     # detection guessing game entirely.
     typer.echo("Next steps:")
-    typer.echo("  • Open a new terminal to use the new env vars (works on every shell + platform).")
-    if platform_name == "windows":
-        typer.echo("    No reboot needed — HKCU\\Environment is read by every new process.")
-    typer.echo("  • Already-running apps that read env at startup (IDEs, editors) need a restart.")
+    if storage == "env":
+        typer.echo("  • Open a new terminal to use the new env vars (works on every shell + platform).")
+        if platform_name == "windows":
+            typer.echo("    No reboot needed — HKCU\\Environment is read by every new process.")
+        typer.echo("  • Already-running apps that read env at startup (IDEs, editors) need a restart.")
+    elif storage == "keyring":
+        typer.echo("  • Tokens live in the OS keyring — no shell restart needed; atls reads them on each call.")
+    elif storage == "command":
+        typer.echo("  • atls runs your credential command on each call — no shell restart needed.")
     if install_claude or install_codex:
         typer.echo(
             "  • AI agent skills: Claude Code / Codex auto-load `atls` on the next session. "
@@ -1032,12 +1306,15 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
         )
     typer.echo("")
 
-    # Verify — os.environ has been updated in-process by _save_token_unix / _save_tokens_windows
+    # Verify — probe the configured provider so the user sees the credential actually resolves.
+    # os.environ was updated in-process by _save_token_unix / _save_tokens_windows; for
+    # keyring/command, resolve=True exercises the freshly-saved provider (and any prompt is
+    # expected here — this is the verification step).
     typer.echo("Verifying...")
     typer.echo("")
     from atlassian_skills.cli.auth import render_auth_status
 
-    render_auth_status("default")
+    render_auth_status("default", resolve=True)
 
 
 # ---------------------------------------------------------------------------
