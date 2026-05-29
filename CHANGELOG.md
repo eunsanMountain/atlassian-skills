@@ -40,9 +40,7 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   **detects env-based tokens and skips those products** (a keyring entry would just be shadowed),
   telling you to unset the env var + open a new terminal to switch. It never deletes your env
   vars or shell rc. `storage` flips to keyring only when a token is actually stored, so an
-  env-based setup that Enter-throughs the wizard is left untouched. (Earlier 0.2.8 drafts added
-  an in-wizard storage picker and an `env`→shell-rc writer; both were removed in favor of this
-  simpler, predictable model.)
+  env-based setup that Enter-throughs the wizard is left untouched.
 - **`atls doctor` shows a PyPI freshness banner at the top** — `✓ atls X (up to date)` or
   `⚠ Update available: atls X → Y. Run 'atls upgrade'.` The check is best-effort with a short
   timeout and degrades to a neutral line offline; `--no-update-check` skips the network call.
@@ -57,7 +55,7 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ### Notes
 - Priority is **CLI flag > env var > the profile's configured provider**. `storage` selects a
-  single provider, not a fallback chain. Env vars remain the default and always win.
+  single provider, not a fallback chain — an env var always wins at resolution time.
 - `keyring` is now bundled by default (promoted from optional extra). The `[keyring]` extra is
   retained as a no-op alias so the pre-0.2.8 `pip install "atlassian-skills[keyring]"` keeps working.
 

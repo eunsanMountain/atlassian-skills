@@ -98,7 +98,7 @@ export ATLS_CORP_BITBUCKET_TOKEN="..."
 
 **File-based storage (manual — for the security-conscious without a keyring)**
 
-The wizard no longer manages `~/.secrets`: it stores tokens in the OS keyring by default, or writes plain `export` lines for the `env` option. If you'd rather keep each token in a `0600`-mode file and source it yourself — independent of the wizard — set it up by hand:
+The wizard no longer manages `~/.secrets` — it stores tokens in the OS keyring only. If you'd rather keep each token in a `0600`-mode file and source it yourself — independent of the wizard — set it up by hand:
 ```bash
 mkdir -p ~/.secrets && chmod 700 ~/.secrets
 printf '%s' 'YOUR_JIRA_PAT'       > ~/.secrets/jira_pat       && chmod 600 ~/.secrets/jira_pat
@@ -147,7 +147,7 @@ atls auth status        # equivalent to the Auth section of `atls doctor`
 
 **Priority**
 - URLs — CLI flags > `ATLS_*` env > config.toml
-- Tokens — CLI flags > `ATLS_*` env > `JIRA_PERSONAL_TOKEN` / `CONFLUENCE_PERSONAL_TOKEN` / `BITBUCKET_TOKEN`
+- Tokens — CLI flags > `ATLS_*` env > `JIRA_PERSONAL_TOKEN` / `CONFLUENCE_PERSONAL_TOKEN` / `BITBUCKET_TOKEN` > the profile's `storage` provider (keyring / command)
 
 > Prefer not to keep tokens in env vars? See **System keyring and shell-command providers** below
 > to store them in the OS keyring or fetch them from 1Password / `pass` / Bitwarden on demand.
