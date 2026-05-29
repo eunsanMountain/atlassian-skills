@@ -1131,6 +1131,56 @@ class TestWizardStorage:
         prof = load_config().profiles.get("default")
         assert prof is None or prof.storage != "keyring"
 
+    def test_keyring_storage_pat_display_is_not_misleading(
+        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """With storage=keyring, the per-product PAT line must not say 'not set' off an env miss —
+        the token lives in the keyring. It shows 'keyring storage' instead (no per-product probe)."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import Config, Profile, save_config
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        save_config(
+            Config(profiles={"default": Profile(storage="keyring", jira_url="https://jira.example.com")}),
+            wizard_env / "config.toml",
+        )
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.return_value = "tok"  # for the final --resolve verify
+        runner = CliRunner()
+        # storage Enter keeps keyring ([1]); skip all products; decline agents.
+        with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            result = runner.invoke(app, ["setup"], input="\ns\ns\ns\nn\nn\nn\n")
+
+        assert result.exit_code == 0, result.output
+        assert "PAT: keyring storage" in result.output
+        assert "PAT: not set" not in result.output
+
+    def test_command_storage_pat_display_shows_command(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """With storage=command, the PAT line shows the configured command (no execution to display)."""
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import Config, Profile, save_config
+
+        monkeypatch.setattr(setup_mod, "_detect_headless", lambda: [])
+        save_config(
+            Config(
+                profiles={
+                    "default": Profile(
+                        storage="command", jira_url="https://jira.example.com", jira_command="echo jira-tok"
+                    )
+                }
+            ),
+            wizard_env / "config.toml",
+        )
+        runner = CliRunner()
+        # storage Enter keeps command ([3]); skip all; decline agents.
+        result = runner.invoke(app, ["setup"], input="\ns\ns\ns\nn\nn\nn\n")
+
+        assert result.exit_code == 0, result.output
+        assert "PAT: command — echo jira-tok" in result.output
+        assert "PAT: not set" not in result.output
+
 
 class TestAuthStatusResolve:
     """`render_auth_status` must not probe providers unless resolve=True."""

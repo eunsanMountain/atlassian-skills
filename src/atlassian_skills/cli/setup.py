@@ -1028,7 +1028,19 @@ def _wizard_product_step(  # noqa: C901 — sequential prompt narrative reads be
         typer.echo(f"  URL: {current_url}  ({source})")
     else:
         typer.echo("  URL: not configured")
-    if has_token:
+    # PAT display is storage-aware. `token_state` only reflects env vars, so for keyring/command
+    # storage we must NOT print "not set" off an env miss — the token lives elsewhere. We avoid
+    # probing the keyring here (it would trigger a Touch ID / unlock prompt per product, and the
+    # final `--resolve` verify already probes once); the command's config presence is free to check.
+    if storage == "keyring":
+        typer.echo("  PAT: keyring storage — [e]dit to set/replace; confirmed at the end via --resolve")
+    elif storage == "command":
+        from atlassian_skills.core.config import get_profile, load_config
+
+        prof = get_profile(load_config(), "default")
+        cmd = getattr(prof, f"{product}_command", None) or prof.credential_command
+        typer.echo(f"  PAT: command — {cmd}" if cmd else "  PAT: command storage — no command set yet ([e]dit)")
+    elif has_token:
         typer.echo(f"  PAT: set (length={token_len})")
     else:
         typer.echo("  PAT: not set")
