@@ -654,7 +654,7 @@ def _wizard_product_step(  # noqa: C901 — sequential prompt narrative reads be
         varname = _env_token_var(product)
         typer.echo(f"  PAT: environment variable ({varname}) — atls uses this; keyring skipped")
     else:
-        typer.echo("  PAT: keyring storage — [e]dit to set")
+        typer.echo("  PAT: keyring — not checked here; [e]dit to set/replace (verify at the end shows what resolves)")
 
     # Menu verbs: `skip` (leave as-is / don't configure — the no-op), `edit` (add or change
     # URL + keyring token), `remove` (delete). `skip`/`edit`/`remove` are shown whenever ANY
