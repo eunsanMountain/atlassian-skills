@@ -33,15 +33,16 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 - **Per-product credential commands** — `jira_command` / `confluence_command` /
   `bitbucket_command` override a shared `credential_command`, so one profile can pull each
   product's token from a different vault entry.
-- **`atls setup` storage selection** — the wizard now asks once, up-front, where tokens
-  should live and **defaults to `[1]` keyring**; `[2]` env and `[3]` command are the
-  alternatives. In `env` mode the wizard writes a plain `export NAME='token'` line directly
-  into your shell rc (`~/.zshrc`/`~/.bashrc`) or `HKCU\Environment` on Windows — it **no longer
-  creates or manages `~/.secrets`** (that's now a documented manual technique). Switching a
-  product to keyring/command offers to drop its env export line and unshadow the live env var,
-  and keyring selection warns about headless environments (Docker / WSL / no D-Bus / text-only
-  SSH) where the store may be locked. A pure Enter-through that stores no token does not flip
-  an existing setup to keyring.
+- **`atls setup` is now keyring-only.** The wizard stores tokens in the OS keyring and nothing
+  else — it no longer writes shell rc files, env vars, `~/.secrets`, or `command` config. env
+  vars and `command` remain fully supported at runtime (resolver order is unchanged) but are
+  configured by hand (see README → Manual setup). Because env outranks the keyring, the wizard
+  **detects env-based tokens and skips those products** (a keyring entry would just be shadowed),
+  telling you to unset the env var + open a new terminal to switch. It never deletes your env
+  vars or shell rc. `storage` flips to keyring only when a token is actually stored, so an
+  env-based setup that Enter-throughs the wizard is left untouched. (Earlier 0.2.8 drafts added
+  an in-wizard storage picker and an `env`→shell-rc writer; both were removed in favor of this
+  simpler, predictable model.)
 - **`atls auth status --resolve`** and **`atls doctor --resolve-credentials`** — actually
   probe the configured provider (may prompt for Touch ID / a passphrase, or run the shell
   command). Without the flag, both report the configured source only and never touch the

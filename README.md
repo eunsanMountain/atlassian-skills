@@ -34,13 +34,11 @@ First-class integration with **Claude Code**, **Codex**, and **GitHub Copilot**.
 
 ```bash
 uv tool install atlassian-skills    # or: pipx install atlassian-skills / pip install atlassian-skills
-atls setup                          # interactive wizard — URLs, tokens, Claude/Codex/Copilot skill
-
-# Open a NEW terminal
+atls setup                          # interactive wizard — URLs, tokens (OS keyring), Claude/Codex/Copilot skill
 atls doctor                         # verify configuration + auth
 ```
 
-That's it. The wizard detects your platform/shell and writes config + secrets + shell rc + agent skills in one pass.
+That's it. The wizard stores tokens in your OS keyring and installs the agent skills in one pass — no shell restart needed. Prefer environment variables or a secret-manager command instead? See **Manual setup** below; the wizard is keyring-only.
 
 > ⚠️ Run `atls setup` **directly in your terminal** — never through an AI agent's shell tool. The wizard refuses non-TTY stdin and prompts hide token input from terminal echo; running it through an agent would force the agent to fulfil the token prompt from chat, leaking the value into LLM context.
 
@@ -159,15 +157,15 @@ atls auth status        # equivalent to the Auth section of `atls doctor`
 <details>
 <summary><b>System keyring and shell-command providers (no persistent env vars)</b></summary>
 
-Instead of storing tokens in environment variables, you can have atls fetch them on demand from your system keyring or a custom shell command. The token is retrieved only at call time. The `atls setup` wizard **defaults to `keyring`**; `env` and `command` are the alternatives chosen via the profile's `storage` setting. Whatever you pick, an env var always wins at resolution time — so a quick `export` still overrides without touching config.
+atls resolves a token from the first source that has one: **CLI flag → env var → the profile's `storage` provider**. The `atls setup` wizard only ever writes to the **keyring**; the other two providers are configured by hand (this section + *Manual setup*).
 
-| `storage` | platform | when to use |
-|---|---|---|
-| `keyring` (wizard default) | macOS, Linux desktop, Windows | personal machine, dotfile-synced configs |
-| `env` | all | simple; the only option that works headless / CI / Docker |
-| `command` | all (bring your own tool) | already using 1Password / `pass` / `bw` / PowerShell |
+| `storage` | set up by | platform | when to use |
+|---|---|---|---|
+| `keyring` | the wizard (or by hand) | macOS, Linux desktop, Windows | personal machine, dotfile-synced configs |
+| env vars | you (export / `atls config` / Manual setup) | all | simple; the only option that works headless / CI / Docker |
+| `command` | you (edit `config.toml`) | all (bring your own tool) | already using 1Password / `pass` / `bw` / PowerShell |
 
-`storage` selects a **single** provider — it is not a fallback chain. The resolution order is **CLI flag → env var → the configured provider**. (In `env` mode the wizard writes plain `export NAME='token'` lines into your shell rc; it no longer uses `~/.secrets`.)
+`storage` selects a **single** provider — it is not a fallback chain. An env var always wins at resolution time, so a quick `export` overrides the keyring without touching config (and the wizard will skip a product whose token is already in the environment).
 
 **System keyring** — uses the platform's native credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). The `keyring` package ships with atls by default (no extra needed). Save tokens once, then point the profile at the keyring:
 
@@ -222,26 +220,19 @@ atls auth status --resolve  # actually probes each provider
 <details>
 <summary><b>What the wizard does, step by step</b></summary>
 
+The wizard is **keyring-only**: it stores tokens in your OS keyring and nothing else. Environment variables and shell-command secret managers still work at call time (the resolver checks `env > keyring > command`), but you configure those by hand — see *Manual setup*. The wizard never edits your shell rc or env.
+
 1. **TTY guard** — refuses to run if stdin isn't a real terminal (protects tokens from being fed in through AI-agent shell tools).
-2. **fish shell guard** — fish uses `set -gx` instead of `export`; the wizard exits cleanly with a workaround and points you at `atls setup --skills-only` for the skill-only path.
-3. **Storage selection** — asks once, up front, where tokens should live (the current mode is shown; Enter keeps it, or accepts keyring on a fresh setup):
-   - `[1]` **keyring** (default) — the OS credential store (macOS Keychain / Linux Secret Service / Windows Credential Manager). If the session looks headless (Docker / WSL / no D-Bus / text-only SSH) the wizard warns first, since the keyring may be locked.
-   - `[2]` **env** — writes plain `export NAME='token'` lines into your shell rc (`~/.zshrc`/`~/.bashrc`), or `HKCU\Environment` on Windows. The only option that works headless. (It no longer uses `~/.secrets` — that's a manual technique now; see *Manual setup*.)
-   - `[3]` **command** — fetch the token from your own secret manager (1Password / `pass` / `bw` / PowerShell) on demand.
-4. **Steps [1/4] – [3/4] — one block per product (Jira, Confluence, Bitbucket).** Each step prints the current URL + PAT state (source `(config)` / `(env: …)`), then asks `[s]kip / [e]dit / [r]emove` (default `s`, or `e` when a token exists but the URL isn't set yet) when something is configured, or `[s]kip / [e]dit` (default `s`) when not. `skip` leaves the product as-is; `remove` clears the URL + the product's env export line + its keyring entry. Choosing `e` (edit) prompts for the URL (saved to `~/.config/atlassian-skills/config.toml`), prints the PAT issuer link inline, then collects the secret based on the storage you chose:
-   - **keyring** → hidden PAT prompt → `keyring.set_password("atls-<profile>", "<product>_token", …)`. Nothing touches the shell rc.
-   - **env** → hidden PAT prompt → a literal `export NAME='token'` line in the `# >>> atls env >>>` block of `~/.zshrc`/`~/.bashrc` (other products' lines are preserved). Windows writes `HKCU\Environment` via `winreg` + `WM_SETTINGCHANGE`. Current-process `os.environ` is updated so verify sees it.
-   - **command** → a (visible) command prompt, validated by running it once (`shell=True`, 5s timeout; exit 0 + non-empty stdout required), then saved as `{product}_command` (or a shared `credential_command`) in `config.toml` — the token itself is never stored.
-5. **Transition cleanup** — when you switch a product to keyring/command, the wizard offers to remove that product's env export line from the shell rc and unshadow the live env var (env outranks the new provider), so the verify step exercises the provider you just chose. Other products' export lines are left untouched.
-6. **Legacy `~/.secrets` note** (Linux / macOS) — if pre-0.2.8 `~/.secrets/*_pat` files are found, a one-line note explains the wizard no longer manages them; switch via the storage prompt or keep using them manually.
-7. **Shadowing warning** (env, Linux / macOS) — warns if a manual `export JIRA_PERSONAL_TOKEN=…` outside the atls block could override the wizard-managed token depending on line order.
-8. **[4/4] AI agent skills** — `[Y/n]` prompt for each:
+2. **Env-token detection** — if atls already finds a token in your environment (`ATLS_DEFAULT_<PRODUCT>_TOKEN` or `JIRA_PERSONAL_TOKEN` etc.), the wizard says so up front. Because env outranks the keyring, it **skips** those products (a keyring entry would just be shadowed) and leaves your env setup untouched. To move one to the keyring: unset its env var, remove it from your shell rc, open a **new** terminal, and re-run.
+3. **Steps [1/4] – [3/4] — one block per product (Jira, Confluence, Bitbucket).** Each step prints the current URL + where the token lives (`environment variable (VAR)` or `keyring storage`), then asks `[s]kip / [e]dit / [r]emove` (default `s`, or `e` when there's nothing yet). `skip` leaves it as-is. `[e]dit` prompts for the URL (saved to `~/.config/atlassian-skills/config.toml`); then, unless the product's token is in the environment, prints the PAT issuer link and takes a hidden PAT prompt → `keyring.set_password("atls-<profile>", "<product>_token", …)`. `[r]emove` clears the URL and deletes the product's keyring entry (it never touches your env vars or shell rc).
+4. **Keyring availability** — if the `keyring` package can't be imported the wizard aborts with a reinstall hint. After saving, if the session looks headless (Docker / WSL / no D-Bus / text-only SSH) it warns that the keyring may be locked and points you at env (Manual setup).
+5. **[4/4] AI agent skills** — `[Y/n]` prompt for each:
    - Claude Code (default `Y`): `~/.claude/skills/atls/SKILL.md` + routing block in `~/.claude/CLAUDE.md`
    - Codex (default `Y`): `~/.codex/skills/atls/SKILL.md` + routing block in `~/.codex/AGENTS.md`
    - GitHub Copilot (default `Y`): `~/.copilot/skills/atls/SKILL.md` + routing block in [`~/.copilot/copilot-instructions.md`](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions). Cross-platform via `Path.home()` — works identically on Linux, macOS, and Windows (`%USERPROFILE%\.copilot\...`). WSL note: `~/.copilot` here lives in the WSL filesystem and is invisible to a native Windows Copilot CLI install; the wizard prints a one-line warning when this is detected.
-9. **Verify** — probes the configured provider (`auth status --resolve`) so you see whether each product actually resolves (`source=env` / `keyring` / `command`) before you exit, and flags any env var that is shadowing a configured keyring/command provider.
+6. **Verify** — probes each provider (`auth status --resolve`) so you see whether each product actually resolves (`source=env` / `keyring`) before you exit.
 
-Re-run `atls setup` any time. Every step's default is non-destructive (Enter keeps the current storage — or accepts the keyring default on a fresh profile, but only *persists* it once you actually store a token — `s` skips a product, `Y` installs an agent skill), so a pure-Enter run preserves whatever you already had.
+Re-run `atls setup` any time. Defaults are non-destructive (`s` skips a product, `Y` installs an agent skill), and storage flips to keyring only when you actually store a token — a pure Enter-through leaves an env-based setup exactly as it was.
 
 </details>
 
@@ -461,7 +452,7 @@ uv build
 - **0.1.x** — Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, GitHub Actions CI/release
 - **0.2.x** — Bitbucket Server/DC PR workflow + Skill-first Claude/Codex integration
 - **0.2.7** — `atls setup` interactive wizard + `atls doctor`; `setup all/codex/claude/paths/status` deprecated
-- **0.2.8 (current)** — OS keyring + shell-command credential storage (per-product commands), wizard storage selection, `atls auth status --resolve`
+- **0.2.8 (current)** — OS keyring token storage (keyring-only wizard), shell-command provider for manual setups, `atls auth status --resolve`
 - **0.3.0** — Bamboo + workflow skills; remove deprecated `setup` subcommands
 - **0.4.0+** — Async client, caching, non-interactive `atls setup`, fish shell support, multi-profile wizard
 
