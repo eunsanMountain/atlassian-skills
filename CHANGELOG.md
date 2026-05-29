@@ -34,10 +34,14 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   `bitbucket_command` override a shared `credential_command`, so one profile can pull each
   product's token from a different vault entry.
 - **`atls setup` storage selection** — the wizard now asks once, up-front, where tokens
-  should live (env / keyring / command). `[1]` keeps the 0.2.7 file/registry flow and stays
-  the default, so existing setups are unaffected. Switching to keyring/command offers to
-  remove old `~/.secrets/*_pat` files and the atls-managed shell rc block, and warns about
-  headless environments (Docker / WSL / no D-Bus / text-only SSH) where a keyring can't unlock.
+  should live and **defaults to `[1]` keyring**; `[2]` env and `[3]` command are the
+  alternatives. In `env` mode the wizard writes a plain `export NAME='token'` line directly
+  into your shell rc (`~/.zshrc`/`~/.bashrc`) or `HKCU\Environment` on Windows — it **no longer
+  creates or manages `~/.secrets`** (that's now a documented manual technique). Switching a
+  product to keyring/command offers to drop its env export line and unshadow the live env var,
+  and keyring selection warns about headless environments (Docker / WSL / no D-Bus / text-only
+  SSH) where the store may be locked. A pure Enter-through that stores no token does not flip
+  an existing setup to keyring.
 - **`atls auth status --resolve`** and **`atls doctor --resolve-credentials`** — actually
   probe the configured provider (may prompt for Touch ID / a passphrase, or run the shell
   command). Without the flag, both report the configured source only and never touch the

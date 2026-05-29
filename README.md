@@ -98,7 +98,9 @@ export ATLS_CORP_CONFLUENCE_TOKEN="..."
 export ATLS_CORP_BITBUCKET_TOKEN="..."
 ```
 
-**Secure file-based storage (the wizard's default)**
+**File-based storage (manual — for the security-conscious without a keyring)**
+
+The wizard no longer manages `~/.secrets`: it stores tokens in the OS keyring by default, or writes plain `export` lines for the `env` option. If you'd rather keep each token in a `0600`-mode file and source it yourself — independent of the wizard — set it up by hand:
 ```bash
 mkdir -p ~/.secrets && chmod 700 ~/.secrets
 printf '%s' 'YOUR_JIRA_PAT'       > ~/.secrets/jira_pat       && chmod 600 ~/.secrets/jira_pat
@@ -157,15 +159,15 @@ atls auth status        # equivalent to the Auth section of `atls doctor`
 <details>
 <summary><b>System keyring and shell-command providers (no persistent env vars)</b></summary>
 
-Instead of storing tokens in environment variables, you can have atls fetch them on demand from your system keyring or a custom shell command. The token is retrieved only at call time and never stored in the environment. These are opt-in via the profile's `storage` setting — env vars remain the default and always take priority.
+Instead of storing tokens in environment variables, you can have atls fetch them on demand from your system keyring or a custom shell command. The token is retrieved only at call time. The `atls setup` wizard **defaults to `keyring`**; `env` and `command` are the alternatives chosen via the profile's `storage` setting. Whatever you pick, an env var always wins at resolution time — so a quick `export` still overrides without touching config.
 
 | `storage` | platform | when to use |
 |---|---|---|
-| `env` (default) | all | simple; works headless / CI / Docker |
-| `keyring` | macOS, Linux desktop, Windows | personal machine, dotfile-synced configs |
+| `keyring` (wizard default) | macOS, Linux desktop, Windows | personal machine, dotfile-synced configs |
+| `env` | all | simple; the only option that works headless / CI / Docker |
 | `command` | all (bring your own tool) | already using 1Password / `pass` / `bw` / PowerShell |
 
-`storage` selects a **single** provider — it is not a fallback chain. The resolution order is **CLI flag → env var → the configured provider**.
+`storage` selects a **single** provider — it is not a fallback chain. The resolution order is **CLI flag → env var → the configured provider**. (In `env` mode the wizard writes plain `export NAME='token'` lines into your shell rc; it no longer uses `~/.secrets`.)
 
 **System keyring** — uses the platform's native credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). The `keyring` package ships with atls by default (no extra needed). Save tokens once, then point the profile at the keyring:
 
@@ -222,16 +224,16 @@ atls auth status --resolve  # actually probes each provider
 
 1. **TTY guard** — refuses to run if stdin isn't a real terminal (protects tokens from being fed in through AI-agent shell tools).
 2. **fish shell guard** — fish uses `set -gx` instead of `export`; the wizard exits cleanly with a workaround and points you at `atls setup --skills-only` for the skill-only path.
-3. **Storage selection** — asks once, up front, where tokens should live (the current mode is shown; Enter keeps it):
-   - `[1]` **env** — `~/.secrets/*_pat` + shell rc on Linux/macOS, `HKCU\Environment` on Windows. The default and the 0.2.7 flow.
-   - `[2]` **keyring** — the OS credential store (macOS Keychain / Linux Secret Service / Windows Credential Manager). If the session looks headless (Docker / WSL / no D-Bus / text-only SSH) the wizard warns first, since the keyring may be locked.
+3. **Storage selection** — asks once, up front, where tokens should live (the current mode is shown; Enter keeps it, or accepts keyring on a fresh setup):
+   - `[1]` **keyring** (default) — the OS credential store (macOS Keychain / Linux Secret Service / Windows Credential Manager). If the session looks headless (Docker / WSL / no D-Bus / text-only SSH) the wizard warns first, since the keyring may be locked.
+   - `[2]` **env** — writes plain `export NAME='token'` lines into your shell rc (`~/.zshrc`/`~/.bashrc`), or `HKCU\Environment` on Windows. The only option that works headless. (It no longer uses `~/.secrets` — that's a manual technique now; see *Manual setup*.)
    - `[3]` **command** — fetch the token from your own secret manager (1Password / `pass` / `bw` / PowerShell) on demand.
-4. **Steps [1/4] – [3/4] — one block per product (Jira, Confluence, Bitbucket).** Each step prints the current URL + PAT state (source `(config)` / `(env: …)`), then asks `[s]kip / [e]dit / [r]emove` (default `s`, or `e` when a token exists but the URL isn't set yet) when something is configured, or `[s]kip / [e]dit` (default `s`) when not. `skip` leaves the product as-is. Choosing `e` (edit) prompts for the URL (saved to `~/.config/atlassian-skills/config.toml`), prints the PAT issuer link inline, then collects the secret based on the storage you chose:
-   - **env** → hidden PAT prompt → `~/.secrets/{product}_pat` (mode `0600`) + an idempotent `# >>> atls env >>>` block in `~/.zshrc`/`~/.bashrc` (rebuilt from every existing `~/.secrets/*_pat`, so a fresh token never wipes another product's line). Windows writes `HKCU\Environment` via `winreg` + `WM_SETTINGCHANGE`. Current-process `os.environ` is updated so verify sees it.
-   - **keyring** → hidden PAT prompt → `keyring.set_password("atls-<profile>", "<product>_token", …)`. Nothing is written to `~/.secrets` or the shell rc.
+4. **Steps [1/4] – [3/4] — one block per product (Jira, Confluence, Bitbucket).** Each step prints the current URL + PAT state (source `(config)` / `(env: …)`), then asks `[s]kip / [e]dit / [r]emove` (default `s`, or `e` when a token exists but the URL isn't set yet) when something is configured, or `[s]kip / [e]dit` (default `s`) when not. `skip` leaves the product as-is; `remove` clears the URL + the product's env export line + its keyring entry. Choosing `e` (edit) prompts for the URL (saved to `~/.config/atlassian-skills/config.toml`), prints the PAT issuer link inline, then collects the secret based on the storage you chose:
+   - **keyring** → hidden PAT prompt → `keyring.set_password("atls-<profile>", "<product>_token", …)`. Nothing touches the shell rc.
+   - **env** → hidden PAT prompt → a literal `export NAME='token'` line in the `# >>> atls env >>>` block of `~/.zshrc`/`~/.bashrc` (other products' lines are preserved). Windows writes `HKCU\Environment` via `winreg` + `WM_SETTINGCHANGE`. Current-process `os.environ` is updated so verify sees it.
    - **command** → a (visible) command prompt, validated by running it once (`shell=True`, 5s timeout; exit 0 + non-empty stdout required), then saved as `{product}_command` (or a shared `credential_command`) in `config.toml` — the token itself is never stored.
-5. **Transition cleanup** — when you switch a product from env to keyring/command, the wizard offers to remove *that product's* `~/.secrets/*_pat` file and its export line (the rc block is rebuilt from the remaining files, so untouched products keep working) and unshadows the live env var so the verify step exercises the new provider. Products you didn't migrate are left untouched.
-6. **Orphan file banner** (env, Linux / macOS) — if a `~/.secrets/{p}_pat` exists whose env var isn't loaded, a banner up front explains the three fixes: `source ~/.zshrc`, re-enter a PAT, or pick `r` to delete the stale file.
+5. **Transition cleanup** — when you switch a product to keyring/command, the wizard offers to remove that product's env export line from the shell rc and unshadow the live env var (env outranks the new provider), so the verify step exercises the provider you just chose. Other products' export lines are left untouched.
+6. **Legacy `~/.secrets` note** (Linux / macOS) — if pre-0.2.8 `~/.secrets/*_pat` files are found, a one-line note explains the wizard no longer manages them; switch via the storage prompt or keep using them manually.
 7. **Shadowing warning** (env, Linux / macOS) — warns if a manual `export JIRA_PERSONAL_TOKEN=…` outside the atls block could override the wizard-managed token depending on line order.
 8. **[4/4] AI agent skills** — `[Y/n]` prompt for each:
    - Claude Code (default `Y`): `~/.claude/skills/atls/SKILL.md` + routing block in `~/.claude/CLAUDE.md`
@@ -239,7 +241,7 @@ atls auth status --resolve  # actually probes each provider
    - GitHub Copilot (default `Y`): `~/.copilot/skills/atls/SKILL.md` + routing block in [`~/.copilot/copilot-instructions.md`](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions). Cross-platform via `Path.home()` — works identically on Linux, macOS, and Windows (`%USERPROFILE%\.copilot\...`). WSL note: `~/.copilot` here lives in the WSL filesystem and is invisible to a native Windows Copilot CLI install; the wizard prints a one-line warning when this is detected.
 9. **Verify** — probes the configured provider (`auth status --resolve`) so you see whether each product actually resolves (`source=env` / `keyring` / `command`) before you exit, and flags any env var that is shadowing a configured keyring/command provider.
 
-Re-run `atls setup` any time. Every step's default is non-destructive (Enter keeps the current storage, `k` for existing values, `s` for not-yet-configured, `Y` for agent install), so a pure-Enter run preserves whatever you already had.
+Re-run `atls setup` any time. Every step's default is non-destructive (Enter keeps the current storage — or accepts the keyring default on a fresh profile, but only *persists* it once you actually store a token — `s` skips a product, `Y` installs an agent skill), so a pure-Enter run preserves whatever you already had.
 
 </details>
 
