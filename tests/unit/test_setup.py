@@ -1206,3 +1206,33 @@ class TestAuthStatusResolve:
         out = capsys.readouterr().out
         assert "source=env" in out
         assert "shadowing" not in out
+
+
+class TestWizardMenuDefault:
+    """Per-product menu default: `e` when the config is incomplete (token but no URL), else `k`."""
+
+    def test_incomplete_product_defaults_to_edit(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from atlassian_skills.cli.main import app
+
+        # Token present (via env) but no URL configured → incomplete → menu should default to `e`.
+        monkeypatch.setenv("ATLS_DEFAULT_JIRA_TOKEN", "x" * 44)
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup"], input=_wizard_input(jira=("s",)))
+
+        assert result.exit_code == 0, result.output
+        # The Jira block prints its menu with default=e.
+        assert "[s]kip / [e]dit / [r]emove [default=e]" in result.output
+
+    def test_complete_product_defaults_to_skip(self, wizard_env: Path) -> None:
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import Config, Profile, save_config
+
+        # URL configured → product is usable → menu should default to `s` (skip = keep as-is).
+        save_config(
+            Config(profiles={"default": Profile(jira_url="https://jira.example.com")}), wizard_env / "config.toml"
+        )
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup"], input=_wizard_input(jira=("s",)))
+
+        assert result.exit_code == 0, result.output
+        assert "[s]kip / [e]dit / [r]emove [default=s]" in result.output

@@ -1090,14 +1090,18 @@ def _wizard_product_step(  # noqa: C901 — sequential prompt narrative reads be
     else:
         typer.echo("  PAT: not set")
 
-    # Show the [k/e/r/s] menu whenever ANY state exists (URL, env token, OR orphan file).
-    # This is what makes the orphan-banner's `[r]emove below` promise actually reachable
-    # when the user only has a stale file and no URL/env var.
+    # Menu verbs: `skip` (leave as-is / don't configure — the no-op), `edit` (add or change
+    # URL + secret), `remove` (delete). `skip`/`edit` are shown whenever ANY state exists (URL,
+    # env token, OR orphan file) so the orphan-banner's `[r]emove below` promise is reachable.
+    #
+    # Default: `skip` when the product is already usable (URL configured) — Enter keeps it as-is.
+    # When there's a token/file but no URL the config is incomplete, so default to `edit` to nudge
+    # the user to finish setting the URL. (Legacy `k`/`a` inputs are still accepted as aliases.)
     if current_url or has_token or has_file:
-        options = "[k]eep / [e]dit / [r]emove / [s]kip"
-        default = "k"
+        options = "[s]kip / [e]dit / [r]emove"
+        default = "s" if current_url else "e"
     else:
-        options = "[a]dd / [s]kip"
+        options = "[s]kip / [e]dit"
         default = "s"
     choice = typer.prompt(f"  {options} [default={default}]", default=default, show_default=False).strip().lower()
 
@@ -1183,7 +1187,7 @@ def _wizard_product_step(  # noqa: C901 — sequential prompt narrative reads be
         typer.echo("")
         return (new_url_raw, "set"), (new_token or None)
 
-    typer.echo(f"  Unknown choice '{choice}', treating as keep/skip.")
+    typer.echo(f"  Unknown choice '{choice}', treating as skip.")
     typer.echo("")
     return (current_url, "keep") if current_url else (None, "skip"), None
 
