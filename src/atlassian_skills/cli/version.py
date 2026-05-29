@@ -23,6 +23,23 @@ def _parse_version(v: str) -> tuple[int, ...]:
     return tuple(parts)
 
 
+def latest_pypi_version(timeout: float = DEFAULT_TIMEOUT) -> str | None:
+    """Return the latest atlassian-skills version published on PyPI, or None if the check
+    can't complete (offline, timeout, HTTP error, malformed response). Never raises — callers
+    treat None as "couldn't check"."""
+    try:
+        response = httpx.get(PYPI_URL, timeout=timeout, headers={"Accept": "application/json"})
+        response.raise_for_status()
+        return str(response.json()["info"]["version"])
+    except (httpx.HTTPError, KeyError, ValueError, TypeError):
+        return None
+
+
+def is_outdated(current: str, latest: str) -> bool:
+    """True when `latest` is a strictly newer version than `current`."""
+    return _parse_version(latest) > _parse_version(current)
+
+
 def version(
     check: bool = typer.Option(
         False,
@@ -40,15 +57,12 @@ def version(
         typer.echo(f"atls {__version__}")
         return
 
-    try:
-        response = httpx.get(PYPI_URL, timeout=timeout, headers={"Accept": "application/json"})
-        response.raise_for_status()
-        latest = str(response.json()["info"]["version"])
-    except (httpx.HTTPError, KeyError, ValueError) as exc:
-        typer.echo(f"atls {__version__}  (update check failed: {exc})")
+    latest = latest_pypi_version(timeout)
+    if latest is None:
+        typer.echo(f"atls {__version__}  (update check failed)")
         return
 
-    if _parse_version(latest) > _parse_version(__version__):
+    if is_outdated(__version__, latest):
         typer.echo(f"atls {__version__} — latest {latest} available. Run 'atls upgrade' to update.")
         raise typer.Exit(1)
     typer.echo(f"atls {__version__} (latest)")

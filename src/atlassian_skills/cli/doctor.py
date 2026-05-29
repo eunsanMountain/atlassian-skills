@@ -27,6 +27,28 @@ from atlassian_skills.cli.setup import (
 )
 
 
+def _print_update_status(skip: bool = False) -> None:
+    """Show installed version + whether a newer release is on PyPI. Shown at the top of `doctor`.
+
+    Network is best-effort with a short timeout; offline / failures degrade to a neutral line so
+    `doctor` never hangs or errors on the version check.
+    """
+    from atlassian_skills import __version__
+
+    if skip:
+        typer.echo(f"atls {__version__}  (update check skipped)")
+        return
+    from atlassian_skills.cli.version import is_outdated, latest_pypi_version
+
+    latest = latest_pypi_version()
+    if latest is None:
+        typer.echo(f"atls {__version__}  (couldn't reach PyPI — update check skipped)")
+    elif is_outdated(__version__, latest):
+        typer.echo(f"⚠ Update available: atls {__version__} → {latest}.  Run 'atls upgrade'.")
+    else:
+        typer.echo(f"✓ atls {__version__} (up to date)")
+
+
 def _print_skill_status(label: str, target: Path, hide_when_absent: bool = False) -> None:
     """Print one skill install line — version marker if present, else 'not installed'.
 
@@ -74,16 +96,22 @@ def doctor(
         "--resolve-credentials",
         help="Probe keyring/command providers when reporting auth (may prompt or run a shell command).",
     ),
+    no_update_check: bool = typer.Option(
+        False,
+        "--no-update-check",
+        help="Skip the PyPI latest-version check (use offline / to avoid the network call).",
+    ),
 ) -> None:
-    """Diagnose atls installation: platform, paths, skill status, auth resolution."""
+    """Diagnose atls installation: version freshness, platform, paths, skill status, auth resolution."""
+    _print_update_status(no_update_check)
+    typer.echo("")
+
     platform_name = _detect_platform()
     shell = _detect_shell()
     typer.echo(f"Platform: {platform_name} (shell: {shell})")
     if _is_fish():
-        typer.echo(
-            "  Note: fish shell is detected — `atls setup` wizard refuses to run here.\n"
-            "        Use `atls setup --skills-only` for skill assets, and configure env vars manually."
-        )
+        typer.echo("  Note: fish shell detected — env vars use `set -gx`, not `export`. The keyring-only")
+        typer.echo("        wizard runs fine; only manual env-var setup differs (see README → Manual setup).")
     if _is_git_bash():
         typer.echo("  Note: Git Bash detected — env vars are still read from HKCU\\Environment.")
     typer.echo("")

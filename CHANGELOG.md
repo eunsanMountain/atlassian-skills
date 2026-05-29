@@ -43,6 +43,10 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   env-based setup that Enter-throughs the wizard is left untouched. (Earlier 0.2.8 drafts added
   an in-wizard storage picker and an `env`→shell-rc writer; both were removed in favor of this
   simpler, predictable model.)
+- **`atls doctor` shows a PyPI freshness banner at the top** — `✓ atls X (up to date)` or
+  `⚠ Update available: atls X → Y. Run 'atls upgrade'.` The check is best-effort with a short
+  timeout and degrades to a neutral line offline; `--no-update-check` skips the network call.
+  (Reuses the same PyPI lookup as `atls version --check`.)
 - **`atls auth status --resolve`** and **`atls doctor --resolve-credentials`** — actually
   probe the configured provider (may prompt for Touch ID / a passphrase, or run the shell
   command). Without the flag, both report the configured source only and never touch the

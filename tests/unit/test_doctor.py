@@ -10,6 +10,13 @@ from typer.testing import CliRunner
 from atlassian_skills.cli.main import app
 
 
+@pytest.fixture(autouse=True)
+def _offline_pypi(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep `doctor`'s top-of-output PyPI check offline by default so the suite never hits the
+    network. Tests that exercise the update banner re-patch this with a concrete value."""
+    monkeypatch.setattr("atlassian_skills.cli.version.latest_pypi_version", lambda timeout=2.0: None)
+
+
 class TestDoctor:
     def test_doctor_runs_with_no_install(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         import atlassian_skills.core.config as config_mod
@@ -77,3 +84,44 @@ class TestDoctor:
         assert "https://jira.dr-test" in result.output
         assert "config" in result.output
         assert "length=10" in result.output
+
+
+class TestDoctorUpdateCheck:
+    """The PyPI freshness banner shown at the top of `doctor`."""
+
+    def test_up_to_date(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from atlassian_skills import __version__
+
+        monkeypatch.setattr("atlassian_skills.cli.version.latest_pypi_version", lambda timeout=2.0: __version__)
+        result = CliRunner().invoke(app, ["doctor"])
+
+        assert result.exit_code == 0
+        assert "up to date" in result.output
+        assert __version__ in result.output
+
+    def test_update_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("atlassian_skills.cli.version.latest_pypi_version", lambda timeout=2.0: "99.99.99")
+        result = CliRunner().invoke(app, ["doctor"])
+
+        assert result.exit_code == 0
+        assert "Update available" in result.output
+        assert "99.99.99" in result.output
+        assert "atls upgrade" in result.output
+
+    def test_offline_is_non_fatal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # autouse fixture already makes latest_pypi_version return None
+        result = CliRunner().invoke(app, ["doctor"])
+
+        assert result.exit_code == 0
+        assert "couldn't reach PyPI" in result.output
+
+    def test_no_update_check_skips_network(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unittest.mock import MagicMock
+
+        probe = MagicMock()
+        monkeypatch.setattr("atlassian_skills.cli.version.latest_pypi_version", probe)
+        result = CliRunner().invoke(app, ["doctor", "--no-update-check"])
+
+        assert result.exit_code == 0
+        assert "update check skipped" in result.output
+        probe.assert_not_called()
