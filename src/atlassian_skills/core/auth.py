@@ -41,7 +41,19 @@ def _resolve_token_from_provider(profile_name: str, product: str, profile: Profi
                 hint="Reinstall, e.g.: uv tool install --force 'atlassian-skills[keyring]' "
                 "(pipx: pipx inject atlassian-skills keyring; pip: pip install 'atlassian-skills[keyring]')",
             ) from exc
-        return keyring.get_password(f"atls-{profile_name}", f"{product}_token")
+        try:
+            return keyring.get_password(f"atls-{profile_name}", f"{product}_token")
+        except Exception as exc:  # noqa: BLE001 — keyring.errors.KeyringError (no backend / locked / init)
+            # No usable backend / locked store (headless Linux without D-Bus, locked Keychain,
+            # SSH/Docker/WSL). The only work here is the keyring lookup, so any failure means the
+            # store is unreachable — surface it as AuthError so callers get a clean message + exit
+            # code instead of a raw traceback. (Catching the base Exception rather than
+            # keyring.errors.KeyringError avoids a second lazy import just to name the class.)
+            raise AuthError(
+                f"the OS keyring is unavailable or locked for profile '{profile_name}', product '{product}'.",
+                hint="If this is a headless/SSH/Docker/WSL session the keyring often can't unlock — "
+                "use environment variables instead (README → Manual setup), or unlock the keyring.",
+            ) from exc
 
     if profile.storage == "command":
         # Per-product command wins over the shared credential_command.

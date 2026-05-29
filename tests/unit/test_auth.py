@@ -418,6 +418,25 @@ class TestResolveCredentialProviders:
 
         assert "atlassian-skills[keyring]" in (exc_info.value.hint or "")
 
+    def test_keyring_backend_unavailable_raises_autherror(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A locked/missing backend (headless Linux, no D-Bus) makes keyring.get_password raise
+        keyring.errors.KeyringError. It must surface as AuthError — never a raw traceback."""
+        monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
+        monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
+        profile = Profile(storage="keyring")
+
+        class _NoKeyringError(RuntimeError):
+            """Stands in for keyring.errors.NoKeyringError (the headless-Linux failure)."""
+
+        mock_keyring = MagicMock()
+        mock_keyring.get_password.side_effect = _NoKeyringError("No recommended backend was available")
+
+        with patch.dict("sys.modules", {"keyring": mock_keyring}), pytest.raises(AuthError) as exc_info:
+            resolve_credential("corp", "jira", profile)
+
+        assert "keyring is unavailable or locked" in exc_info.value.message
+        assert "headless" in (exc_info.value.hint or "")
+
     def test_env_wins_over_keyring(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ATLS_CORP_JIRA_TOKEN", "env-token")
         profile = Profile(storage="keyring")

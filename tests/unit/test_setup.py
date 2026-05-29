@@ -547,9 +547,14 @@ class TestWizardRemove:
         zshrc.write_text("export JIRA_PERSONAL_TOKEN='left-alone'\n", encoding="utf-8")
 
         delete_calls: list[tuple[str, str]] = []
-        monkeypatch.setattr(
-            setup_mod, "_delete_token_keyring", lambda profile, product: delete_calls.append((profile, product))
-        )
+
+        def _fake_delete(profile: str, product: str) -> bool:
+            # Simulate an entry that existed and was deleted — the helper now returns True on
+            # success so the wizard only prints "cleared …" when something was actually removed.
+            delete_calls.append((profile, product))
+            return True
+
+        monkeypatch.setattr(setup_mod, "_delete_token_keyring", _fake_delete)
 
         runner = CliRunner()
         result = runner.invoke(app, ["setup"], input=_wizard_input(jira=("r",)))
@@ -872,6 +877,53 @@ class TestWizardKeyring:
 
         assert result.exit_code == 1, result.output
         assert "atlassian-skills[keyring]" in result.output
+
+    def test_keyring_backend_failure_aborts_cleanly_not_traceback(self, wizard_env: Path) -> None:
+        """REGRESSION: on a headless/locked store, keyring.set_password raises
+        keyring.errors.KeyringError (NOT ImportError). The wizard must catch it and exit 1 with a
+        friendly message — never dump a raw traceback at the user."""
+        import sys
+
+        from atlassian_skills.cli.main import app
+
+        class _NoKeyringError(RuntimeError):
+            """Stands in for keyring.errors.NoKeyringError."""
+
+        mock_keyring = MagicMock()
+        mock_keyring.set_password.side_effect = _NoKeyringError("No recommended backend was available")
+
+        runner = CliRunner()
+        with patch.dict(sys.modules, {"keyring": mock_keyring}):
+            result = runner.invoke(
+                app,
+                ["setup"],
+                input=_wizard_input(jira=("e", "https://jira.example.com", "jira-pat")),
+            )
+
+        assert result.exit_code == 1, result.output
+        assert "couldn't write to the OS keyring" in result.output
+        # The friendly message points at env vars; no raw exception class leaked as a crash.
+        assert result.exception is None or isinstance(result.exception, SystemExit)
+
+    def test_command_storage_user_is_warned_before_flip(self, wizard_env: Path) -> None:
+        """A profile on storage='command' must be warned up front that setting a PAT switches the
+        WHOLE profile to keyring (silently breaking command resolution) — never flip silently."""
+        _write_config(
+            wizard_env,
+            storage="command",
+            credential_command="op read op://vault/atlassian/token",
+            jira_url="https://jira.example.com",
+        )
+
+        from atlassian_skills.cli.main import app
+
+        runner = CliRunner()
+        # Skip every product, decline agents — no PAT entered, so nothing is flipped.
+        result = runner.invoke(app, ["setup"], input=_wizard_input(jira=("s",)))
+
+        assert result.exit_code == 0, result.output
+        assert "storage='command'" in result.output
+        assert "ENTIRE profile switches to storage='keyring'" in result.output.replace("\n", " ")
 
     def test_headless_caveat_warns_after_saving(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """When headless signals are present and a token was saved, the wizard prints a one-line

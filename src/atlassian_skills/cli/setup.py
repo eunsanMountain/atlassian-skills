@@ -421,10 +421,15 @@ def _detect_headless() -> list[str]:
 
 def _detect_installer() -> str:
     """Best-effort guess at how atls was installed, to print the matching keyring-extra command."""
-    exe = str(Path(sys.executable).resolve()).replace("\\", "/")
-    if "/uv/tools/" in exe or "/uv/tool/" in exe:
+    # Check BOTH the raw and the symlink-resolved path: a uv tool venv's python is a symlink
+    # into the shared `…/uv/python/<cpython>/bin` dir, so resolve() alone drops the `/uv/tools/`
+    # marker and would misreport uv installs as pip.
+    raw = str(Path(sys.executable)).replace("\\", "/")
+    resolved = str(Path(sys.executable).resolve()).replace("\\", "/")
+    haystack = f"{raw}\n{resolved}"
+    if "/uv/tools/" in haystack or "/uv/tool/" in haystack:
         return "uv"
-    if "pipx" in exe:
+    if "pipx" in haystack:
         return "pipx"
     return "pip"
 
@@ -450,14 +455,20 @@ def _save_token_keyring(profile_name: str, product: str, token: str) -> None:
     keyring.set_password(f"atls-{profile_name}", f"{product}_token", token)
 
 
-def _delete_token_keyring(profile_name: str, product: str) -> None:
-    """Best-effort removal of a keyring entry (used by the `[r]emove` action)."""
+def _delete_token_keyring(profile_name: str, product: str) -> bool:
+    """Best-effort removal of a keyring entry (used by the `[r]emove` action).
+
+    Returns True only when an entry was actually deleted. A missing entry, an absent
+    backend, or a locked store all return False — the caller phrases its message off this
+    so it never claims to have cleared something that wasn't there.
+    """
     try:
         import keyring  # noqa: PLC0415
 
         keyring.delete_password(f"atls-{profile_name}", f"{product}_token")
+        return True
     except Exception:
-        pass
+        return False
 
 
 def _set_profile_storage(storage: str) -> None:
@@ -679,8 +690,19 @@ def _wizard_product_step(  # noqa: C901 — sequential prompt narrative reads be
     if choice in ("r", "remove"):
         # Best-effort clear of the keyring entry. We never touch env vars or shell rc files —
         # those are the user's manual setup; they unset them themselves.
-        _delete_token_keyring("default", product)
-        typer.echo(f"  → cleared {label} keyring entry")
+        removed = _delete_token_keyring("default", product)
+        if removed:
+            typer.echo(f"  → cleared {label} keyring entry")
+        if in_env:
+            # The live credential is an env var the wizard never manages — say so, otherwise the
+            # user thinks `remove` killed it while atls keeps resolving the (still-set) env token.
+            varname = _env_token_var(product)
+            typer.echo(
+                f"  ⚠ {label} token comes from {varname} (environment) and is still active — "
+                "unset it + open a new terminal to fully remove."
+            )
+        elif not removed:
+            typer.echo(f"  → no {label} keyring entry to remove")
 
         if source == "config":
             typer.echo("  → URL removed from config.toml")
@@ -757,7 +779,22 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
     typer.echo(f"Detected platform: {platform_name} (shell: {shell})")
     typer.echo("")
 
-    from atlassian_skills.core.config import get_env_token
+    from atlassian_skills.core.config import get_env_token, get_profile, load_config
+
+    # Command-storage notice. The wizard only manages keyring; it cannot see or write a
+    # shell-command provider. Saving any PAT below flips the WHOLE profile to storage=keyring,
+    # which would silently break command-based resolution for the other products. Warn up front
+    # (non-silent) and point command users at the manual config path instead.
+    current_storage = get_profile(load_config(), "default").storage
+    if current_storage == "command":
+        typer.echo(
+            "⚠ This profile uses storage='command' (shell-command secret manager).\n"
+            "  The wizard manages the OS keyring only — it cannot edit your command setup. If you\n"
+            "  set a PAT below, the ENTIRE profile switches to storage='keyring', which will break\n"
+            "  command-based resolution for every product. To keep using commands, edit\n"
+            "  config.toml directly (README → Manual setup) and skip the PAT prompts here."
+        )
+        typer.echo("")
 
     # Env-token detection. The resolver does env > keyring, so a live env token always shadows a
     # keyring entry. Rather than write a shadowed (and therefore useless) keyring entry, the wizard
@@ -794,11 +831,32 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
     _apply_url_changes(url_actions)
 
     if new_secrets:
+        # Surface the headless caveat BEFORE writing — these are exactly the sessions where the
+        # keyring write itself can fail, so the warning must not be gated behind a successful save.
+        headless_signals = _detect_headless()
+        if headless_signals:
+            typer.echo(
+                f"  ⚠ this session may not be able to unlock the OS keyring ({headless_signals[0]});\n"
+                "    if the write or later reads fail, use environment variables instead "
+                "(README → Manual setup).",
+                err=True,
+            )
         try:
             for product, token in new_secrets.items():
                 _save_token_keyring("default", product, token)
         except ImportError:
             typer.echo(f"  ✗ keyring not available — install it: {_keyring_install_hint()}", err=True)
+            raise typer.Exit(1) from None
+        except Exception as exc:  # noqa: BLE001 — keyring backend failure (NoKeyringError / locked / init)
+            # No usable/unlockable backend (headless Linux without D-Bus, locked Keychain, …).
+            # keyring raises keyring.errors.KeyringError here, NOT ImportError — catch it so the
+            # wizard exits cleanly instead of dumping a traceback at the user.
+            typer.echo(f"  ✗ couldn't write to the OS keyring: {exc}", err=True)
+            typer.echo(
+                "    This session likely can't unlock a keyring backend. Use environment variables\n"
+                "    instead (README → Manual setup), or run from an unlocked desktop session.",
+                err=True,
+            )
             raise typer.Exit(1) from None
         typer.echo(f"  → saved {len(new_secrets)} token(s) to the OS keyring (service 'atls-default')")
         if platform_name == "macos":
@@ -806,13 +864,6 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
         # Persist storage=keyring now that a keyring token exists. A pure env user who ran the
         # wizard for URLs/skills only (empty new_secrets) must NOT get storage flipped.
         _set_profile_storage("keyring")
-        # Headless caveat — the keyring may be locked in this kind of session, so reads can fail.
-        if _detect_headless():
-            typer.echo(
-                "  ⚠ this session may not be able to unlock the OS keyring (headless/SSH/Docker/WSL);\n"
-                "    if reads fail, use environment variables instead (README → Manual setup).",
-                err=True,
-            )
         typer.echo("")
 
     # AI agent step — defaults to Yes for all three agents. `atls upgrade` (--skills-only)
