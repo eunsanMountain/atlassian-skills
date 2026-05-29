@@ -7,7 +7,7 @@
       "id": "629816",
       "key": "PROJ-3",
       "summary": "검색 결과 정렬 개선",
-      "description": "h2. 방향\n\n분기점/합류점에서 모델이 어느 방향으로 갈지 정확히 판단한다\n\nh2. 배경\n\n현재 모델은 lookup index만으로 경로를 예측하며,\n분기점에서 어느 방향으로 갈지 판단할 글로벌 경로 정보가 없다.",
+      "description": "h2. 방향\n\n검색 결과를 사용자에게 더 정확한 순서로 보여준다\n\nh2. 배경\n\n현재는 단순 정렬만 지원하며,\n결과의 관련도를 반영할 랭킹 점수가 없다.",
       "status": {"name": "To Do", "category": "To Do", "color": "default"},
       "issue_type": {"name": "Epic"},
       "priority": {"name": "Medium"},

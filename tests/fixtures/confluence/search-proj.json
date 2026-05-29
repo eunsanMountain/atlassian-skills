@@ -9,7 +9,7 @@
     "space": {"key": "TESTSPACE", "name": "Space TESTSPACE"},
     "attachments": [],
     "content": {
-      "value": "Story Summary\nBehavior\n@@@hl@@@PROJ@@@endhl@@@ 학습 파이프라인이 4개 데이터셋(av2\\_sensor, dataset_b, dataset_c, av2\\_motion)을 하나의 학습 루프에서 사용할 수 있게 된다 …",
+      "value": "Story Summary\nBehavior\n@@@hl@@@PROJ@@@endhl@@@ 빌드 파이프라인이 4개 데이터셋(dataset_a, dataset_b, dataset_c, dataset_d)을 하나의 빌드 루프에서 사용할 수 있게 된다 …",
       "format": "view"
     }
   },
@@ -23,7 +23,7 @@
     "space": {"key": "TESTSPACE", "name": "Space TESTSPACE"},
     "attachments": [],
     "content": {
-      "value": ".\nWhy\n@@@hl@@@PROJ@@@endhl@@@ 모델은 lookup index만으로 경로를 예측하므로, 전방 분기점 방향/거리, 도로 등급/차로수 등 글로벌 경로 정보가 부재하다.",
+      "value": ".\nWhy\n@@@hl@@@PROJ@@@endhl@@@ 모델은 lookup index만으로 결과를 예측하므로, 상위 항목 우선순위, 데이터 등급/필드 개수 등 외부 메타데이터 정보가 부재하다.",
       "format": "view"
     }
   },
@@ -37,7 +37,7 @@
     "space": {"key": "TESTSPACE", "name": "Space TESTSPACE"},
     "attachments": [],
     "content": {
-      "value": "+ ring\\_front\\_center(portrait) 기준이다. @@@hl@@@PROJ@@@endhl@@@-13에서 정의한 2-step transform를 적용하려면 subset 자체를 재구축해야 한다.",
+      "value": "+ sample_field_a(portrait) 기준이다. @@@hl@@@PROJ@@@endhl@@@-13에서 정의한 2-step transform을 적용하려면 subset 자체를 재구축해야 한다.",
       "format": "view"
     }
   }

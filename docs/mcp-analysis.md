@@ -112,8 +112,8 @@ Write responses cannot be produced against production, so measurements are based
 ```json
 {
   "id": "629816", "key": "PROJ-3",
-  "summary": "Search Index integration — routing decision improvement",
-  "description": "## Direction\nAt diverging/merging points, the model must...",
+  "summary": "Search result ranking improvement",
+  "description": "## Direction\nReturn search results in a more relevant order...",
   "status": {"name": "To Do", "category": "To Do", "color": "default"},
   "issue_type": {"name": "Epic"},
   "priority": {"name": "Medium"},
@@ -126,14 +126,14 @@ Write responses cannot be produced against production, so measurements are based
 
 #### atls compact design
 ```
-PROJ-3 | Epic | To Do | Medium | Search Index integration — routing decision improvement
+PROJ-3 | Epic | To Do | Medium | Search result ranking improvement
 assignee: testuser2 | reporter: testuser | created: 2026-04-06 | updated: 2026-04-10
 ---
 ## Direction
-At diverging/merging points, the model must decide which way to go.
+Return search results to the user in a more relevant order.
 ## Background
-The current model predicts routes using only the lookup index and
-lacks the global route information needed to pick a branch at diverging points.
+The service currently supports only simple sorting and
+lacks a ranking score that reflects how relevant each result is.
 ```
 
 | Metric | MCP | atls compact | Reduction |
@@ -162,9 +162,9 @@ lacks the global route information needed to pick a branch at diverging points.
 #### atls compact design
 ```
 total: 23 (showing 3)
-PROJ-3 | Epic | To Do | Medium | Search Index integration — routing decision improvement | @testuser2 | 2026-04-10
-PROJ-24 | Story | To Do | Medium | Multi-Source real-vehicle performance uplift... | @testuser | 2026-04-10
-PROJ-23 | Story | To Do | Medium | Multi-Source training infrastructure | @testuser | 2026-04-10
+PROJ-3 | Epic | To Do | Medium | Search result ranking improvement | @testuser2 | 2026-04-10
+PROJ-24 | Story | To Do | Medium | Report export performance uplift... | @testuser | 2026-04-10
+PROJ-23 | Story | To Do | Medium | Report build infrastructure | @testuser | 2026-04-10
 ```
 
 **Key saving**: exclude `description` body from search results. When the body is needed, use `--format=md` or an individual `jira issue get`.
@@ -177,7 +177,7 @@ PROJ-23 | Story | To Do | Medium | Multi-Source training infrastructure | @testu
 
 #### atls compact design
 ```
-12345678 | [PROJ-3] Search Index integration — routing decision improvement | TESTSPACE | v2
+12345678 | [PROJ-3] Search result ranking improvement | TESTSPACE | v2
 ---
 (body content — cfxmark md conversion)
 ```
@@ -200,9 +200,9 @@ PROJ-23 | Story | To Do | Medium | Multi-Source training infrastructure | @testu
 #### atls compact design
 ```
 total: 3
-12345001 | [PROJ-23] Multi-Source training infrastructure | TESTSPACE
-12345002 | [PROJ-20] Navi-info-based query generation model | TESTSPACE
-12345003 | [PROJ-22] 4-Dataset subset rebuild + SSD capacity sizing | TESTSPACE
+12345001 | [PROJ-23] Report build infrastructure | TESTSPACE
+12345002 | [PROJ-20] User search query builder | TESTSPACE
+12345003 | [PROJ-22] Cache dataset rebuild + disk capacity sizing | TESTSPACE
 ```
 
 ---
