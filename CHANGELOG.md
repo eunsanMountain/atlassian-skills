@@ -20,6 +20,17 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.2.9] - 2026-07-12
+
+### Fixed
+- **`confluence page search` no longer crashes on non-page results** (closes #14).
+  `/rest/api/search` is a universal CQL search whose results mix content, space, and
+  user entities — a broad query such as `siteSearch ~ "..."` matches user profiles and
+  spaces. Those results carry no `id`, so validating every result as a `Page` raised an
+  unhandled `pydantic.ValidationError` (`id Field required`) that escaped the CLI's error
+  handling and dumped a raw traceback. Search now unwraps the `content` wrapper and keeps
+  only results that carry an `id`, silently skipping space/user entries.
+
 ## [0.2.8] - 2026-05-29
 
 ### Added
