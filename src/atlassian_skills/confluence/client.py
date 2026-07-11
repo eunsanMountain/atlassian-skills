@@ -174,16 +174,21 @@ class ConfluenceClient(BaseClient):
             items.extend(next_page.get("results", []))
             next_url = next_page.get("_links", {}).get("next")
         items = items[:limit]
-        # /rest/api/search on Server/DC wraps page data inside a "content"
-        # key that has {id, title, …}.  Unwrap only when "content" looks like
-        # a page object (has "id"), not when it is body content (has "value").
+        # /rest/api/search on Server/DC is a universal CQL search: each result
+        # is a heterogeneous entity — content (wrapped under a "content" key
+        # holding {id, title, …}), space, or user. Unwrap the content wrapper
+        # when present, then keep only results carrying an "id" (i.e. content
+        # results). Space/user results have no "id" and must be skipped rather
+        # than fed to Page.model_validate, which would otherwise raise a
+        # ValidationError on the missing "id" field (GitHub #14).
         pages: list[Page] = []
         for i in items:
             if isinstance(i, dict):
                 inner = i.get("content")
                 if isinstance(inner, dict) and "id" in inner:
                     i = inner
-            pages.append(Page.model_validate(i))
+            if isinstance(i, dict) and "id" in i:
+                pages.append(Page.model_validate(i))
         return ConfluenceSearchResult(
             results=pages,
             total=total_size,

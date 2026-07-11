@@ -96,6 +96,72 @@ def test_search_returns_results(client: ConfluenceClient) -> None:
     assert result.results[1].title == "Page 2"
 
 
+@respx.mock
+def test_search_skips_non_content_results(client: ConfluenceClient) -> None:
+    """Regression for GitHub #14.
+
+    /rest/api/search is a universal CQL search whose results mix content,
+    space, and user entities (e.g. a broad ``siteSearch ~ "..."`` matches user
+    profiles and spaces). Only content results carry an ``id``; space/user
+    results must be skipped instead of crashing Page validation.
+    """
+    fixture = {
+        "results": [
+            {
+                "content": {"id": "111", "title": "Sample Page", "type": "page"},
+                "entityType": "content",
+                "title": "Sample Page",
+                "url": "/display/DEMO/Sample+Page",
+                "timestamp": 1700000000000,
+            },
+            {
+                # space result: no "content" wrapper, no top-level "id"
+                "space": {"id": 222, "key": "DEMO", "name": "Demo Space", "type": "global"},
+                "entityType": "space",
+                "title": "Demo Space",
+                "url": "/spaces/DEMO",
+                "timestamp": 1700000001000,
+            },
+            {
+                # user result: shape that triggered #14 (has "user", no "id")
+                "user": {
+                    "type": "known",
+                    "username": "jdoe",
+                    "userKey": "0000aaaa1111bbbb2222cccc",
+                    "displayName": "Jane Doe",
+                },
+                "entityType": "user",
+                "title": "Jane Doe",
+                "url": "/display/~jdoe",
+                "timestamp": 1700000002000,
+            },
+            {
+                "content": {"id": "333", "title": "Another Page", "type": "page"},
+                "entityType": "content",
+                "title": "Another Page",
+                "url": "/display/DEMO/Another+Page",
+                "timestamp": 1700000003000,
+            },
+        ],
+        "start": 0,
+        "limit": 25,
+        "size": 4,
+        "totalSize": 4,
+        "_links": {},
+    }
+    respx.get(f"{BASE_URL}/rest/api/search").mock(return_value=httpx.Response(200, json=fixture))
+
+    # Must not raise pydantic ValidationError on the space/user entries.
+    result = client.search('siteSearch ~ "demo"')
+
+    assert isinstance(result, ConfluenceSearchResult)
+    # Only the two content results survive; space + user are skipped.
+    assert [p.id for p in result.results] == ["111", "333"]
+    assert all(p.type == "page" for p in result.results)
+    # total reflects the server-side match count, not the parsed subset.
+    assert result.total == 4
+
+
 # ---------------------------------------------------------------------------
 # get_children
 # ---------------------------------------------------------------------------
