@@ -20,6 +20,17 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.2.11] - 2026-07-13
+
+### Fixed
+- **Confluence attachment downloads are now published atomically.** Attachments are
+  written to a same-directory temporary file before atomically replacing the
+  destination, preventing incomplete files from appearing at the requested path. If
+  local publication fails, an existing destination remains unchanged and the CLI
+  reports a standard error.
+- Existing POSIX file permissions are preserved when replacing a regular file. This
+  applies to single downloads, bulk attachment downloads, and `pull-md` sidecar assets.
+
 ## [0.2.10] - 2026-07-13
 
 ### Fixed

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import httpx
@@ -17,6 +19,7 @@ from atlassian_skills.confluence.models import (
     SpaceTreeResult,
 )
 from atlassian_skills.core.auth import Credential
+from atlassian_skills.core.errors import AtlasError
 from atlassian_skills.jira.models import User
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "confluence"
@@ -408,6 +411,163 @@ def test_download_attachment(client: ConfluenceClient, tmp_path: Path) -> None:
 
     assert out.exists()
     assert out.read_bytes() == content
+
+
+@respx.mock
+def test_download_attachment_publishes_same_directory_part_file(
+    client: ConfluenceClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = b"complete-image-content"
+    download_link = "/download/attachments/99/image.png?api=v2"
+    respx.get(f"{BASE_URL}/download/attachments/99/image.png").mock(return_value=httpx.Response(200, content=content))
+    destination = tmp_path / "image.png"
+    real_replace = os.replace
+    replace_calls: list[tuple[Path, Path]] = []
+
+    def observe_replace(source: Path, target: Path) -> None:
+        replace_calls.append((source, target))
+        assert source.parent == destination.parent
+        assert source.name.startswith(".atls-download-")
+        assert source.name.endswith(".part")
+        token = source.name.removeprefix(".atls-download-").removesuffix(".part")
+        assert len(token) == 32
+        int(token, 16)
+        assert ".png" not in source.name
+        assert target == destination
+        assert not destination.exists()
+        assert source.read_bytes() == content
+        real_replace(source, target)
+
+    monkeypatch.setattr("atlassian_skills.confluence.client.os.replace", observe_replace)
+
+    out = client.download_attachment("att100", destination, download_link=download_link)
+
+    assert len(replace_calls) == 1
+    assert out == destination
+    assert out.read_bytes() == content
+    assert list(tmp_path.glob("*.part")) == []
+
+
+@respx.mock
+def test_download_attachment_retries_part_name_collision_without_deleting_existing_file(
+    client: ConfluenceClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = b"new-content"
+    download_link = "/download/attachments/99/report.pdf?api=v2"
+    respx.get(f"{BASE_URL}/download/attachments/99/report.pdf").mock(return_value=httpx.Response(200, content=content))
+    tokens = iter(["a" * 32, "b" * 32])
+
+    def next_token(_nbytes: int) -> str:
+        return next(tokens)
+
+    monkeypatch.setattr("atlassian_skills.confluence.client.secrets.token_hex", next_token)
+    collision = tmp_path / f".atls-download-{'a' * 32}.part"
+    collision.write_bytes(b"owned-by-another-process")
+    destination = tmp_path / "report.pdf"
+
+    out = client.download_attachment("att101", destination, download_link=download_link)
+
+    assert out.read_bytes() == content
+    assert collision.read_bytes() == b"owned-by-another-process"
+    assert sorted(path.name for path in tmp_path.glob("*.part")) == [collision.name]
+
+
+@respx.mock
+def test_download_attachment_uses_unique_part_names(
+    client: ConfluenceClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    download_link = "/download/attachments/99/repeated.bin?api=v2"
+    respx.get(f"{BASE_URL}/download/attachments/99/repeated.bin").mock(
+        return_value=httpx.Response(200, content=b"content")
+    )
+    destination = tmp_path / "repeated.bin"
+    real_replace = os.replace
+    source_names: list[str] = []
+
+    def capture_source_name(source: Path, target: Path) -> None:
+        source_names.append(source.name)
+        real_replace(source, target)
+
+    monkeypatch.setattr("atlassian_skills.confluence.client.os.replace", capture_source_name)
+
+    client.download_attachment("att102", destination, download_link=download_link)
+    client.download_attachment("att102", destination, download_link=download_link)
+
+    assert len(source_names) == 2
+    assert len(set(source_names)) == 2
+    assert all(name.endswith(".part") for name in source_names)
+    assert list(tmp_path.glob("*.part")) == []
+
+
+@respx.mock
+def test_download_attachment_replace_failure_preserves_destination_and_cleans_part_file(
+    client: ConfluenceClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    download_link = "/download/attachments/99/existing.bin?api=v2"
+    respx.get(f"{BASE_URL}/download/attachments/99/existing.bin").mock(
+        return_value=httpx.Response(200, content=b"replacement-content")
+    )
+    destination = tmp_path / "existing.bin"
+    destination.write_bytes(b"original-content")
+    replace_error = OSError("replace failed")
+    temporary_paths: list[Path] = []
+
+    def fail_replace(source: Path, target: Path) -> None:
+        temporary_paths.append(source)
+        assert source.read_bytes() == b"replacement-content"
+        assert target == destination
+        raise replace_error
+
+    monkeypatch.setattr("atlassian_skills.confluence.client.os.replace", fail_replace)
+
+    with pytest.raises(AtlasError) as exc_info:
+        client.download_attachment("att103", destination, download_link=download_link)
+
+    assert str(destination) in str(exc_info.value)
+    assert exc_info.value.__cause__ is replace_error
+    assert destination.read_bytes() == b"original-content"
+    assert temporary_paths
+    assert all(not path.exists() for path in temporary_paths)
+    assert list(tmp_path.glob("*.part")) == []
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX mode contract")
+@respx.mock
+def test_download_attachment_new_file_mode_matches_write_bytes(client: ConfluenceClient, tmp_path: Path) -> None:
+    download_link = "/download/attachments/99/new.bin?api=v2"
+    respx.get(f"{BASE_URL}/download/attachments/99/new.bin").mock(return_value=httpx.Response(200, content=b"content"))
+    control = tmp_path / "control.bin"
+    control.write_bytes(b"content")
+    destination = tmp_path / "new.bin"
+
+    client.download_attachment("att104", destination, download_link=download_link)
+
+    assert stat.S_IMODE(destination.stat().st_mode) == stat.S_IMODE(control.stat().st_mode)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX mode contract")
+@respx.mock
+def test_download_attachment_preserves_existing_file_mode(client: ConfluenceClient, tmp_path: Path) -> None:
+    download_link = "/download/attachments/99/existing-mode.bin?api=v2"
+    respx.get(f"{BASE_URL}/download/attachments/99/existing-mode.bin").mock(
+        return_value=httpx.Response(200, content=b"replacement-content")
+    )
+    destination = tmp_path / "existing-mode.bin"
+    destination.write_bytes(b"original-content")
+    destination.chmod(0o640)
+
+    client.download_attachment("att105", destination, download_link=download_link)
+
+    assert destination.read_bytes() == b"replacement-content"
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o640
 
 
 # ---------------------------------------------------------------------------

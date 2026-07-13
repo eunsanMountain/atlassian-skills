@@ -3,6 +3,8 @@ from __future__ import annotations
 import difflib
 import mimetypes
 import os
+import secrets
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +19,10 @@ from atlassian_skills.confluence.models import (
 )
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.client import BaseClient
+from atlassian_skills.core.errors import AtlasError
 from atlassian_skills.jira.models import User
+
+_ATOMIC_DOWNLOAD_CREATE_ATTEMPTS = 10
 
 
 def _safe_filename(title: str, fallback_id: str) -> str:
@@ -26,6 +31,51 @@ def _safe_filename(title: str, fallback_id: str) -> str:
     if not safe:
         safe = f"attachment_{fallback_id}"
     return safe
+
+
+def _atomic_write_bytes(destination: Path, content: bytes) -> None:
+    """Write bytes completely before atomically publishing the destination."""
+    existing_mode: int | None = None
+    if os.name == "posix":
+        try:
+            destination_stat = destination.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            if stat.S_ISREG(destination_stat.st_mode):
+                existing_mode = stat.S_IMODE(destination_stat.st_mode)
+
+    temporary_path: Path | None = None
+    try:
+        for _ in range(_ATOMIC_DOWNLOAD_CREATE_ATTEMPTS):
+            candidate = destination.parent / f".atls-download-{secrets.token_hex(16)}.part"
+            try:
+                handle = candidate.open("xb")
+            except FileExistsError:
+                continue
+
+            temporary_path = candidate
+            with handle:
+                handle.write(content)
+            break
+        else:
+            raise FileExistsError(f"Unable to create a temporary download file for {destination}")
+
+        assert temporary_path is not None
+        if existing_mode is not None:
+            temporary_path.chmod(existing_mode)
+
+        # Publish the final path only after the attachment has been written completely.
+        os.replace(temporary_path, destination)
+    except BaseException:
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+        raise
 
 
 class ConfluenceClient(BaseClient):
@@ -313,8 +363,11 @@ class ConfluenceClient(BaseClient):
                 raise NotFoundError(f"No download link found for attachment {att_id}")
         resp = self.get(download_link)
         out = Path(output_path)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(resp.content)
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_write_bytes(out, resp.content)
+        except OSError as exc:
+            raise AtlasError(f"Failed to save attachment to {out}") from exc
         return out
 
     def download_all_attachments(self, page_id: str, output_dir: str | Path) -> list[Path]:
