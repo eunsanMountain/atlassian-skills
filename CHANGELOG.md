@@ -20,6 +20,14 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.2.12] - 2026-07-13
+
+### Fixed
+- **Version commands now report the installed package version correctly.** `atls
+  version`, `atls --version`, update checks, and doctor output no longer use a stale
+  package constant. Release regression coverage now verifies that the module and
+  distribution metadata versions match.
+
 ## [0.2.11] - 2026-07-13
 
 ### Fixed

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from importlib.metadata import version as installed_version
+
 import httpx
 import respx
 from typer.testing import CliRunner
@@ -9,6 +11,10 @@ from atlassian_skills.cli.main import app
 from atlassian_skills.cli.version import PYPI_URL, _parse_version
 
 runner = CliRunner()
+
+
+def test_module_version_matches_distribution_metadata() -> None:
+    assert __version__ == installed_version("atlassian-skills")
 
 
 class TestVersionParse:
