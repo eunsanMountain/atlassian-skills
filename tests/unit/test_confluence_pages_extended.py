@@ -205,6 +205,56 @@ def test_search_pagination_follows_next_link(client: ConfluenceClient) -> None:
     assert "Page B" in titles
 
 
+@respx.mock
+def test_search_paginates_until_limit_of_content_results(client: ConfluenceClient) -> None:
+    """Pagination must count content results, not raw heterogeneous hits.
+
+    A first page padded with space/user entries (which the filter drops) must
+    not cut the result short: search() has to follow _links.next until it holds
+    ``limit`` content pages. Combines the GitHub #14 filtering with next-link
+    pagination — the exact interaction the old "slice raw to limit, then
+    filter" order got wrong.
+    """
+    page1 = {
+        # One content hit; the other two slots are space/user noise. Under the
+        # old order this page alone satisfied len(raw) >= limit=3 and returned
+        # just "1", never following the next link.
+        "results": [
+            {"content": {"id": "1", "title": "Page A", "type": "page"}, "entityType": "content"},
+            {"space": {"key": "DEMO"}, "entityType": "space", "title": "Demo Space"},
+            {"user": {"username": "jdoe"}, "entityType": "user", "title": "Jane Doe"},
+        ],
+        "start": 0,
+        "limit": 3,
+        "size": 3,
+        "totalSize": 5,
+        "_links": {"next": "/rest/api/search?cql=siteSearch&limit=3&start=3"},
+    }
+    page2 = {
+        "results": [
+            {"content": {"id": "2", "title": "Page B", "type": "page"}, "entityType": "content"},
+            {"content": {"id": "3", "title": "Page C", "type": "page"}, "entityType": "content"},
+            {"content": {"id": "4", "title": "Page D", "type": "page"}, "entityType": "content"},
+        ],
+        "start": 3,
+        "limit": 3,
+        "size": 3,
+        "totalSize": 5,
+        "_links": {},
+    }
+    respx.get(f"{BASE_URL}/rest/api/search").mock(
+        side_effect=[
+            httpx.Response(200, json=page1),
+            httpx.Response(200, json=page2),
+        ]
+    )
+
+    result = client.search("siteSearch ~ 'demo'", limit=3)
+
+    # Followed the next link to fill 3 content pages; old code returned only "1".
+    assert [p.id for p in result.results] == ["1", "2", "3"]
+
+
 # ---------------------------------------------------------------------------
 # get_children
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from atlassian_skills.bitbucket.models import (
@@ -49,24 +50,41 @@ class BitbucketClient(BaseClient):
         *,
         params: dict[str, Any] | None = None,
         limit: int = 25,
+        transform: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch all pages from a Bitbucket Server paginated endpoint."""
+        """Fetch pages from a Bitbucket Server paginated endpoint.
+
+        Accumulates values until ``limit`` results are collected (or the last
+        page is reached), then truncates to ``limit`` — so ``limit`` is an
+        actual result cap, not merely the per-page size.
+
+        When ``transform`` is given, each raw value is passed through it and a
+        ``None`` return drops that value. The cap is counted against *kept*
+        results, so an endpoint that filters (e.g. picking COMMENTED
+        activities) keeps paginating to fill ``limit`` instead of being cut
+        short by the dropped entries.
+        """
         if params is None:
             params = {}
         params["limit"] = limit
 
-        items: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         while True:
             resp = self.get(f"{self.API}{path}", params=params)
             data = resp.json()
-            items.extend(data.get("values", []))
+            for raw in data.get("values", []):
+                value = transform(raw) if transform is not None else raw
+                if value is not None:
+                    results.append(value)
+            if len(results) >= limit:
+                break
             if data.get("isLastPage", True):
                 break
             next_start = data.get("nextPageStart")
             if next_start is None:
                 break
             params["start"] = next_start
-        return items
+        return results[:limit]
 
     # ------------------------------------------------------------------
     # Current user
@@ -175,17 +193,24 @@ class BitbucketClient(BaseClient):
         """Extract comments from PR activities.
 
         Bitbucket Server's /comments endpoint requires a path parameter.
-        Instead, we use /activities and filter for COMMENTED actions.
+        Instead, we use /activities and filter for COMMENTED actions. The
+        filter runs inside pagination so ``limit`` counts actual comments, not
+        raw activities — otherwise a page full of non-comment activities would
+        return fewer comments than requested.
         """
+
+        def _pick_comment(raw: dict[str, Any]) -> dict[str, Any] | None:
+            comment = raw.get("comment")
+            if raw.get("action") == "COMMENTED" and isinstance(comment, dict):
+                return comment
+            return None
+
         items = self._get_paged(
             f"{self._pr_path(project, repo)}/{pr_id}/activities",
             limit=limit,
+            transform=_pick_comment,
         )
-        comments: list[PullRequestComment] = []
-        for item in items:
-            if item.get("action") == "COMMENTED" and item.get("comment"):
-                comments.append(PullRequestComment.model_validate(item["comment"]))
-        return comments
+        return [PullRequestComment.model_validate(i) for i in items]
 
     def list_pull_request_commits(self, project: str, repo: str, pr_id: int, *, limit: int = 25) -> list[Commit]:
         """GET .../pull-requests/{id}/commits"""

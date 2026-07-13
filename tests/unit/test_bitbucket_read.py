@@ -74,6 +74,28 @@ def test_list_pull_requests_with_state_filter() -> None:
     assert params["state"] == "OPEN"
 
 
+@respx.mock
+def test_list_pull_requests_caps_at_limit() -> None:
+    """limit is a result cap, not just the per-page size.
+
+    _get_paged previously returned every value from every page; now it must
+    truncate to the requested limit even when the server returns more on a
+    single page.
+    """
+    page = {
+        "values": [{"id": i, "title": f"PR {i}", "state": "OPEN"} for i in range(5)],
+        "isLastPage": True,
+    }
+    respx.get(f"{BASE_URL}{API}/projects/PROJ/repos/my-repo/pull-requests").mock(
+        return_value=httpx.Response(200, json=page)
+    )
+
+    result = client.list_pull_requests("PROJ", "my-repo", limit=3)
+
+    # Old code returned all 5; the cap now truncates to 3.
+    assert [pr.id for pr in result] == [0, 1, 2]
+
+
 # ---------------------------------------------------------------------------
 # get_pull_request
 # ---------------------------------------------------------------------------
@@ -201,6 +223,48 @@ def test_list_pull_request_comments() -> None:
     assert result[1].anchor.path == "src/main.py"
     assert result[1].anchor.line == 42
     assert result[1].state == "RESOLVED"
+
+
+@respx.mock
+def test_list_pr_comments_paginate_to_fill_limit() -> None:
+    """Comment limit counts real comments, not raw activities.
+
+    A first activities page dominated by non-COMMENTED actions must not cut the
+    result short: pagination continues until ``limit`` comments are collected,
+    then truncates. Mirrors the Confluence content-vs-raw pagination fix — the
+    filter runs inside pagination so dropped entries don't shrink the result.
+    """
+    activities = f"{BASE_URL}{API}/projects/PROJ/repos/my-repo/pull-requests/1/activities"
+    page1 = {
+        # Only one comment here; the other two slots are non-COMMENTED noise.
+        "values": [
+            {"action": "OPENED"},
+            {"action": "RESCOPED"},
+            {"action": "COMMENTED", "comment": {"id": 1, "text": "first"}},
+        ],
+        "isLastPage": False,
+        "nextPageStart": 3,
+    }
+    page2 = {
+        "values": [
+            {"action": "COMMENTED", "comment": {"id": 2, "text": "second"}},
+            {"action": "MERGED"},
+            {"action": "COMMENTED", "comment": {"id": 3, "text": "third"}},
+        ],
+        "isLastPage": True,
+    }
+    respx.get(activities).mock(
+        side_effect=[
+            httpx.Response(200, json=page1),
+            httpx.Response(200, json=page2),
+        ]
+    )
+
+    result = client.list_pull_request_comments("PROJ", "my-repo", 1, limit=2)
+
+    # Followed to page 2 to fill 2 comments, then capped. Old code ignored the
+    # limit and would have returned all 3.
+    assert [c.id for c in result] == [1, 2]
 
 
 # ---------------------------------------------------------------------------

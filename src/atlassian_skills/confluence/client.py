@@ -160,37 +160,42 @@ class ConfluenceClient(BaseClient):
         cql: str,
         limit: int = 25,
     ) -> ConfluenceSearchResult:
-        # Peek at first page to capture server-side totalSize before delegating to paginator
+        # /rest/api/search on Server/DC is a universal CQL search: each result
+        # is a heterogeneous entity — content (wrapped under a "content" key
+        # holding {id, title, …}), space, or user. Only content results carry an
+        # "id"; space/user results must be filtered out rather than fed to
+        # Page.model_validate, which would otherwise raise a ValidationError on
+        # the missing "id" field (GitHub #14).
+        def _extract_pages(raw: list[Any]) -> list[Page]:
+            out: list[Page] = []
+            for i in raw:
+                if isinstance(i, dict):
+                    inner = i.get("content")
+                    if isinstance(inner, dict) and "id" in inner:
+                        i = inner
+                if isinstance(i, dict) and "id" in i:
+                    out.append(Page.model_validate(i))
+            return out
+
+        # Peek at the first page to capture server-side totalSize.
         first_resp = self.get(
             "/rest/api/search",
             params={"cql": cql, "limit": limit},
         ).json()
         total_size = first_resp.get("totalSize", first_resp.get("size", 0))
-        items: list[Any] = list(first_resp.get("results", []))
-        # Follow _links.next if present and we haven't hit the limit
+        pages: list[Page] = _extract_pages(first_resp.get("results", []))
+        # Paginate against the count of content pages, not raw heterogeneous
+        # results. Space/user entries are dropped by the filter and must not
+        # count toward the caller's requested limit — otherwise a first page
+        # padded with space/user hits would cut the result short even though
+        # more content exists on later pages.
         next_url = first_resp.get("_links", {}).get("next")
-        while next_url and len(items) < limit:
+        while next_url and len(pages) < limit:
             next_page = self.get(next_url).json()
-            items.extend(next_page.get("results", []))
+            pages.extend(_extract_pages(next_page.get("results", [])))
             next_url = next_page.get("_links", {}).get("next")
-        items = items[:limit]
-        # /rest/api/search on Server/DC is a universal CQL search: each result
-        # is a heterogeneous entity — content (wrapped under a "content" key
-        # holding {id, title, …}), space, or user. Unwrap the content wrapper
-        # when present, then keep only results carrying an "id" (i.e. content
-        # results). Space/user results have no "id" and must be skipped rather
-        # than fed to Page.model_validate, which would otherwise raise a
-        # ValidationError on the missing "id" field (GitHub #14).
-        pages: list[Page] = []
-        for i in items:
-            if isinstance(i, dict):
-                inner = i.get("content")
-                if isinstance(inner, dict) and "id" in inner:
-                    i = inner
-            if isinstance(i, dict) and "id" in i:
-                pages.append(Page.model_validate(i))
         return ConfluenceSearchResult(
-            results=pages,
+            results=pages[:limit],
             total=total_size,
             limit=limit,
         )

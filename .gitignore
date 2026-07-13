@@ -43,6 +43,7 @@ htmlcov/
 # Local dev artifacts
 .omc/
 .omx/
+.serena/
 /tmp/
 *.log
 

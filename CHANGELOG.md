@@ -20,6 +20,23 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.2.10] - 2026-07-13
+
+### Fixed
+- **`confluence page search` now returns the full requested number of pages
+  (follow-up to #14).** The `--limit` count was applied to the raw,
+  heterogeneous CQL result set *before* space/user entries were filtered out,
+  so a first page padded with non-content hits could yield fewer pages than
+  requested even when more content existed further down. Pagination now counts
+  filtered content pages and follows `_links.next` until `limit` pages are
+  collected.
+- **`bitbucket pull-request` list commands now honor `--limit` as a result
+  cap.** `_get_paged` previously walked every page and returned all values,
+  treating `limit` as the per-page size only. It now stops once `limit` results
+  are collected and truncates to `limit`. `pull-request comments` filters
+  `COMMENTED` activities *inside* pagination, so `--limit` counts actual
+  comments rather than raw activities.
+
 ## [0.2.9] - 2026-07-12
 
 ### Fixed
