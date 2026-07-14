@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from atlassian_skills.core.attachment_io import (
+    AttachmentWriteBatch,
+    allocate_attachment_filename,
+    resolve_attachment_writer,
+)
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.client import BaseClient
+from atlassian_skills.core.errors import AtlasError, ValidationError
 from atlassian_skills.jira.models import (
     Board,
     Issue,
@@ -640,6 +647,41 @@ class JiraClient(BaseClient):
         data: dict[str, Any] = self.get(f"/rest/api/2/issue/{key}", params={"fields": "attachment"}).json()
         items: list[dict[str, Any]] = data.get("fields", {}).get("attachment", data.get("attachments", []))
         return [JiraAttachment.model_validate(a) for a in items]
+
+    def download_attachments(self, key: str, output_dir: str | Path) -> list[Path]:
+        """Download every attachment for an issue to output_dir."""
+        attachments = self.get_attachment_content(key)
+        out_dir = Path(output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if not attachments:
+            return []
+
+        resolved_out_dir = out_dir.resolve()
+        writer = resolve_attachment_writer(out_dir)
+        batch = AttachmentWriteBatch(writer)
+        paths: list[Path] = []
+        used_names: set[str] = set()
+        try:
+            for attachment in attachments:
+                safe_name = allocate_attachment_filename(attachment.filename, attachment.id, used_names)
+                destination = out_dir / safe_name
+                if not destination.resolve().is_relative_to(resolved_out_dir):
+                    raise ValidationError(f"Path traversal detected in attachment filename: {attachment.filename!r}")
+                if not attachment.content:
+                    raise ValidationError(
+                        f"Attachment {attachment.id} ({attachment.filename}) does not provide a content URL"
+                    )
+                response = self.get(attachment.content)
+                batch.add(destination, response.content)
+                paths.append(destination)
+            batch.commit()
+        except OSError as exc:
+            batch.abort()
+            raise AtlasError(f"Failed to save attachments to {out_dir}") from exc
+        except BaseException:
+            batch.abort()
+            raise
+        return paths
 
     # ------------------------------------------------------------------
     # Service desk

@@ -20,6 +20,33 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.2.13] - 2026-07-13
+
+### Added
+- **`atls confluence page pull-batch` pulls multiple pages in one process.** It
+  reuses one authenticated client, stages referenced sidecar assets across all
+  pages, publishes them as one batch, and writes page-ID-qualified directories
+  only after asset publication succeeds.
+
+### Changed
+- **Native attachment writes remain the default on every platform.** Windows
+  users can opt into a per-user compatibility writer, applied across all profiles,
+  during `atls setup`. Compatibility mode checks Git Bash, Perl, and `Digest::SHA`
+  dependencies during setup,
+  then publishes and verifies all files in one external process per batch.
+- Confluence single/bulk/`pull-md` downloads and Jira attachment downloads now
+  share the same batch primitive. Bulk operations no longer start an external
+  writer once per file.
+
+### Fixed
+- Compatibility writes use direct `Digest::SHA` file reads and a NUL-delimited
+  manifest, so spaces, Unicode, dashes, parentheses, and backslashes cannot alter
+  checksum parsing. Failed batches restore existing destinations and fail closed
+  instead of silently switching writers.
+- **`jira attachment download` now saves attachment files.** The command follows
+  Jira's authenticated content URLs, sanitizes and de-duplicates filenames, and
+  reports the downloaded paths in every output format.
+
 ## [0.2.12] - 2026-07-13
 
 ### Fixed

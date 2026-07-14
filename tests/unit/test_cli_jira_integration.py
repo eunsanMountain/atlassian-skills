@@ -142,6 +142,50 @@ def test_cli_jira_projects_list() -> None:
     assert "TEST" in result.output
 
 
+@respx.mock
+def test_cli_jira_attachment_download_saves_files_and_returns_json(tmp_path: Path) -> None:
+    content_url = f"{JIRA_URL}/secure/attachment/10/report.bin"
+    issue = {
+        "fields": {
+            "attachment": [
+                {
+                    "id": "10",
+                    "filename": "report.bin",
+                    "size": 7,
+                    "mimeType": "application/octet-stream",
+                    "content": content_url,
+                }
+            ]
+        }
+    }
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=issue))
+    respx.get(content_url).mock(return_value=httpx.Response(200, content=b"payload"))
+
+    result = runner.invoke(
+        app,
+        ["jira", "attachment", "download", "PROJ-3", "--output-dir", str(tmp_path), "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == [{"downloaded": str(tmp_path / "report.bin")}]
+    assert (tmp_path / "report.bin").read_bytes() == b"payload"
+
+
+@respx.mock
+def test_cli_jira_attachment_download_empty_issue_returns_empty_json(tmp_path: Path) -> None:
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(
+        return_value=httpx.Response(200, json={"fields": {"attachment": []}})
+    )
+
+    result = runner.invoke(
+        app,
+        ["jira", "attachment", "download", "PROJ-3", "--output-dir", str(tmp_path), "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == []
+
+
 # ---------------------------------------------------------------------------
 # Write commands
 # ---------------------------------------------------------------------------

@@ -915,6 +915,53 @@ def page_pull_md(
 
 
 # ---------------------------------------------------------------------------
+# page pull-batch
+# ---------------------------------------------------------------------------
+
+
+@page_app.command("pull-batch")
+def page_pull_batch(
+    ctx: typer.Context,
+    page_ids: list[str] = typer.Argument(..., help="One or more Confluence page IDs"),
+    output_dir: str = typer.Option(..., "--output-dir", help="Root directory for page folders"),
+    passthrough_prefix: list[str] = typer.Option(
+        [], "--passthrough-prefix", help="HTML comment prefixes to preserve during Markdown conversion"
+    ),  # noqa: B008
+    format: str | None = typer.Option(None, "--format", "-f", help="Override output format"),
+) -> None:
+    """Pull multiple pages and publish all referenced assets in one batch."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        from atlassian_skills.confluence.pull_md import pull_pages_batch
+
+        results = pull_pages_batch(
+            client,
+            page_ids,
+            Path(output_dir),
+            passthrough_prefixes=passthrough_prefix or None,
+        )
+        typer.echo(
+            format_output(
+                [
+                    {
+                        "page_id": result.page_id,
+                        "title": result.title,
+                        "path": str(result.path),
+                        "version": result.version,
+                        "assets": result.assets,
+                    }
+                    for result in results
+                ],
+                fmt,
+            )
+        )
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+# ---------------------------------------------------------------------------
 # page diff-local
 # ---------------------------------------------------------------------------
 

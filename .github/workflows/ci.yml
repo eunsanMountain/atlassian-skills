@@ -61,3 +61,31 @@ jobs:
 
       - name: Run unit & snapshot tests
         run: uv run --python ${{ matrix.python-version }} pytest -m "not integration"
+
+  windows-attachment-writer:
+    name: Windows Attachment Writer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras --python 3.12
+
+      - name: Run Windows attachment writer tests
+        run: >-
+          uv run --python 3.12 pytest
+          tests/unit/test_attachment_io.py
+          tests/unit/test_attachment_io_windows.py
+          tests/unit/test_config.py
+          tests/unit/test_setup.py
+          tests/unit/test_doctor.py
+          tests/unit/test_pull_md.py
+          tests/unit/test_cli_confluence_integration.py

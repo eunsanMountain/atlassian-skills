@@ -48,6 +48,7 @@ class Config(BaseModel):
     model_config = ConfigDict(frozen=False)
 
     default_profile: str = "default"
+    attachment_writer: Literal["native", "compatible"] = "native"
     profiles: dict[str, Profile] = {}
 
 

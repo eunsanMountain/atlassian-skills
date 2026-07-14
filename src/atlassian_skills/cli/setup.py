@@ -10,7 +10,7 @@ import typer
 
 setup_app = typer.Typer(
     name="setup",
-    help="Interactive wizard: configure Atlassian URLs, tokens, and AI agent skills in one pass.",
+    help="Interactive wizard: configure Atlassian access, local attachment writes, and AI agent skills.",
 )
 
 ASSETS_DIR = Path(__file__).parent.parent / "_assets"
@@ -603,6 +603,51 @@ def _prompt_agent_install(label: str, default: bool = True) -> bool:
     return answer in ("y", "yes")
 
 
+def _wizard_attachment_writer_step(current: str, step: int, total_steps: int) -> None:
+    """Select the per-user Windows attachment writer and validate compatibility dependencies once."""
+    from atlassian_skills.core.attachment_io import verify_compatible_attachment_writer
+    from atlassian_skills.core.config import load_config, save_config
+    from atlassian_skills.core.errors import AtlasError
+
+    typer.echo(f"[{step}/{total_steps}] Attachment file writer")
+    typer.echo("  Native — fastest and recommended; use unless saved attachments are altered or blocked")
+    typer.echo("  Compatibility — use when Windows file-protection software alters or blocks attachments")
+    default = "c" if current == "compatible" else "n"
+    default_label = "compatibility" if default == "c" else "native"
+    answer = (
+        typer.prompt(
+            f"  Select [n]ative / [c]ompatibility [default={default_label}]",
+            default=default,
+            show_default=False,
+        )
+        .strip()
+        .lower()
+    )
+    if answer in {"", "n", "native"}:
+        selected = "native"
+    elif answer in {"c", "compatible", "compatibility"}:
+        selected = "compatible"
+    else:
+        typer.echo("  Unrecognized choice; keeping the current attachment writer.")
+        selected = current
+
+    if selected == "compatible":
+        try:
+            verify_compatible_attachment_writer()
+        except AtlasError as exc:
+            typer.echo(f"  ✗ {exc.message}", err=True)
+            if exc.hint:
+                typer.echo(f"    {exc.hint}", err=True)
+            raise typer.Exit(1) from None
+
+    config = load_config()
+    if config.attachment_writer != selected or "attachment_writer" not in config.model_fields_set:
+        config.attachment_writer = selected  # type: ignore[assignment]
+        save_config(config)
+    typer.echo(f"  → attachment writer: {selected}")
+    typer.echo("")
+
+
 # ---------------------------------------------------------------------------
 # Skill refresh — used by wizard AND `setup --skills-only` (upgrade path)
 # ---------------------------------------------------------------------------
@@ -781,11 +826,18 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
 
     from atlassian_skills.core.config import get_env_token, get_profile, load_config
 
+    current_config = load_config()
+    total_steps = len(_PRODUCTS) + 1 + (1 if platform_name == "windows" else 0)
+    product_step_offset = 1
+    if platform_name == "windows":
+        _wizard_attachment_writer_step(current_config.attachment_writer, 1, total_steps)
+        product_step_offset = 2
+
     # Command-storage notice. The wizard only manages keyring; it cannot see or write a
     # shell-command provider. Saving any PAT below flips the WHOLE profile to storage=keyring,
     # which would silently break command-based resolution for the other products. Warn up front
     # (non-silent) and point command users at the manual config path instead.
-    current_storage = get_profile(load_config(), "default").storage
+    current_storage = get_profile(current_config, "default").storage
     if current_storage == "command":
         typer.echo(
             "⚠ This profile uses storage='command' (shell-command secret manager).\n"
@@ -820,9 +872,7 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
 
     url_actions: dict[str, tuple[str | None, str]] = {}
     new_secrets: dict[str, str] = {}  # raw PATs to store in the keyring, keyed by product
-    total_steps = len(_PRODUCTS) + 1  # +1 for AI agent step
-
-    for idx, product in enumerate(_PRODUCTS, start=1):
+    for idx, product in enumerate(_PRODUCTS, start=product_step_offset):
         (url, action), secret = _wizard_product_step(product, idx, total_steps, url_state, env_products)
         url_actions[product] = (url, action)
         if secret is not None:
@@ -869,7 +919,7 @@ def _wizard() -> None:  # noqa: C901 — sequential narrative reads better than 
     # AI agent step — defaults to Yes for all three agents. `atls upgrade` (--skills-only)
     # still respects opt-in: it only refreshes Copilot when SKILL.md already exists, so
     # existing Claude+Codex users aren't surprise-installed during a routine upgrade.
-    typer.echo(f"[{len(_PRODUCTS) + 1}/{total_steps}] AI agent skills")
+    typer.echo(f"[{total_steps}/{total_steps}] AI agent skills")
     install_claude = _prompt_agent_install("Install Claude Code skill", default=True)
     install_codex = _prompt_agent_install("Install Codex skill", default=True)
     install_copilot = _prompt_agent_install("Install GitHub Copilot skill", default=True)

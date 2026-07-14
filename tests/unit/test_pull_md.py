@@ -3,8 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from atlassian_skills.confluence.models import Attachment, Page, PageVersion
-from atlassian_skills.confluence.pull_md import PullResult, pull_md
+from atlassian_skills.confluence.pull_md import PullResult, pull_md, pull_pages_batch
+from atlassian_skills.core.errors import AtlasError
 
 
 def _make_page(body_storage: str, title: str = "Test Page", version: int = 1) -> Page:
@@ -77,7 +80,7 @@ class TestPullMdJsonVersion:
 
 
 class TestPullMdResolveAssetsSidecar:
-    def test_sidecar_downloads_and_rewrites(self, tmp_path: Path) -> None:
+    def test_sidecar_downloads_and_rewrites(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Sidecar mode downloads attachments and rewrites image links."""
         md_with_marker = '# Page\n\n![diagram](diagram.png)<!-- cfxmark:asset src="diagram.png" -->\n\nSome text\n'
         # We need to provide storage that converts to md_with_marker.
@@ -90,19 +93,20 @@ class TestPullMdResolveAssetsSidecar:
         client.list_attachments.return_value = [
             Attachment(id="att-001", title="diagram.png"),
         ]
-        client.download_attachment.return_value = tmp_path / "assets" / "diagram.png"
+        client.fetch_attachment_bytes.return_value = b"image-bytes"
 
         asset_dir = tmp_path / "assets"
         md_path = tmp_path / "page.md"
 
         result = _resolve_assets_sidecar(client, "12345", md_with_marker, asset_dir, md_path)
 
-        client.download_attachment.assert_called_once_with("att-001", asset_dir / "diagram.png", download_link=None)
+        client.fetch_attachment_bytes.assert_called_once_with("att-001", None)
+        assert (asset_dir / "diagram.png").read_bytes() == b"image-bytes"
         assert "assets/diagram.png" in result
         # Marker is preserved
         assert '<!-- cfxmark:asset src="diagram.png" -->' in result
 
-    def test_sidecar_preserves_non_asset_content(self, tmp_path: Path) -> None:
+    def test_sidecar_preserves_non_asset_content(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Non-asset content is unchanged by sidecar resolution."""
         md_no_markers = "# Hello\n\nJust text, no images.\n"
         from atlassian_skills.confluence.pull_md import _resolve_assets_sidecar
@@ -126,6 +130,76 @@ class TestPullMdResolveAssetsSidecar:
         asset_dir = tmp_path / "assets"
         result = _resolve_assets_sidecar(client, "12345", md_with_marker, asset_dir)
 
-        client.download_attachment.assert_not_called()
+        client.fetch_attachment_bytes.assert_not_called()
         # Original link preserved (not rewritten since attachment not found)
         assert "missing.png" in result
+
+    def test_repeated_marker_fetches_and_stages_one_asset(self, tmp_path: Path) -> None:
+        from atlassian_skills.confluence.pull_md import _resolve_assets_sidecar
+
+        marker = '![img](old.png)<!-- cfxmark:asset src="diagram.png" -->'
+        client = MagicMock()
+        client.list_attachments.return_value = [Attachment(id="att-001", title="diagram.png")]
+        client.fetch_attachment_bytes.return_value = b"image"
+
+        result = _resolve_assets_sidecar(client, "12345", f"{marker}\n{marker}\n", tmp_path / "assets")
+
+        client.fetch_attachment_bytes.assert_called_once_with("att-001", None)
+        assert result.count("assets/diagram.png") == 2
+
+
+class TestPullPagesBatch:
+    def test_two_pages_share_one_asset_commit_and_use_page_id_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import atlassian_skills.confluence.pull_md as pull_module
+
+        page_one = _make_page("unused", title="같은 제목 — (test)", version=3)
+        page_two = _make_page("unused", title="같은 제목 — (test)", version=4)
+        client = MagicMock()
+        client.get_page.side_effect = [page_one, page_two]
+        client.list_attachments.side_effect = [
+            [Attachment(id="att-1", title="image.png")],
+            [Attachment(id="att-2", title="image.png")],
+        ]
+        client.fetch_attachment_bytes.side_effect = [b"first", b"second"]
+        marker = '![img](remote)<!-- cfxmark:asset src="image.png" -->'
+        monkeypatch.setattr(pull_module, "_convert_storage", lambda *_args: marker)
+        real_commit = pull_module.AttachmentWriteBatch.commit
+        commits: list[int] = []
+
+        def capture_commit(batch: object) -> list[Path]:
+            commits.append(1)
+            return real_commit(batch)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(pull_module.AttachmentWriteBatch, "commit", capture_commit)
+
+        results = pull_pages_batch(client, ["100", "200"], tmp_path)
+
+        assert commits == [1]
+        assert [result.assets for result in results] == [1, 1]
+        assert results[0].path.parent != results[1].path.parent
+        assert results[0].path.parent.name.endswith("--100")
+        assert results[1].path.parent.name.endswith("--200")
+        assert "assets/image.png" in results[0].path.read_text(encoding="utf-8")
+        assert (results[0].path.parent / "assets" / "image.png").read_bytes() == b"first"
+        assert (results[1].path.parent / "assets" / "image.png").read_bytes() == b"second"
+
+    def test_asset_failure_publishes_no_markdown(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.confluence.pull_md as pull_module
+
+        client = MagicMock()
+        client.get_page.side_effect = [_make_page("unused", title="first"), _make_page("unused", title="second")]
+        client.list_attachments.side_effect = [
+            [Attachment(id="att-1", title="image.png")],
+            [Attachment(id="att-2", title="image.png")],
+        ]
+        client.fetch_attachment_bytes.side_effect = [b"first", AtlasError("download failed")]
+        marker = '![img](remote)<!-- cfxmark:asset src="image.png" -->'
+        monkeypatch.setattr(pull_module, "_convert_storage", lambda *_args: marker)
+
+        with pytest.raises(AtlasError, match="download failed"):
+            pull_pages_batch(client, ["100", "200"], tmp_path)
+
+        assert list(tmp_path.rglob("*.md")) == []
+        assert list(tmp_path.rglob(".atls-*.part")) == []

@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import difflib
 import mimetypes
-import os
-import secrets
-import stat
 from pathlib import Path
 from typing import Any
 
@@ -17,65 +14,17 @@ from atlassian_skills.confluence.models import (
     SpaceTreeNode,
     SpaceTreeResult,
 )
+from atlassian_skills.core.attachment_io import (
+    AttachmentWriteBatch,
+    AttachmentWriter,
+    allocate_attachment_filename,
+    resolve_attachment_writer,
+    write_attachment_bytes,
+)
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.client import BaseClient
 from atlassian_skills.core.errors import AtlasError
 from atlassian_skills.jira.models import User
-
-_ATOMIC_DOWNLOAD_CREATE_ATTEMPTS = 10
-
-
-def _safe_filename(title: str, fallback_id: str) -> str:
-    """Sanitize attachment filename to prevent path traversal."""
-    safe = os.path.basename(title).lstrip(".")
-    if not safe:
-        safe = f"attachment_{fallback_id}"
-    return safe
-
-
-def _atomic_write_bytes(destination: Path, content: bytes) -> None:
-    """Write bytes completely before atomically publishing the destination."""
-    existing_mode: int | None = None
-    if os.name == "posix":
-        try:
-            destination_stat = destination.lstat()
-        except FileNotFoundError:
-            pass
-        else:
-            if stat.S_ISREG(destination_stat.st_mode):
-                existing_mode = stat.S_IMODE(destination_stat.st_mode)
-
-    temporary_path: Path | None = None
-    try:
-        for _ in range(_ATOMIC_DOWNLOAD_CREATE_ATTEMPTS):
-            candidate = destination.parent / f".atls-download-{secrets.token_hex(16)}.part"
-            try:
-                handle = candidate.open("xb")
-            except FileExistsError:
-                continue
-
-            temporary_path = candidate
-            with handle:
-                handle.write(content)
-            break
-        else:
-            raise FileExistsError(f"Unable to create a temporary download file for {destination}")
-
-        assert temporary_path is not None
-        if existing_mode is not None:
-            temporary_path.chmod(existing_mode)
-
-        # Publish the final path only after the attachment has been written completely.
-        os.replace(temporary_path, destination)
-    except BaseException:
-        if temporary_path is not None:
-            try:
-                temporary_path.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError:
-                pass
-        raise
 
 
 class ConfluenceClient(BaseClient):
@@ -345,6 +294,7 @@ class ConfluenceClient(BaseClient):
         output_path: str | Path,
         *,
         download_link: str | None = None,
+        writer: AttachmentWriter | None = None,
     ) -> Path:
         """Download a single attachment.
 
@@ -354,6 +304,17 @@ class ConfluenceClient(BaseClient):
         ``/rest/api/content/{id}/download`` endpoint does not exist on
         Server/DC — see GitHub issue #1.
         """
+        content = self.fetch_attachment_bytes(att_id, download_link)
+        out = Path(output_path)
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            write_attachment_bytes(out, content, writer=writer)
+        except OSError as exc:
+            raise AtlasError(f"Failed to save attachment to {out}") from exc
+        return out
+
+    def fetch_attachment_bytes(self, att_id: str, download_link: str | None = None) -> bytes:
+        """Fetch attachment bytes without selecting or invoking a local writer."""
         if not download_link:
             meta = self.get(f"/rest/api/content/{att_id}", params={"expand": ""}).json()
             download_link = meta.get("_links", {}).get("download")
@@ -361,29 +322,35 @@ class ConfluenceClient(BaseClient):
                 from atlassian_skills.core.errors import NotFoundError
 
                 raise NotFoundError(f"No download link found for attachment {att_id}")
-        resp = self.get(download_link)
-        out = Path(output_path)
-        try:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            _atomic_write_bytes(out, resp.content)
-        except OSError as exc:
-            raise AtlasError(f"Failed to save attachment to {out}") from exc
-        return out
+        return self.get(download_link).content
 
     def download_all_attachments(self, page_id: str, output_dir: str | Path) -> list[Path]:
         """Download all attachments for a page to output_dir."""
         attachments = self.list_attachments(page_id)
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
+        if not attachments:
+            return []
+        writer = resolve_attachment_writer(out_dir)
+        batch = AttachmentWriteBatch(writer)
         paths: list[Path] = []
-        for att in attachments:
-            safe_name = _safe_filename(att.title, att.id)
-            dest = out_dir / safe_name
-            # Verify no path traversal
-            if not dest.resolve().is_relative_to(out_dir.resolve()):
-                raise ValueError(f"Path traversal detected in attachment title: {att.title!r}")
-            self.download_attachment(att.id, dest, download_link=att.links.download if att.links else None)
-            paths.append(dest)
+        used_names: set[str] = set()
+        try:
+            for att in attachments:
+                safe_name = allocate_attachment_filename(att.title, att.id, used_names)
+                dest = out_dir / safe_name
+                if not dest.resolve().is_relative_to(out_dir.resolve()):
+                    raise ValueError(f"Path traversal detected in attachment title: {att.title!r}")
+                content = self.fetch_attachment_bytes(att.id, att.links.download if att.links else None)
+                batch.add(dest, content)
+                paths.append(dest)
+            batch.commit()
+        except OSError as exc:
+            batch.abort()
+            raise AtlasError(f"Failed to save attachments to {out_dir}") from exc
+        except BaseException:
+            batch.abort()
+            raise
         return paths
 
     # ------------------------------------------------------------------

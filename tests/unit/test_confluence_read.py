@@ -4,6 +4,7 @@ import json
 import os
 import stat
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -18,6 +19,7 @@ from atlassian_skills.confluence.models import (
     Page,
     SpaceTreeResult,
 )
+from atlassian_skills.core.attachment_io import AttachmentWriter, AttachmentWriterKind
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.errors import AtlasError
 from atlassian_skills.jira.models import User
@@ -440,9 +442,10 @@ def test_download_attachment_publishes_same_directory_part_file(
         assert source.read_bytes() == content
         real_replace(source, target)
 
-    monkeypatch.setattr("atlassian_skills.confluence.client.os.replace", observe_replace)
+    monkeypatch.setattr("atlassian_skills.core.attachment_io.os.replace", observe_replace)
 
-    out = client.download_attachment("att100", destination, download_link=download_link)
+    writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path)
+    out = client.download_attachment("att100", destination, download_link=download_link, writer=writer)
 
     assert len(replace_calls) == 1
     assert out == destination
@@ -464,12 +467,13 @@ def test_download_attachment_retries_part_name_collision_without_deleting_existi
     def next_token(_nbytes: int) -> str:
         return next(tokens)
 
-    monkeypatch.setattr("atlassian_skills.confluence.client.secrets.token_hex", next_token)
+    monkeypatch.setattr("atlassian_skills.core.attachment_io.secrets.token_hex", next_token)
     collision = tmp_path / f".atls-download-{'a' * 32}.part"
     collision.write_bytes(b"owned-by-another-process")
     destination = tmp_path / "report.pdf"
 
-    out = client.download_attachment("att101", destination, download_link=download_link)
+    writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path)
+    out = client.download_attachment("att101", destination, download_link=download_link, writer=writer)
 
     assert out.read_bytes() == content
     assert collision.read_bytes() == b"owned-by-another-process"
@@ -494,10 +498,11 @@ def test_download_attachment_uses_unique_part_names(
         source_names.append(source.name)
         real_replace(source, target)
 
-    monkeypatch.setattr("atlassian_skills.confluence.client.os.replace", capture_source_name)
+    monkeypatch.setattr("atlassian_skills.core.attachment_io.os.replace", capture_source_name)
 
-    client.download_attachment("att102", destination, download_link=download_link)
-    client.download_attachment("att102", destination, download_link=download_link)
+    writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path)
+    client.download_attachment("att102", destination, download_link=download_link, writer=writer)
+    client.download_attachment("att102", destination, download_link=download_link, writer=writer)
 
     assert len(source_names) == 2
     assert len(set(source_names)) == 2
@@ -526,10 +531,11 @@ def test_download_attachment_replace_failure_preserves_destination_and_cleans_pa
         assert target == destination
         raise replace_error
 
-    monkeypatch.setattr("atlassian_skills.confluence.client.os.replace", fail_replace)
+    monkeypatch.setattr("atlassian_skills.core.attachment_io.os.replace", fail_replace)
 
     with pytest.raises(AtlasError) as exc_info:
-        client.download_attachment("att103", destination, download_link=download_link)
+        writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path)
+        client.download_attachment("att103", destination, download_link=download_link, writer=writer)
 
     assert str(destination) in str(exc_info.value)
     assert exc_info.value.__cause__ is replace_error
@@ -576,7 +582,11 @@ def test_download_attachment_preserves_existing_file_mode(client: ConfluenceClie
 
 
 @respx.mock
-def test_download_all_attachments(client: ConfluenceClient, tmp_path: Path) -> None:
+def test_download_all_attachments(
+    client: ConfluenceClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Mock list attachments
     list_fixture = {
         "results": [
@@ -606,9 +616,13 @@ def test_download_all_attachments(client: ConfluenceClient, tmp_path: Path) -> N
     respx.get(f"{BASE_URL}/download/attachments/100/file2.txt").mock(
         return_value=httpx.Response(200, content=b"content2")
     )
+    writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path.resolve())
+    resolve_writer = MagicMock(return_value=writer)
+    monkeypatch.setattr("atlassian_skills.confluence.client.resolve_attachment_writer", resolve_writer)
 
     paths = client.download_all_attachments("100", tmp_path)
 
+    resolve_writer.assert_called_once_with(tmp_path)
     assert len(paths) == 2
     assert (tmp_path / "file1.txt").read_bytes() == b"content1"
     assert (tmp_path / "file2.txt").read_bytes() == b"content2"

@@ -319,6 +319,44 @@ def test_cli_confluence_page_push_md_reads_stdin_and_skips_missing_asset_dir(tmp
     assert data["would_update"] is True
 
 
+def test_cli_confluence_page_pull_batch_uses_one_client_and_formats_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atlassian_skills.confluence.pull_md import PullPageResult
+
+    client = object()
+    monkeypatch.setattr("atlassian_skills.cli.confluence._make_client", lambda _ctx: client)
+    calls: list[tuple[object, list[str], Path]] = []
+
+    def fake_pull(
+        selected_client: object, page_ids: list[str], output_root: Path, **_kwargs: object
+    ) -> list[PullPageResult]:
+        calls.append((selected_client, page_ids, output_root))
+        return [PullPageResult("100", "Page One", output_root / "Page One--100" / "Page One.md", 3, 10)]
+
+    monkeypatch.setattr("atlassian_skills.confluence.pull_md.pull_pages_batch", fake_pull)
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "pull-batch",
+            "100",
+            "200",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls == [(client, ["100", "200"], tmp_path)]
+    payload = json.loads(result.output)
+    assert payload[0]["page_id"] == "100"
+    assert payload[0]["assets"] == 10
+
+
 # ---------------------------------------------------------------------------
 # Exit code matrix
 # ---------------------------------------------------------------------------

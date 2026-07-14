@@ -358,7 +358,28 @@ class TestSkillsOnly:
         assert (tmp_path / ".codex" / "skills" / "atls" / "SKILL.md").exists()
         # No deprecation warning — this is the canonical upgrade path
         assert "deprecated" not in result.output
-        assert "deprecated" not in result.output
+
+    def test_skills_only_preserves_writer_without_running_probe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+        import atlassian_skills.core.config as config_mod
+        from atlassian_skills.core.config import Config, load_config, save_config
+
+        asset_root = _make_asset_root(tmp_path)
+        _stub_paths(monkeypatch, tmp_path, asset_root)
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        save_config(Config(attachment_writer="compatible"))
+        monkeypatch.setattr(
+            "atlassian_skills.core.attachment_io.verify_compatible_attachment_writer",
+            lambda: pytest.fail("--skills-only must not probe the attachment writer"),
+        )
+
+        result = CliRunner().invoke(setup_mod.setup_app, ["--skills-only"])
+
+        assert result.exit_code == 0
+        assert "Attachment file writer" not in result.output
+        assert load_config().attachment_writer == "compatible"
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +451,89 @@ def _wizard_input(
         lines.extend(spec)
     lines += [install_claude, install_codex, install_copilot]
     return "\n".join(lines) + "\n"
+
+
+class TestWizardAttachmentWriter:
+    def test_windows_defaults_to_native_and_persists(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import load_config
+
+        monkeypatch.setattr(setup_mod, "_detect_platform", lambda: "windows")
+        runner = CliRunner()
+        result = runner.invoke(app, ["setup"], input="\n" + _wizard_input())
+
+        assert result.exit_code == 0, result.output
+        assert "[1/5] Attachment file writer" in result.output
+        assert "[default=native]" in result.output
+        assert 'attachment_writer = "native"' in (wizard_env / "config.toml").read_text(encoding="utf-8")
+        assert load_config().attachment_writer == "native"
+
+    def test_windows_compatible_validates_and_persists(self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import load_config
+
+        checks: list[bool] = []
+        monkeypatch.setattr(setup_mod, "_detect_platform", lambda: "windows")
+        monkeypatch.setattr(
+            "atlassian_skills.core.attachment_io.verify_compatible_attachment_writer",
+            lambda: checks.append(True),
+        )
+        result = CliRunner().invoke(app, ["setup"], input="c\n" + _wizard_input())
+
+        assert result.exit_code == 0, result.output
+        assert checks == [True]
+        assert "[default=native]" in result.output
+        assert load_config().attachment_writer == "compatible"
+
+    def test_windows_enter_preserves_existing_compatible(
+        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import Config, load_config, save_config
+
+        save_config(Config(attachment_writer="compatible"))
+        checks: list[bool] = []
+        monkeypatch.setattr(setup_mod, "_detect_platform", lambda: "windows")
+        monkeypatch.setattr(
+            "atlassian_skills.core.attachment_io.verify_compatible_attachment_writer",
+            lambda: checks.append(True),
+        )
+        result = CliRunner().invoke(app, ["setup"], input="\n" + _wizard_input())
+
+        assert result.exit_code == 0, result.output
+        assert checks == [True]
+        assert "[default=compatibility]" in result.output
+        assert load_config().attachment_writer == "compatible"
+
+    def test_windows_failed_capability_does_not_save_compatible(
+        self, wizard_env: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+        from atlassian_skills.core.config import load_config
+        from atlassian_skills.core.errors import AtlasError
+
+        monkeypatch.setattr(setup_mod, "_detect_platform", lambda: "windows")
+        monkeypatch.setattr(
+            "atlassian_skills.core.attachment_io.verify_compatible_attachment_writer",
+            lambda: (_ for _ in ()).throw(AtlasError("missing capability", hint="choose native")),
+        )
+        result = CliRunner().invoke(app, ["setup"], input="c\n")
+
+        assert result.exit_code == 1
+        assert "missing capability" in result.output
+        assert load_config().attachment_writer == "native"
+
+    def test_non_windows_does_not_prompt_for_writer(self, wizard_env: Path) -> None:
+        from atlassian_skills.cli.main import app
+
+        result = CliRunner().invoke(app, ["setup"], input=_wizard_input())
+
+        assert result.exit_code == 0, result.output
+        assert "Attachment file writer" not in result.output
 
 
 class TestWizardURLs:

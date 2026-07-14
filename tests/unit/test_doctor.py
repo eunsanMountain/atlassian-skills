@@ -11,10 +11,11 @@ from atlassian_skills.cli.main import app
 
 
 @pytest.fixture(autouse=True)
-def _offline_pypi(monkeypatch: pytest.MonkeyPatch) -> None:
+def _offline_pypi(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep `doctor`'s top-of-output PyPI check offline by default so the suite never hits the
     network. Tests that exercise the update banner re-patch this with a concrete value."""
     monkeypatch.setattr("atlassian_skills.cli.version.latest_pypi_version", lambda timeout=2.0: None)
+    monkeypatch.setattr("atlassian_skills.core.config.config_path", lambda: tmp_path / "config.toml")
 
 
 class TestDoctor:
@@ -42,6 +43,7 @@ class TestDoctor:
 
         assert result.exit_code == 0
         assert "Platform:" in result.output
+        assert "Attachment writer: native" in result.output
         assert "Paths:" in result.output
         assert "Skill installation status:" in result.output
         assert "Auth:" in result.output
@@ -84,6 +86,42 @@ class TestDoctor:
         assert "https://jira.dr-test" in result.output
         assert "config" in result.output
         assert "length=10" in result.output
+
+    def test_native_writer_does_not_probe_compatibility(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import atlassian_skills.core.config as config_mod
+
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        monkeypatch.setattr(
+            "atlassian_skills.core.attachment_io.verify_compatible_attachment_writer",
+            lambda: pytest.fail("native doctor must not start a compatibility probe"),
+        )
+
+        result = CliRunner().invoke(app, ["doctor", "--no-update-check"])
+
+        assert result.exit_code == 0
+        assert "Attachment writer: native" in result.output
+
+    def test_compatible_writer_reports_dependency_check_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import atlassian_skills.cli.doctor as doctor_mod
+        import atlassian_skills.core.config as config_mod
+        from atlassian_skills.core.config import Config, save_config
+
+        monkeypatch.setattr(config_mod, "config_path", lambda: tmp_path / "config.toml")
+        save_config(Config(attachment_writer="compatible"))
+        monkeypatch.setattr(doctor_mod, "_detect_platform", lambda: "windows")
+        monkeypatch.setattr(
+            "atlassian_skills.core.attachment_io.verify_compatible_attachment_writer",
+            lambda: tmp_path / "Git" / "bin" / "bash.exe",
+        )
+
+        result = CliRunner().invoke(app, ["doctor", "--no-update-check"])
+
+        assert result.exit_code == 0
+        assert "Attachment writer: compatible" in result.output
+        assert "Attachment compatibility dependencies: available" in result.output
+        assert "Attachment compatibility: ready" not in result.output
 
 
 class TestDoctorUpdateCheck:

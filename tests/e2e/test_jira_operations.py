@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -16,7 +17,7 @@ def test_e2e_jira_get_issue(e2e_jira_client: JiraClient, e2e_test_project: str) 
     assert result.issues, f"No issues found in project {e2e_test_project}"
     issue = e2e_jira_client.get_issue(result.issues[0].key)
     assert issue.key
-    assert issue.fields is not None
+    assert issue.summary is not None
 
 
 @pytest.mark.integration
@@ -28,35 +29,40 @@ def test_e2e_jira_search(e2e_jira_client: JiraClient, e2e_test_project: str) -> 
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("e2e_allow_writes")
 def test_e2e_jira_create_update_delete(e2e_jira_client: JiraClient, e2e_test_project: str) -> None:
     """Full lifecycle: create → update → delete an issue."""
-    created = e2e_jira_client.create_issue(
-        fields={
-            "project": {"key": e2e_test_project},
-            "summary": "[atlassian-skills e2e] create_update_delete test",
-            "issuetype": {"name": "Task"},
-        }
-    )
+    assignee = e2e_jira_client.get_myself().name
+    assert assignee, "The e2e issue must be assigned to the authenticated test user."
+    fields: dict = {
+        "project": {"key": e2e_test_project},
+        "summary": f"[atlassian-skills e2e] lifecycle {uuid4().hex[:12]}",
+        "issuetype": {"name": "Task"},
+        "assignee": {"name": assignee},
+    }
+    created = e2e_jira_client.create_issue(fields=fields)
     key = created.get("key") or created.get("id")
     assert key, f"create_issue did not return a key/id: {created}"
 
-    e2e_jira_client.update_issue(key, fields={"summary": "[atlassian-skills e2e] updated summary"})
-    updated = e2e_jira_client.get_issue(key)
-    assert "updated" in (updated.fields.get("summary", "") if isinstance(updated.fields, dict) else "")
+    deleted = False
+    try:
+        e2e_jira_client.update_issue(key, fields={"summary": f"{fields['summary']} updated"})
+        updated = e2e_jira_client.get_issue(key)
+        assert "updated" in (updated.summary or "")
 
-    e2e_jira_client.delete_issue(key)
-    # After delete, attempting to fetch should raise
-    with pytest.raises(AtlasError):
-        e2e_jira_client.get_issue(key)
+        e2e_jira_client.delete_issue(key)
+        deleted = True
+        with pytest.raises(AtlasError):
+            e2e_jira_client.get_issue(key)
+    finally:
+        if not deleted:
+            e2e_jira_client.delete_issue(key)
 
 
 @pytest.mark.integration
-def test_e2e_jira_transitions(e2e_jira_client: JiraClient, e2e_test_project: str) -> None:
-    """Fetch available transitions for the first issue found."""
-    result = e2e_jira_client.search(f"project={e2e_test_project}", max_results=1)
-    assert result.issues, f"No issues in project {e2e_test_project}"
-    key = result.issues[0].key
-    transitions = e2e_jira_client.get_transitions(key)
+def test_e2e_jira_transitions(e2e_jira_client: JiraClient, e2e_temp_issue: str) -> None:
+    """Fetch available transitions for our OWN throwaway issue (never a pre-existing one)."""
+    transitions = e2e_jira_client.get_transitions(e2e_temp_issue)
     assert isinstance(transitions, list)
     # At least one transition should exist for any real issue
     assert len(transitions) > 0
@@ -65,13 +71,10 @@ def test_e2e_jira_transitions(e2e_jira_client: JiraClient, e2e_test_project: str
 
 
 @pytest.mark.integration
-def test_e2e_jira_add_comment(e2e_jira_client: JiraClient, e2e_test_project: str) -> None:
-    """Add a comment to an existing issue and verify it was stored."""
-    result = e2e_jira_client.search(f"project={e2e_test_project}", max_results=1)
-    assert result.issues, f"No issues in project {e2e_test_project}"
-    key = result.issues[0].key
+def test_e2e_jira_add_comment(e2e_jira_client: JiraClient, e2e_temp_issue: str) -> None:
+    """Add a comment to our OWN throwaway issue — never a pre-existing one (would notify others)."""
     comment_body = "[atlassian-skills e2e] automated comment"
-    resp = e2e_jira_client.add_comment(key, comment_body)
+    resp = e2e_jira_client.add_comment(e2e_temp_issue, comment_body)
     assert resp.get("id"), f"add_comment did not return an id: {resp}"
     assert resp.get("body") == comment_body
 
@@ -107,18 +110,14 @@ def test_e2e_jira_list_boards(e2e_jira_client: JiraClient, e2e_test_project: str
 
 
 @pytest.mark.integration
-def test_e2e_jira_upload_attachment(e2e_jira_client: JiraClient, e2e_test_project: str) -> None:
-    """Upload a small text attachment to an issue and verify it appears in the attachment list."""
-    result = e2e_jira_client.search(f"project={e2e_test_project}", max_results=1)
-    assert result.issues, f"No issues in project {e2e_test_project}"
-    key = result.issues[0].key
-
+def test_e2e_jira_upload_attachment(e2e_jira_client: JiraClient, e2e_temp_issue: str) -> None:
+    """Upload a small text attachment to our OWN throwaway issue (never a pre-existing one)."""
     with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
         f.write(b"atlassian-skills e2e attachment test")
         tmp_path = f.name
 
     try:
-        resp = e2e_jira_client.upload_attachment(key, tmp_path)
+        resp = e2e_jira_client.upload_attachment(e2e_temp_issue, tmp_path)
         # upload_attachment returns a list or dict depending on server
         assert resp is not None
     finally:

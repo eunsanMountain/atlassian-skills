@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.2.8 (keyring + shell-command credential storage with per-product commands; keyring-only `atls setup` wizard; `atls auth status --resolve`; `atls doctor` PyPI freshness banner; legacy `setup all/codex/claude/paths/status` deprecated for removal in 0.3.0)
+- **Current version**: 0.2.13 (Confluence `page pull-batch` multi-page pulls; native-by-default attachment writes with an optional Windows compatibility writer; `jira attachment download` saves files; atomic Confluence attachment downloads; consistent version reporting across CLI/doctor; keyring + shell-command credential storage with per-product commands; legacy `setup all/codex/claude/paths/status` deprecated for removal in 0.3.0)
 
 ## Build & Run
 

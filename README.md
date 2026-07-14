@@ -34,11 +34,11 @@ First-class integration with **Claude Code**, **Codex**, and **GitHub Copilot**.
 
 ```bash
 uv tool install atlassian-skills    # or: pipx install atlassian-skills / pip install atlassian-skills
-atls setup                          # interactive wizard — URLs, tokens (OS keyring), Claude/Codex/Copilot skill
+atls setup                          # interactive wizard — URLs, tokens, local attachment writer, agent skills
 atls doctor                         # verify configuration + auth
 ```
 
-That's it. The wizard stores tokens in your OS keyring and installs the agent skills in one pass — no shell restart needed. Prefer environment variables or a secret-manager command instead? See **Manual setup** below; the wizard is keyring-only.
+That's it. The wizard stores tokens in your OS keyring and installs the agent skills in one pass — no shell restart needed. On Windows it also offers an optional compatibility attachment writer; native writes remain the default. Prefer environment variables or a secret-manager command instead? See **Manual setup** below; the wizard is keyring-only for credentials.
 
 > ⚠️ Run `atls setup` **directly in your terminal** — never through an AI agent's shell tool. The wizard refuses non-TTY stdin and prompts hide token input from terminal echo; running it through an agent would force the agent to fulfil the token prompt from chat, leaking the value into LLM context.
 
@@ -179,6 +179,8 @@ The keyring service name is `atls-<profile>` and the account is `<product>_token
 
 ```toml
 # ~/.config/atlassian-skills/config.toml
+attachment_writer = "native" # Windows also supports "compatible"; native is the default
+
 [profiles.default]
 jira_url = "https://your-jira.example.com"
 storage = "keyring"
@@ -220,17 +222,18 @@ atls auth status --resolve  # actually probes each provider
 <details>
 <summary><b>What the wizard does, step by step</b></summary>
 
-The wizard is **keyring-only**: it stores tokens in your OS keyring and nothing else. Environment variables and shell-command secret managers still work at call time (the resolver checks `env > keyring > command`), but you configure those by hand — see *Manual setup*. The wizard never edits your shell rc or env.
+The wizard is **keyring-only for credentials**: tokens go only to your OS keyring. It also stores non-secret settings such as the Windows attachment writer in `config.toml`. Environment variables and shell-command secret managers still work at call time (the resolver checks `env > keyring > command`), but you configure those by hand — see *Manual setup*. The wizard never edits your shell rc or env.
 
 1. **TTY guard** — refuses to run if stdin isn't a real terminal (protects tokens from being fed in through AI-agent shell tools).
 2. **Env-token detection** — if atls already finds a token in your environment (`ATLS_DEFAULT_<PRODUCT>_TOKEN` or `JIRA_PERSONAL_TOKEN` etc.), the wizard says so up front. Because env outranks the keyring, it **skips** those products (a keyring entry would just be shadowed) and leaves your env setup untouched. To move one to the keyring: unset its env var, remove it from your shell rc, open a **new** terminal, and re-run.
-3. **Steps [1/4] – [3/4] — one block per product (Jira, Confluence, Bitbucket).** Each step prints the current URL + where the token lives (`environment variable (VAR)` or `keyring storage`), then asks `[s]kip / [e]dit / [r]emove` (default `s`, or `e` when there's nothing yet). `skip` leaves it as-is. `[e]dit` prompts for the URL (saved to `~/.config/atlassian-skills/config.toml`); then, unless the product's token is in the environment, prints the PAT issuer link and takes a hidden PAT prompt → `keyring.set_password("atls-<profile>", "<product>_token", …)`. `[r]emove` clears the URL and deletes the product's keyring entry (it never touches your env vars or shell rc).
-4. **Keyring availability** — if the `keyring` package can't be imported the wizard aborts with a reinstall hint. After saving, if the session looks headless (Docker / WSL / no D-Bus / text-only SSH) it warns that the keyring may be locked and points you at env (Manual setup).
-5. **[4/4] AI agent skills** — `[Y/n]` prompt for each:
+3. **Windows only: attachment writer [1/5].** Native is the visible default and starts no helper process. Keep it unless downloaded attachments are altered or blocked by Windows file-protection software. Compatibility is an explicit per-user setting that applies to all profiles; setup checks Git Bash, Perl, and `Digest::SHA` before saving it. Re-running setup shows and preserves the current choice when you press Enter.
+4. **Product steps — [1/4]–[3/4] normally, [2/5]–[4/5] on Windows.** Each step prints the current URL + where the token lives (`environment variable (VAR)` or `keyring storage`), then asks `[s]kip / [e]dit / [r]emove` (default `s`, or `e` when there's nothing yet). `skip` leaves it as-is. `[e]dit` prompts for the URL (saved to `~/.config/atlassian-skills/config.toml`); then, unless the product's token is in the environment, prints the PAT issuer link and takes a hidden PAT prompt → `keyring.set_password("atls-<profile>", "<product>_token", …)`. `[r]emove` clears the URL and deletes the product's keyring entry (it never touches your env vars or shell rc).
+5. **Keyring availability** — if the `keyring` package can't be imported the wizard aborts with a reinstall hint. After saving, if the session looks headless (Docker / WSL / no D-Bus / text-only SSH) it warns that the keyring may be locked and points you at env (Manual setup).
+6. **AI agent skills — [4/4] normally, [5/5] on Windows.** `[Y/n]` prompt for each:
    - Claude Code (default `Y`): `~/.claude/skills/atls/SKILL.md` + routing block in `~/.claude/CLAUDE.md`
    - Codex (default `Y`): `~/.codex/skills/atls/SKILL.md` + routing block in `~/.codex/AGENTS.md`
    - GitHub Copilot (default `Y`): `~/.copilot/skills/atls/SKILL.md` + routing block in [`~/.copilot/copilot-instructions.md`](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-custom-instructions). Cross-platform via `Path.home()` — works identically on Linux, macOS, and Windows (`%USERPROFILE%\.copilot\...`). WSL note: `~/.copilot` here lives in the WSL filesystem and is invisible to a native Windows Copilot CLI install; the wizard prints a one-line warning when this is detected.
-6. **Verify** — probes each provider (`auth status --resolve`) so you see whether each product actually resolves (`source=env` / `keyring`) before you exit.
+7. **Verify** — probes each provider (`auth status --resolve`) so you see whether each product actually resolves (`source=env` / `keyring`) before you exit.
 
 Re-run `atls setup` any time. Defaults are non-destructive (`s` skips a product, `Y` installs an agent skill), and storage flips to keyring only when you actually store a token — a pure Enter-through leaves an env-based setup exactly as it was.
 
@@ -249,6 +252,7 @@ atls confluence page get 12345
 atls confluence page search "space=DOCS AND title=API"
 atls confluence page push-md 12345 --md-file=page.md --if-version 15
 atls confluence page pull-md 12345 --output=page.md --resolve-assets=sidecar --asset-dir=assets/
+atls confluence page pull-batch 12345 67890 --output-dir=pages/
 
 # Jira description from markdown
 atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-promotion=jira
@@ -287,6 +291,7 @@ atls jira issue get PROJ-1 -f json | jq '{key, summary, status}'
 
 # 4. Confluence page editing workflow
 atls confluence page pull-md PAGE_ID -o page.md --resolve-assets=sidecar --asset-dir=assets/
+atls confluence page pull-batch PAGE_ID PAGE_ID --output-dir pages/
 # ... edit locally ...
 atls confluence page push-md PAGE_ID --md-file page.md --if-version 15 --dry-run
 atls confluence page push-md PAGE_ID --md-file page.md --if-version 15
@@ -334,15 +339,15 @@ atls jira issue get PROJ-1 --format=json
 - `jira service-desk list|queues|queue-issues`
 - `jira user get`
 
-### Confluence (23 commands: 13 read + 10 write)
-- `confluence page get|search|children|history|diff|images|create|update|delete|move|push-md|pull-md|diff-local`
+### Confluence (24 commands: 14 read + 10 write)
+- `confluence page get|search|children|history|diff|images|create|update|delete|move|push-md|pull-md|pull-batch|diff-local`
 - `confluence space tree`
 - `confluence comment list|add|reply`
 - `confluence label list|add`
 - `confluence attachment list|download|download-all|upload|upload-batch|delete`
 - `confluence user search`
 
-> `--passthrough-prefix` is supported on Confluence markdown round-trip commands only: `push-md`, `pull-md`, `diff-local`.
+> `--passthrough-prefix` is supported on Confluence markdown round-trip commands only: `push-md`, `pull-md`, `pull-batch`, `diff-local`.
 
 ### Bitbucket (33 commands: 11 read + 22 write)
 - `bitbucket project list`
@@ -452,7 +457,7 @@ uv build
 - **0.1.x** — Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, GitHub Actions CI/release
 - **0.2.x** — Bitbucket Server/DC PR workflow + Skill-first Claude/Codex integration
 - **0.2.7** — `atls setup` interactive wizard + `atls doctor`; `setup all/codex/claude/paths/status` deprecated
-- **0.2.8 (current)** — OS keyring token storage (keyring-only wizard), shell-command provider for manual setups, `atls auth status --resolve`
+- **0.2.13 (current)** — batched Confluence pulls and native-by-default attachment writes, with an optional Windows compatibility writer
 - **0.3.0** — Bamboo + workflow skills; remove deprecated `setup` subcommands
 - **0.4.0+** — Async client, caching, non-interactive `atls setup`, fish shell support, multi-profile wizard
 

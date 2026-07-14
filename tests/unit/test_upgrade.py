@@ -57,6 +57,7 @@ class TestDetectInstallMethod:
         monkeypatch.setattr(sys, "executable", "/usr/bin/python3")
         assert upgrade_mod._detect_install_method() == "pip"
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="requires Unix uv symlink layout")
     def test_detects_uv_when_python_is_symlink_to_uv_managed_interpreter(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

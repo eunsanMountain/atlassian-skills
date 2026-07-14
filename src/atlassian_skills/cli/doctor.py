@@ -114,6 +114,23 @@ def doctor(
         typer.echo("        wizard runs fine; only manual env-var setup differs (see README → Manual setup).")
     if _is_git_bash():
         typer.echo("  Note: Git Bash detected — env vars are still read from HKCU\\Environment.")
+    from atlassian_skills.core.config import load_config
+
+    writer_mode = load_config().attachment_writer
+    typer.echo(f"  Attachment writer: {writer_mode}")
+    if writer_mode == "compatible":
+        if platform_name != "windows":
+            typer.echo("  Attachment compatibility: inactive outside Windows")
+        else:
+            from atlassian_skills.core.attachment_io import verify_compatible_attachment_writer
+            from atlassian_skills.core.errors import AtlasError
+
+            try:
+                bash_path = verify_compatible_attachment_writer()
+            except AtlasError as exc:
+                typer.echo(f"  Attachment compatibility: unavailable ({exc.message})")
+            else:
+                typer.echo(f"  Attachment compatibility dependencies: available ({bash_path})")
     typer.echo("")
 
     typer.echo("Paths:")

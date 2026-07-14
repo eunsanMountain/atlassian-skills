@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 from atlassian_skills.core.config import (
     AuthConfig,
@@ -37,6 +38,7 @@ class TestConfigDefaults:
     def test_config_defaults(self) -> None:
         config = Config()
         assert config.default_profile == "default"
+        assert config.attachment_writer == "native"
         assert config.profiles == {}
 
 
@@ -66,6 +68,7 @@ class TestSaveConfig:
         path = tmp_path / "config.toml"
         original = Config(
             default_profile="corp",
+            attachment_writer="compatible",
             profiles={
                 "corp": Profile(
                     jira_url="https://jira.corp.example.com",
@@ -77,6 +80,7 @@ class TestSaveConfig:
         save_config(original, path)
         loaded = load_config(path)
         assert loaded.default_profile == "corp"
+        assert loaded.attachment_writer == "compatible"
         assert loaded.profiles["corp"].jira_url == "https://jira.corp.example.com"
         assert loaded.profiles["corp"].confluence_url == "https://confluence.corp.example.com"
         assert loaded.profiles["corp"].storage == "keyring"
@@ -91,7 +95,33 @@ class TestSaveConfig:
         save_config(Config(), path)
         loaded = load_config(path)
         assert loaded.default_profile == "default"
+        assert loaded.attachment_writer == "native"
         assert loaded.profiles == {}
+
+
+class TestConfigCliAttachmentWriter:
+    def test_set_and_get_attachment_writer(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from atlassian_skills.cli.main import app
+
+        monkeypatch.setattr("atlassian_skills.core.config.config_path", lambda: tmp_path / "config.toml")
+        runner = CliRunner()
+
+        set_result = runner.invoke(app, ["config", "set", "attachment_writer", "compatible"])
+        get_result = runner.invoke(app, ["config", "get", "attachment_writer"])
+
+        assert set_result.exit_code == 0, set_result.output
+        assert get_result.exit_code == 0
+        assert get_result.output.strip() == "compatible"
+
+    def test_rejects_invalid_attachment_writer(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from atlassian_skills.cli.main import app
+
+        monkeypatch.setattr("atlassian_skills.core.config.config_path", lambda: tmp_path / "config.toml")
+        result = CliRunner().invoke(app, ["config", "set", "attachment_writer", "automatic"])
+
+        assert result.exit_code == 1
+        assert "Invalid value" in result.output
+        assert load_config(tmp_path / "config.toml").attachment_writer == "native"
 
 
 class TestGetProfile:

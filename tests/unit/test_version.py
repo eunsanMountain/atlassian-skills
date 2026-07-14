@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from atlassian_skills import __version__
 from atlassian_skills.cli.main import app
+from atlassian_skills.cli.setup import ASSETS_DIR
 from atlassian_skills.cli.version import PYPI_URL, _parse_version
 
 runner = CliRunner()
@@ -15,6 +16,12 @@ runner = CliRunner()
 
 def test_module_version_matches_distribution_metadata() -> None:
     assert __version__ == installed_version("atlassian-skills")
+
+
+def test_bundled_skill_marker_matches_package_version() -> None:
+    skill = ASSETS_DIR / "skills" / "atls" / "SKILL.md"
+
+    assert f"<!-- installed-by: atls {__version__} -->" in skill.read_text(encoding="utf-8")
 
 
 class TestVersionParse:

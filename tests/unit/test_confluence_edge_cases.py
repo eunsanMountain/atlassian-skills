@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from atlassian_skills.confluence.client import ConfluenceClient, _safe_filename
+from atlassian_skills.confluence.client import ConfluenceClient
 from atlassian_skills.confluence.models import (
     Attachment,
     ConfluenceSearchResult,
@@ -15,6 +15,7 @@ from atlassian_skills.confluence.models import (
     Page,
     SpaceTreeResult,
 )
+from atlassian_skills.core.attachment_io import safe_attachment_filename
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 
@@ -487,12 +488,12 @@ def test_delete_attachment_404_raises_not_found(client: ConfluenceClient) -> Non
 
 
 # ===========================================================================
-# 9. _safe_filename function
+# 9. safe_attachment_filename function
 # ===========================================================================
 
 
 def test_safe_filename_path_traversal_basename_only() -> None:
-    result = _safe_filename("../../../etc/passwd", "fallback123")
+    result = safe_attachment_filename("../../../etc/passwd", "fallback123")
     # os.path.basename strips directory components
     assert result == "passwd"
     assert ".." not in result
@@ -500,35 +501,35 @@ def test_safe_filename_path_traversal_basename_only() -> None:
 
 
 def test_safe_filename_nested_traversal() -> None:
-    result = _safe_filename("../../secret.txt", "fallback")
+    result = safe_attachment_filename("../../secret.txt", "fallback")
     assert result == "secret.txt"
 
 
 def test_safe_filename_empty_string_uses_fallback() -> None:
-    result = _safe_filename("", "att42")
+    result = safe_attachment_filename("", "att42")
     assert result == "attachment_att42"
 
 
 def test_safe_filename_only_dots_uses_fallback() -> None:
     # lstrip(".") on "..." yields "", so fallback is used
-    result = _safe_filename("...", "att99")
+    result = safe_attachment_filename("...", "att99")
     assert result == "attachment_att99"
 
 
 def test_safe_filename_dot_prefix_stripped() -> None:
-    result = _safe_filename(".hidden-file", "att1")
+    result = safe_attachment_filename(".hidden-file", "att1")
     # lstrip(".") removes leading dot(s)
     assert result == "hidden-file"
     assert not result.startswith(".")
 
 
 def test_safe_filename_normal_filename_unchanged() -> None:
-    result = _safe_filename("diagram.png", "att1")
+    result = safe_attachment_filename("diagram.png", "att1")
     assert result == "diagram.png"
 
 
 def test_safe_filename_with_spaces() -> None:
-    result = _safe_filename("my document.pdf", "att2")
+    result = safe_attachment_filename("my document.pdf", "att2")
     assert result == "my document.pdf"
 
 

@@ -746,15 +746,13 @@ def attachment_download(
     output_dir: str = typer.Option(".", "--output-dir", "-o", help="Directory to save attachments"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
-    """Download attachments for an issue (not yet implemented — currently lists only)."""
+    """Download attachments for an issue."""
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         client = _make_client(ctx.obj)
-        attachments = client.get_attachment_content(key)
-        typer.echo(format_output(attachments, fmt), err=False)
-        if not ctx.obj.get("quiet"):
-            typer.echo(f"# output-dir: {output_dir} (download not yet implemented)", err=True)
+        paths = client.download_attachments(key, output_dir)
+        typer.echo(format_output([{"downloaded": str(path)} for path in paths], fmt), err=False)
     except AtlasError as e:
         _handle_error(e, fmt)
 

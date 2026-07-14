@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typer
+from pydantic import ValidationError as PydanticValidationError
 
 from atlassian_skills.core.config import config_path, load_config, save_config
 
@@ -32,7 +33,7 @@ def config_get(
 
 def _validate_config_key(key: str) -> None:
     """Validate that the config key is an allowed path."""
-    if key == "default_profile":
+    if key in {"default_profile", "attachment_writer"}:
         return
     if key.startswith("profiles."):
         parts = key.split(".")
@@ -48,9 +49,15 @@ def config_set(
     value: str = typer.Argument(..., help="Value to set"),
 ) -> None:
     """Set a configuration value and save it to disk."""
-    if not (key == "default_profile" or key.startswith("profiles.")):
-        typer.echo(f"Invalid config key: {key!r}. Must be 'default_profile' or 'profiles.<name>.<field>'.", err=True)
-        raise typer.Exit(1)
+    try:
+        _validate_config_key(key)
+    except typer.Exit:
+        typer.echo(
+            f"Invalid config key: {key!r}. Must be 'default_profile', 'attachment_writer', "
+            "or 'profiles.<name>.<field>'.",
+            err=True,
+        )
+        raise typer.Exit(1) from None
     config = load_config()
     data = config.model_dump()
     parts = key.split(".")
@@ -69,6 +76,10 @@ def config_set(
 
     from atlassian_skills.core.config import Config
 
-    updated = Config.model_validate(data)
+    try:
+        updated = Config.model_validate(data)
+    except PydanticValidationError as exc:
+        typer.echo(f"Invalid value for {key!r}: {exc.errors()[0]['msg']}", err=True)
+        raise typer.Exit(1) from exc
     save_config(updated)
     typer.echo(f"Set {key} = {value}")

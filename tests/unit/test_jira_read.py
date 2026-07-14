@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
 import respx
 
 from atlassian_skills.core.auth import Credential
+from atlassian_skills.core.errors import ValidationError
 from atlassian_skills.jira.client import JiraClient
 from atlassian_skills.jira.models import (
     Board,
@@ -45,6 +47,18 @@ def cred() -> Credential:
 @pytest.fixture
 def client(cred: Credential) -> JiraClient:
     return JiraClient(BASE_URL, cred)
+
+
+def _attachment_issue(content_url: str | None = f"{BASE_URL}/secure/attachment/10/report.bin") -> dict:
+    attachment = {
+        "id": "10",
+        "filename": "report.bin",
+        "size": 7,
+        "mimeType": "application/octet-stream",
+    }
+    if content_url is not None:
+        attachment["content"] = content_url
+    return {"key": "PROJ-3", "fields": {"attachment": [attachment]}}
 
 
 # ---------------------------------------------------------------------------
@@ -506,6 +520,97 @@ def test_list_watchers_missing_watchers_key(client: JiraClient) -> None:
 # ---------------------------------------------------------------------------
 # get_issue_images
 # ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_download_attachments_saves_authenticated_content(client: JiraClient, tmp_path: Path) -> None:
+    content_url = f"{BASE_URL}/secure/attachment/10/report.bin"
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
+        return_value=httpx.Response(200, json=_attachment_issue(content_url))
+    )
+    download = respx.get(content_url).mock(return_value=httpx.Response(200, content=b"payload"))
+
+    paths = client.download_attachments("PROJ-3", tmp_path)
+
+    assert paths == [tmp_path / "report.bin"]
+    assert paths[0].read_bytes() == b"payload"
+    assert download.calls[0].request.headers["Authorization"] == "Bearer test-token"
+
+
+@respx.mock
+def test_download_attachments_rejects_missing_content_url(client: JiraClient, tmp_path: Path) -> None:
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
+        return_value=httpx.Response(200, json=_attachment_issue(None))
+    )
+
+    with pytest.raises(ValidationError, match=r"10.*report\.bin"):
+        client.download_attachments("PROJ-3", tmp_path)
+
+
+@respx.mock
+def test_download_attachments_empty_issue_returns_empty_list(
+    client: JiraClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(
+        return_value=httpx.Response(200, json={"fields": {"attachment": []}})
+    )
+
+    resolve_writer = MagicMock()
+    monkeypatch.setattr("atlassian_skills.jira.client.resolve_attachment_writer", resolve_writer)
+
+    assert client.download_attachments("PROJ-3", tmp_path) == []
+    resolve_writer.assert_not_called()
+
+
+@respx.mock
+def test_download_attachments_sanitizes_filename(client: JiraClient, tmp_path: Path) -> None:
+    content_url = f"{BASE_URL}/secure/attachment/10/report.bin"
+    issue = _attachment_issue(content_url)
+    issue["fields"]["attachment"][0]["filename"] = "../../.report.bin"
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=issue))
+    respx.get(content_url).mock(return_value=httpx.Response(200, content=b"payload"))
+
+    paths = client.download_attachments("PROJ-3", tmp_path)
+
+    assert paths == [tmp_path / "report.bin"]
+    assert paths[0].read_bytes() == b"payload"
+
+
+@respx.mock
+def test_download_attachments_preserves_duplicate_filenames(client: JiraClient, tmp_path: Path) -> None:
+    first_url = f"{BASE_URL}/secure/attachment/10/report.bin"
+    second_url = f"{BASE_URL}/secure/attachment/11/report.bin"
+    issue = {
+        "fields": {
+            "attachment": [
+                {
+                    "id": "10",
+                    "filename": "report.bin",
+                    "size": 5,
+                    "mimeType": "application/octet-stream",
+                    "content": first_url,
+                },
+                {
+                    "id": "11",
+                    "filename": "../../.report.bin",
+                    "size": 6,
+                    "mimeType": "application/octet-stream",
+                    "content": second_url,
+                },
+            ]
+        }
+    }
+    respx.get(f"{BASE_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=issue))
+    respx.get(first_url).mock(return_value=httpx.Response(200, content=b"first"))
+    respx.get(second_url).mock(return_value=httpx.Response(200, content=b"second"))
+
+    paths = client.download_attachments("PROJ-3", tmp_path)
+
+    assert paths == [tmp_path / "report.bin", tmp_path / "report (2).bin"]
+    assert paths[0].read_bytes() == b"first"
+    assert paths[1].read_bytes() == b"second"
 
 
 @respx.mock

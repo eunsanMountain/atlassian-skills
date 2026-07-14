@@ -14,7 +14,7 @@ description: |
 
 # atls — Atlassian CLI Dispatcher
 
-<!-- installed-by: atls 0.2.8 -->
+<!-- installed-by: atls 0.2.13 -->
 
 ## Upgrade
 On missing command/flag or CHANGELOG-fixed behavior, run `atls version --check`; exit 1 → suggest `atls upgrade`.
@@ -39,7 +39,7 @@ atls
 │   ├── project      list, issues, versions, components, versions-create
 │   └── user         get, me
 └── confluence
-    ├── page         get, search, children, history, diff, images, create, update, delete, move, push-md, pull-md, diff-local
+    ├── page         get, search, children, history, diff, images, create, update, delete, move, push-md, pull-md, pull-batch, diff-local
     ├── space        tree
     ├── comment      list, add, reply
     ├── label        list, add
@@ -90,6 +90,7 @@ atls confluence page search "CQL query"
 atls confluence page push-md ID --md-file page.md --if-version 15
 atls confluence page push-md ID --md-file page.md --asset-dir=assets/
 atls confluence page pull-md ID --output page.md --resolve-assets=sidecar --asset-dir=assets/
+atls confluence page pull-batch ID ID --output-dir=pages/
 atls confluence page diff-local ID page.md --passthrough-prefix workflow:
 ```
 
@@ -106,6 +107,7 @@ atls confluence page diff-local ID page.md --passthrough-prefix workflow:
 | `--asset-dir DIR` | push-md, pull-md | Batch attach / download assets (missing dir on push-md = empty set) |
 | `--output -o PATH` | pull-md | Write markdown to file instead of stdout |
 | `--resolve-assets=sidecar` | pull-md | Download attachments, rewrite image links |
+| `--output-dir DIR` | pull-batch | Write page-ID-qualified directories and batch all sidecar assets |
 | `--passthrough-prefix P` | push-md, pull-md, diff-local, issue update | Preserve `<!-- P:... -->` comments |
 | `--md-file -` | push-md | Read markdown from stdin |
 | `--body-repr md\|raw\|wiki` | issue get | Control body representation (separate from `--format`) |
@@ -126,6 +128,7 @@ atls jira issue get KEY --format=md --drop-leading-notice "Auto-generated"
 ```bash
 atls confluence page push-md ID --md-file p.md --format=json  # push-md uses -f for --md-file
 atls confluence page pull-md ID --format=json                  # → {"markdown":"...","version":15,"title":"..."}
+atls confluence page pull-batch ID ID --output-dir=pages/ --format=json
 atls jira issue get KEY --format=json | jq '{key, summary}'
 atls jira issue search "project=PROJ" --format=json | jq '.[].key'
 atls jira issue get KEY --fields=summary,customfield_10100 --format=json | jq '.customfield_10100'
