@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, Literal
 
 import cfxmark
+
+from atlassian_skills.core.errors import ValidationError
 
 # Task 4: Standard language alias map for Jira Server code blocks.
 JIRA_CODE_LANGUAGE_MAP: dict[str, str] = {
@@ -17,6 +20,75 @@ JIRA_CODE_LANGUAGE_MAP: dict[str, str] = {
     "cpp": "c++",
 }
 
+_MARKDOWN_FENCE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+
+
+@dataclass(frozen=True)
+class JiraMarkdownResult:
+    """Converted Jira Markdown plus diagnostics kept outside the document body."""
+
+    markdown: str
+    warnings: tuple[str, ...] = ()
+
+
+class ReadableMarkdown(str):
+    """In-process hint for content-only Markdown; serialized output stays plain text."""
+
+
+@dataclass(frozen=True)
+class WriteConversionResult:
+    """Converted write body plus diagnostics that must reach the caller."""
+
+    body: str
+    warnings: tuple[str, ...] = ()
+    losses: tuple[str, ...] = ()
+    push_safe: bool = True
+
+
+def _line_ending_warnings(source: str) -> tuple[str, ...]:
+    fence_char = ""
+    fence_length = 0
+    for line in source.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        newline = line[len(content) :]
+        if fence_char:
+            if _is_markdown_fence_close(content, fence_char, fence_length):
+                fence_char = ""
+                fence_length = 0
+                continue
+            if "\r" in newline:
+                return ("Markdown code block line endings were normalized to LF during conversion",)
+            continue
+        fence = _opening_markdown_fence(content)
+        if fence is not None:
+            fence_char = fence[0]
+            fence_length = len(fence)
+            continue
+        if content.startswith(("    ", "\t")) and "\r" in newline:
+            return ("Markdown code block line endings were normalized to LF during conversion",)
+    return ()
+
+
+def _is_markdown_fence_close(line: str, fence_char: str, fence_length: int) -> bool:
+    stripped = line.lstrip(" ")
+    candidate = stripped.strip()
+    return (
+        len(line) - len(stripped) <= 3
+        and len(candidate) >= fence_length
+        and bool(candidate)
+        and set(candidate) == {fence_char}
+    )
+
+
+def _opening_markdown_fence(line: str) -> str | None:
+    match = _MARKDOWN_FENCE_RE.match(line)
+    if match is None:
+        return None
+    fence = match.group("fence")
+    if fence[0] == "`" and "`" in match.group("info"):
+        return None
+    return fence
+
 
 def format_page_md_header(title: str, space_key: str, version: Any) -> str:
     """Build a Markdown metadata header for a Confluence page."""
@@ -24,21 +96,34 @@ def format_page_md_header(title: str, space_key: str, version: Any) -> str:
     return f"# {title}\n\n**Space:** {space_key}  **Version:** {ver}\n\n"
 
 
-def _lossy_footer(warnings: tuple[str, ...] | list[str]) -> str:
-    """Return a lossy conversion footer if there are warnings, else empty string."""
-    if warnings:
-        return "\n\n[converted: jira-wiki→md, lossy]"
-    return ""
+def format_page_md_document(header: str, markdown: str) -> str:
+    """Add human-readable page metadata without embedding control state."""
+
+    return header + markdown
 
 
 def jira_wiki_to_md(source: str) -> str:
     """Convert Jira wiki markup to Markdown. Returns empty string on empty input."""
+
+    return jira_wiki_to_md_result(source).markdown
+
+
+def jira_wiki_to_md_result(source: str) -> JiraMarkdownResult:
+    """Convert Jira wiki markup without appending diagnostics to Markdown."""
+
     if not source:
-        return ""
-    result = cfxmark.from_jira_wiki(source)
-    md = result.markdown or ""
-    md += _lossy_footer(result.warnings)
-    return md
+        return JiraMarkdownResult(markdown="")
+    try:
+        result = cfxmark.from_jira_wiki(source)
+    except cfxmark.CfxmarkError as error:
+        raise ValidationError(
+            "Jira wiki markup could not be converted to Markdown",
+            hint=str(error),
+        ) from error
+    return JiraMarkdownResult(
+        markdown=result.markdown or "",
+        warnings=result.warnings + result.losses,
+    )
 
 
 def _extract_section(md_text: str, section: str) -> str | None:
@@ -49,7 +134,23 @@ def _extract_section(md_text: str, section: str) -> str | None:
     lines = md_text.splitlines()
     in_section = False
     collected: list[str] = []
+    fence_char = ""
+    fence_length = 0
     for line in lines:
+        if fence_char:
+            if _is_markdown_fence_close(line, fence_char, fence_length):
+                fence_char = ""
+                fence_length = 0
+            if in_section:
+                collected.append(line)
+            continue
+        fence = _opening_markdown_fence(line)
+        if fence is not None:
+            fence_char = fence[0]
+            fence_length = len(fence)
+            if in_section:
+                collected.append(line)
+            continue
         # Match H2 heading (## heading)
         h2_match = re.match(r"^##\s+(.+)$", line)
         if h2_match:
@@ -90,20 +191,39 @@ def jira_wiki_to_md_with_options(
     - skip_conversion: if True, skip wiki→md conversion but still apply section/notice extraction
       (useful when body_repr already converted the body)
     """
+    return jira_wiki_to_md_with_options_result(
+        wiki_text,
+        section=section,
+        heading_promotion=heading_promotion,
+        drop_leading_notice=drop_leading_notice,
+        skip_conversion=skip_conversion,
+    ).markdown
+
+
+def jira_wiki_to_md_with_options_result(
+    wiki_text: str,
+    *,
+    section: str | None = None,
+    heading_promotion: str | None = None,
+    drop_leading_notice: list[str] | None = None,
+    skip_conversion: bool = False,
+) -> JiraMarkdownResult:
+    """Convert Jira wiki markup and retain conversion diagnostics."""
+
+    del heading_promotion
     if not wiki_text:
-        return ""
+        return JiraMarkdownResult(markdown="")
+    warnings: tuple[str, ...] = ()
     if skip_conversion:
         md = wiki_text
     else:
         try:
             result = cfxmark.from_jira_wiki(wiki_text)
             md = result.markdown or ""
-            md += _lossy_footer(result.warnings)
+            warnings = result.warnings + result.losses
         except Exception as e:
-            import sys
-
-            print(f"[atls] warning: cfxmark conversion failed: {e}", file=sys.stderr)
-            md = wiki_text  # fallback to raw
+            warnings = (f"cfxmark conversion failed; original Jira wiki retained: {e}",)
+            md = wiki_text
 
     if drop_leading_notice:
         md = _drop_notice_lines(md, drop_leading_notice)
@@ -115,7 +235,7 @@ def jira_wiki_to_md_with_options(
             raise _SectionNotFoundError(section)
         md = extracted
 
-    return md
+    return JiraMarkdownResult(markdown=md, warnings=warnings)
 
 
 class _SectionNotFoundError(Exception):
@@ -133,38 +253,131 @@ def md_to_jira_wiki(
     passthrough_prefixes: list[str] | None = None,
 ) -> str:
     """Convert Markdown to Jira wiki markup."""
+    return md_to_jira_wiki_result(
+        source,
+        heading_promotion=heading_promotion,
+        passthrough_prefixes=passthrough_prefixes,
+    ).body
+
+
+def md_to_jira_wiki_result(
+    source: str,
+    *,
+    heading_promotion: str = "jira",
+    passthrough_prefixes: list[str] | None = None,
+) -> WriteConversionResult:
+    """Convert Markdown to Jira wiki markup and retain diagnostics."""
     if not source:
-        return ""
+        return WriteConversionResult(body="")
     opts: cfxmark.ConversionOptions | None = None
     if passthrough_prefixes:
         opts = cfxmark.ConversionOptions(passthrough_html_comment_prefixes=tuple(passthrough_prefixes))
-    result = cfxmark.to_jira_wiki(
-        source,
-        input_format="markdown",
-        heading_promotion=heading_promotion,  # type: ignore[arg-type]
-        code_language_map=JIRA_CODE_LANGUAGE_MAP,
-        options=opts,
+    try:
+        result = cfxmark.to_jira_wiki(
+            source,
+            input_format="markdown",
+            heading_promotion=heading_promotion,  # type: ignore[arg-type]
+            code_language_map=JIRA_CODE_LANGUAGE_MAP,
+            options=opts,
+        )
+    except cfxmark.CfxmarkError as error:
+        raise ValidationError(
+            "Markdown could not be converted to Jira wiki markup",
+            hint=str(error),
+        ) from error
+    return WriteConversionResult(
+        body=result.jira_wiki or "",
+        warnings=_line_ending_warnings(source) + result.warnings,
+        losses=result.losses,
+        push_safe=result.push_safe,
     )
-    return result.jira_wiki or ""
 
 
-def confluence_storage_to_md(xhtml: str) -> str:
-    """Convert Confluence Storage Format XHTML to Markdown."""
+def confluence_storage_to_md_result(
+    xhtml: str,
+    *,
+    profile: Literal["editable", "readable"] = "readable",
+    passthrough_prefixes: tuple[str, ...] = (),
+) -> cfxmark.ConversionResult:
+    """Convert storage XHTML and retain conversion diagnostics."""
+
+    if not xhtml:
+        if profile == "readable":
+            return cfxmark.ConversionResult(
+                markdown="",
+                push_safe=False,
+            )
+        return cfxmark.ConversionResult(
+            markdown="",
+            push_safe=True,
+        )
+    result = cfxmark.to_md(
+        xhtml,
+        options=cfxmark.ConversionOptions(
+            profile=profile,
+            passthrough_html_comment_prefixes=passthrough_prefixes,
+        ),
+    )
+    if profile == "readable":
+        result = replace(
+            result,
+            push_safe=False,
+        )
+    return result
+
+
+def confluence_storage_to_md(
+    xhtml: str,
+    *,
+    profile: Literal["editable", "readable"] = "readable",
+) -> str:
+    """Convert Confluence storage XHTML to a selected Markdown profile."""
+
     if not xhtml:
         return ""
-    result = cfxmark.to_md(xhtml)
-    md = result.markdown or ""
-    if result.warnings:
-        md += "\n\n[converted: storage→md, lossy]"
-    return md
+    markdown = confluence_storage_to_md_result(xhtml, profile=profile).markdown or ""
+    return ReadableMarkdown(markdown) if profile == "readable" else markdown
 
 
-def md_to_confluence_storage(source: str) -> str:
+def md_to_confluence_storage(
+    source: str,
+    *,
+    passthrough_prefixes: tuple[str, ...] = (),
+) -> str:
     """Convert Markdown to Confluence Storage Format XHTML."""
+    return md_to_confluence_storage_result(
+        source,
+        passthrough_prefixes=passthrough_prefixes,
+    ).body
+
+
+def md_to_confluence_storage_result(
+    source: str,
+    *,
+    passthrough_prefixes: tuple[str, ...] = (),
+) -> WriteConversionResult:
+    """Convert Markdown to storage XHTML and retain diagnostics."""
     if not source:
-        return ""
-    result = cfxmark.to_cfx(source)
-    return result.xhtml or ""
+        return WriteConversionResult(body="")
+    try:
+        result = cfxmark.to_cfx(
+            source,
+            options=cfxmark.ConversionOptions(
+                profile="editable",
+                passthrough_html_comment_prefixes=passthrough_prefixes,
+            ),
+        )
+    except cfxmark.CfxmarkError as error:
+        raise ValidationError(
+            "Markdown could not be converted to Confluence storage",
+            hint=str(error),
+        ) from error
+    return WriteConversionResult(
+        body=result.xhtml or "",
+        warnings=_line_ending_warnings(source) + result.warnings,
+        losses=result.losses,
+        push_safe=result.push_safe,
+    )
 
 
 def _extract_name(value: Any) -> str:

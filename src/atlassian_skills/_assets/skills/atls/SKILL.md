@@ -6,145 +6,109 @@ description: |
 
   Without this body, you WILL guess atls conventions wrong: JQL/CQL is
   positional (not --jql), --format=json (not -f json — `-f` is
-  --md-file), push-md vs page update, exit 5 = stale-version.
+  --md-file on push-md), push-md vs page update, exit 5 = stale-version.
 
   TRIGGER: Jira, Confluence, Bitbucket, atls, JQL, CQL, PROJ-123,
   지라, 컨플루언스, 비트버킷, 아틀라시안.
 ---
 
-# atls — Atlassian CLI Dispatcher
+# atls — Atlassian CLI dispatcher
 
-<!-- installed-by: atls 0.2.13 -->
+<!-- installed-by: atls 0.3.0 -->
 
-## Upgrade
-On missing command/flag or CHANGELOG-fixed behavior, run `atls version --check`; exit 1 → suggest `atls upgrade`.
+Load this skill before any `atls` command. Use `--help` for uncommon operations and `atls version --check` when a command is missing.
 
-## Command tree
+## Syntax agents often get wrong
+
+- JQL/CQL is positional: `atls jira issue search "project=PROJ"`.
+- Spell output `--format=json`; `-f` is command-specific and means `--md-file` on `push-md`.
+- Use compact for scans, JSON for agent decisions, md for reading, and raw only for byte-exact responses.
+- Main groups are `jira`, `confluence`, and `bitbucket`. There is no runtime `state` group.
+
+## Choose the Confluence workflow
+
+- Read/summarize: `atls confluence page get ID --body-repr=md`. This is content-only and never publish input. Stop here for a read-only task.
+- If edit intent is ambiguous, re-read with `page get ID --body-repr=md --format=json` so the version and body stay together.
+- One exact text leaf: dry-run `page patch-text ID --find OLD --replace NEW --if-version N --format=json`, then repeat only when exactly one occurrence is patchable.
+- Exact supported blocks appended at EOF: `pull-md` and use the exact-append proof path; do not convert the existing remote storage body.
+- Structure/table/link/code/macro/image edit: use `page inspect ID --intent=structure-edit --format=json` when presentation or migration impact affects the decision, explain that impact, then `pull-md` only if the user continues.
+- Existing managed file: validate/diff/proof-push it without an unnecessary get or repull. Fresh remote revalidation still happens inside push.
+- Exact rendered HTML: `page get ID --body-repr=view --format=raw`.
+- Locally authored Markdown: `page create` or `page update --body-format md`. These use source-conversion preflight and are not a bypass for loss consent.
+- Caller-authored storage: `page update --body-format storage` is outside Markdown conversion consent. Use it only when the user explicitly supplied or approved those exact storage bytes; stale/read-back guards still apply.
+- Validation copy: only into a verified run-owned parent with a unique caller-supplied title. Dry-run `page copy` first and keep `--verify` enabled.
+
+`inspect` is a decision aid for structural or presentation-sensitive changes, not a mandatory call before every read or exact patch.
+
+Managed `push-md` and stateless `page update --body-format md` emit different raw JSON/`status`; branch on outcome, not field equality. `diff-local` is a local Markdown diff, not a storage-candidate proof.
+
+For `patch-text`, branch on `error.context.reason`:
+
+- `text_not_found`: re-read and use the user's exact intended wording.
+- `text_occurrence_not_unique`: add caller-approved surrounding text.
+- `cross_text_node_boundary`: the match crosses markup; target one plain-text leaf or use pull-md.
+- `unsupported_target_context`: attributes and macro/code bodies are never patched.
+
+A failed patch is not a reason to switch to a lossy full-page migration. Never synthesize a new `--find` value from server text or promote failure into an automatically approved full migration.
+
+## Portable managed Markdown
+
+- `pull-md --output` is mandatory. Pull writes the file even when losses exist and returns `pulled` or `pulled_with_migrations`.
+- The top `atls:managed v=2` comment binds page/site/version/source, Markdown, asset-set, converter/profile, and passthrough hashes. Adjacent asset comments bind attachment ID/version/remote name/local hash.
+- Files may be copied or moved. There is no checkout registry, one-path rule, hidden edit-ban approval layer, or global publication database.
+- Do not casually edit the managed manifest, `cfxmark:migration`, `cfxmark:img`, `cfxmark:asset`, or active `atls:operation` comments.
+- A later web-editor save can reintroduce rich storage that Markdown cannot represent; every push therefore starts from fresh remote evidence.
+- Run `page validate-local FILE --format=json`. It is offline and reports `remote_freshness=not_checked`; it does not authorize a write.
+- Then run `page push-md ID --md-file FILE --if-version N --dry-run --format=json`.
+
+Push proof order is `no_change`, `exact_remote_prefix_append`, then `full_migration`. Exact append is valid only when existing Markdown is unchanged and supported root blocks are added at exact EOF; it preserves the complete old remote storage prefix byte-for-byte.
+
+Ambiguous source maps, duplicate identity, move ambiguity, unclassified/multiply-owned/overlap storage changes, page/site mismatch, or stale remote evidence fail before PUT. The final invocation repeats remote and local revalidation immediately before mutation and verifies a fresh read-back.
+
+## Informed consent
+
+When JSON reports `migration_consent_required`:
+
+1. Show the loss summary and fatal diagnostics before any proposed command.
+2. Do not infer consent from tests, `push_safe`, prior approval, or agent policy.
+3. Ask for explicit user approval.
+4. Only after approval, execute the returned `next_actions[].argv` exactly.
+
+An action marked `requires_user_approval=true` is never auto-run. Do not synthesize argv or add server-provided titles, usernames, URLs, or attachment filenames. Do not store or automatically replay a fingerprint. Keep it only in the active conversation until explicit approval. Any remote source, local candidate, asset plan, converter/profile, report, or proof change invalidates it.
+
+The exact cfxmark version is fingerprint input. A converter upgrade invalidates pending consent and may require a managed file to be refreshed or revalidated.
+
+- `push-md` and Markdown `page update`: `--accept-migration FINGERPRINT`.
+- Markdown `page create`: `--accept-conversion FINGERPRINT`.
+
+## Assets and recovery
+
+- Managed assets use attachment ID, version, remote filename, and local hash; filename alone is not identity.
+- Automatic asset synchronization exists only in `push-md`; page create/update/copy do not inherit it implicitly.
+- Unchanged assets are not uploaded, unreferenced files are ignored, and deleting a Markdown reference never deletes the remote attachment.
+- Reject cross-origin or credential-bearing URLs. Never place a server-provided filename outside the manifest-bound local path.
+- Partial progress is recorded by bounded operation/asset comments in the managed file. They never contain raw storage, the whole Markdown body, attachment bytes, or credentials.
+- Success removes operation comments. After crash/response loss, rerun the same push. Fresh evidence reconciles `upload_unknown`, `body_put_failed`, `readback_pending`, `reconciled`, or `conflict`; never guess that an upload or PUT succeeded.
+- The durable journal applies only to managed `push-md`. Page create/update/copy and `patch-text` use separate read-back/idempotence contracts.
+- A recovery retry that can upload or PUT requires the exact current migration fingerprint again. The operation comment is never consent; read-only finalization of an already-landed write needs no new mutation.
+
+Preserve image metadata order:
+
+```markdown
+![alt](assets/a.png)<!-- cfxmark:img w=320 h=200 thumbnail=1 align=center --><!-- cfxmark:asset src="assets/a.png" -->
 ```
-atls
-├── jira
-│   ├── issue        get, search, create, update, delete, transition, transitions, dates, sla, images
-│   ├── issue-batch  create
-│   ├── epic         link
-│   ├── comment      list, add, edit, delete
-│   ├── sprint       list, issues, create, update, add-issues
-│   ├── board        list, issues
-│   ├── field        search, options
-│   ├── link         list-types, create, remote-list, remote-create, delete
-│   ├── worklog      list, add
-│   ├── watcher      list, add, remove
-│   ├── attachment   list, upload, download, delete
-│   ├── dev-info     get, get-many
-│   ├── service-desk list, queues, queue-issues
-│   ├── project      list, issues, versions, components, versions-create
-│   └── user         get, me
-└── confluence
-    ├── page         get, search, children, history, diff, images, create, update, delete, move, push-md, pull-md, pull-batch, diff-local
-    ├── space        tree
-    ├── comment      list, add, reply
-    ├── label        list, add
-    ├── attachment   list, upload, upload-batch, download, download-all, delete
-    └── user         search, me
-├── bitbucket
-│   ├── project      list
-│   ├── repo         list, get
-│   ├── pr           list, get, diff, comments, commits, activity, create, update, merge, decline, approve, unapprove, needs-work, reopen, diffstat, statuses, pending-review
-│   ├── branch       list
-│   ├── file         get
-│   ├── comment      add, reply, update, delete, resolve, reopen
-│   └── task         list, get, create, update, delete
-```
 
-## Format selection
-1. List/scan many items? → `--format=compact` (default, fewest tokens)
-2. Parse fields programmatically? → `--format=json`
-3. Read body as readable text? → `--format=md`
-4. Preserve byte-exact server response? → `--format=raw`
+Hard breaks round-trip as `<br>`. Readable Markdown may report omitted table presentation; presentation changes follow the same reported-loss and consent path as other full migrations.
 
-## Format placement
-- **Never use `-f` as a short form for `--format`** — several commands use `-f` for file input (`page create`, `page update`, `push-md`, `confluence comment add/reply`), so `-f json` may be silently interpreted as a filename.
-- Always use the long form `--format=...` after the subcommand.
+## Write guards and output
 
-## page update vs push-md
-- `page update`: Low-level. Replace page body directly (`--body-format=storage|md`). No attachment handling.
-- `push-md`: High-level. Markdown-native with attachment syncing, passthrough comments, asset-dir, no-change detection. **Prefer this for markdown workflows.**
+- Use `--dry-run` where offered. Use `--if-version N` on Confluence update/patch/push; patch files embed their version. Use Jira `--if-updated ISO` where offered.
+- Exit codes: 0 OK; 2 not found/usage; 3 permission; 4 output/conflict; 5 stale; 6 auth; 7 validation/migration; 10 network; 11 rate limit.
+- With `--format=json`, results and error envelopes go to stdout. Human diagnostics go to stderr so body stdout remains clean.
+- `setup uninstall --state` is only explicit cleanup of a verified legacy candidate DB. It is not runtime state authority.
 
-## Common patterns
 ```bash
-# Jira
-atls jira issue get KEY                    # compact view
-atls jira issue search "project=PROJ"      # JQL search
-atls jira issue create --project PROJ --type Story --summary "..." --body-file=-
-atls jira issue update KEY --body-file=- --body-format=md --heading-promotion=jira
-atls jira comment add KEY --body-file=- --body-format=md    # md → Jira wiki (also: comment edit, worklog add --comment-format=md)
-
-# Jira transition (2-step: discover ID, then transition)
-atls jira issue transitions KEY --format=json   # → [{"id":"31","name":"In Progress"},...]
-atls jira issue transition KEY --transition-id 31
-# Or by name (case-insensitive):
-atls jira issue transition KEY --transition-name "In Progress"
-
-# Confluence
-atls confluence page get ID                # compact view
-atls confluence page search "CQL query"
-atls confluence page push-md ID --md-file page.md --if-version 15
-atls confluence page push-md ID --md-file page.md --asset-dir=assets/
-atls confluence page pull-md ID --output page.md --resolve-assets=sidecar --asset-dir=assets/
-atls confluence page pull-batch ID ID --output-dir=pages/
-atls confluence page diff-local ID page.md --passthrough-prefix workflow:
-```
-
-## Write safety
-- Always use `--dry-run` before write operations
-- Use `--if-version N` for Confluence updates & push-md (reject if stale → exit 5)
-- Use `--if-updated ISO` for Jira updates (stale check → exit 5)
-- Use `--attachment-if-exists skip|replace` to control duplicate attachments (push-md)
-
-## Key flags
-| Flag | Commands | Effect |
-|---|---|---|
-| `--if-version N` | push-md, page update | Optimistic lock (exit 5 if stale) |
-| `--asset-dir DIR` | push-md, pull-md | Batch attach / download assets (missing dir on push-md = empty set) |
-| `--output -o PATH` | pull-md | Write markdown to file instead of stdout |
-| `--resolve-assets=sidecar` | pull-md | Download attachments, rewrite image links |
-| `--output-dir DIR` | pull-batch | Write page-ID-qualified directories and batch all sidecar assets |
-| `--passthrough-prefix P` | push-md, pull-md, diff-local, issue update | Preserve `<!-- P:... -->` comments |
-| `--md-file -` | push-md | Read markdown from stdin |
-| `--body-repr md\|raw\|wiki` | issue get | Control body representation (separate from `--format`) |
-| `--body-format md` / `--comment-format md` | jira issue/comment/worklog, confluence page/comment writes | md → server format (Jira wiki / Confluence storage) |
-| `--heading-promotion jira` | issue update, issue get, issue search | Heading level adjust for md↔wiki |
-| `--section "H2 Title"` | issue get, issue search | Extract specific H2 section from body |
-
-## Exit codes
-0=OK, 2=not found, 3=permission, 4=conflict (`--if-version`), 5=stale (re-fetch), 6=auth, 7=validation, 10=network, 11=rate-limited
-
-## Jira wiki flags (--format=md)
-```bash
-atls jira issue get KEY --format=md --section "Acceptance Criteria"
-atls jira issue get KEY --format=md --drop-leading-notice "Auto-generated"
-```
-
-## JSON output parsing
-```bash
-atls confluence page push-md ID --md-file p.md --format=json  # push-md uses -f for --md-file
-atls confluence page pull-md ID --format=json                  # → {"markdown":"...","version":15,"title":"..."}
-atls confluence page pull-batch ID ID --output-dir=pages/ --format=json
-atls jira issue get KEY --format=json | jq '{key, summary}'
-atls jira issue search "project=PROJ" --format=json | jq '.[].key'
-atls jira issue get KEY --fields=summary,customfield_10100 --format=json | jq '.customfield_10100'
-```
-
-## Custom fields
-- Explicitly requested Jira `customfield_*` values are preserved in JSON issue output.
-- `jira issue update --set-customfield customfield_XXXXX=value` performs a read-back verification; if Jira silently ignores the update, the CLI exits with a validation error.
-- Use `--fields-json` instead of `--set-customfield` when the Jira field expects a structured payload.
-
-## Multi-profile setup
-```bash
-# Use non-default profile
-atls --profile corp jira issue get CORP-1
-
-# Env vars
-export ATLS_CORP_JIRA_TOKEN="pat-token-here"
-export ATLS_CORP_CONFLUENCE_TOKEN="pat-token-here"
+atls confluence page pull-md ID --output page.md --resolve-assets=sidecar --asset-dir=assets --format=json
+atls confluence page validate-local page.md --format=json
+atls confluence page push-md ID --md-file page.md --if-version N --dry-run --format=json
 ```

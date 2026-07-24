@@ -259,7 +259,7 @@ def test_retry_budget_exhaustion_raises_typed_error(
 @respx.mock
 def test_absolute_url_not_double_prefixed() -> None:
     """request() with an absolute URL must use it verbatim, not prepend base_url."""
-    absolute = "https://other.example.com/some/path"
+    absolute = f"{BASE_URL}/some/path"
     route = respx.get(absolute).mock(return_value=httpx.Response(200, json={}))
 
     client = make_client()

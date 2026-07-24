@@ -5,7 +5,7 @@ import json
 import pytest
 from pydantic import BaseModel
 
-from atlassian_skills.confluence.models import ConfluenceSearchResult, Page
+from atlassian_skills.confluence.models import Attachment, ConfluenceSearchResult, Page
 from atlassian_skills.core.format import OutputFormat, format_output
 from atlassian_skills.core.format.compact import format_compact
 from atlassian_skills.core.format.json_fmt import format_json
@@ -17,7 +17,7 @@ from atlassian_skills.core.format.markdown import (
     md_to_jira_wiki,
 )
 from atlassian_skills.core.format.raw import format_raw
-from atlassian_skills.jira.models import Issue, SearchResult, Transition, WatcherList, WorklogList
+from atlassian_skills.jira.models import Issue, JiraAttachment, SearchResult, Transition, WatcherList, WorklogList
 
 # ---------------------------------------------------------------------------
 # compact
@@ -166,6 +166,7 @@ class TestMarkdownFormat:
     def test_confluence_storage_to_md_basic(self) -> None:
         result = confluence_storage_to_md("<p>hello</p>")
         assert "hello" in result
+        assert "<!-- atls:" not in result
 
     def test_md_to_confluence_storage_empty(self) -> None:
         assert md_to_confluence_storage("") == ""
@@ -402,6 +403,14 @@ def test_compact_confluence_search_result() -> None:
     output = format_compact(search)
     assert "total:1" in output
     assert "Found Page" in output
+
+
+def test_compact_attachment_titles_escape_bidi_controls() -> None:
+    jira = JiraAttachment(id="1", filename="invoice\u202egnp.exe")
+    confluence = Attachment(id="2", title="diagram\u2066cod.exe")
+
+    assert r"invoice\u202egnp.exe" in format_compact(jira)
+    assert r"diagram\u2066cod.exe" in format_compact(confluence)
 
 
 def test_compact_transition_list() -> None:

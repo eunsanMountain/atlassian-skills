@@ -66,6 +66,18 @@ class TestInstall:
         backup = target.with_suffix(target.suffix + ".bak")
         assert not backup.exists()
 
+    def test_install_preserves_canonical_skill_bytes_without_newline_translation(self, tmp_path: Path) -> None:
+        source = tmp_path / "source.md"
+        source.write_bytes(b"line-one\nline-two\n")
+        target = tmp_path / "target.md"
+        target.write_bytes(b"line-one\r\nline-two\r\n")
+
+        msg = _install(source, target)
+
+        assert "updated" in msg
+        assert target.read_bytes() == source.read_bytes()
+        assert target.with_suffix(".md.bak").read_bytes() == b"line-one\r\nline-two\r\n"
+
 
 class TestInjectClaudeMdBlock:
     def test_creates_claude_md_if_missing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -277,7 +289,7 @@ class TestSetupCodexShim:
         assert "ATLS-CODEX:START" in agents_content
         # Deprecation warning on stderr only
         assert "deprecated" in result.output
-        assert "0.3.0" in result.output
+        assert "0.4.0" in result.output
 
 
 class TestSetupAllShim:
@@ -1086,7 +1098,9 @@ class TestAuthStatusResolve:
 
         mock_keyring.get_password.assert_any_call("atls-default", "jira_token")
 
-    def test_resolve_false_does_not_run_command(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_false_does_not_run_or_disclose_command(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         import atlassian_skills.core.config as config_mod
         from atlassian_skills.cli.auth import render_auth_status
 
@@ -1099,6 +1113,9 @@ class TestAuthStatusResolve:
             render_auth_status("default", resolve=False)
 
         mock_run.assert_not_called()
+        output = capsys.readouterr().out
+        assert "configured (redacted)" in output
+        assert "echo should-not-run" not in output
 
     def test_env_shadowing_configured_keyring_is_warned(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -1165,3 +1182,49 @@ class TestWizardMenuDefault:
 
         assert result.exit_code == 0, result.output
         assert "[s]kip / [e]dit / [r]emove [default=s]" in result.output
+
+
+class TestSetupUninstall:
+    def test_default_uninstall_removes_only_owned_skills_and_routing_blocks(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import atlassian_skills.cli.setup as setup_mod
+        from atlassian_skills.cli.main import app
+
+        targets = [tmp_path / name / "skills" / "atls" / "SKILL.md" for name in ("claude", "codex", "copilot")]
+        for target in targets:
+            target.parent.mkdir(parents=True)
+            target.write_text("<!-- installed-by: atls 0.3.0 -->\n", encoding="utf-8")
+        claude_md = tmp_path / "CLAUDE.md"
+        claude_md.write_text(f"user\n{setup_mod._claude_md_block()}\nkeep\n", encoding="utf-8")
+        codex_md = tmp_path / "AGENTS.md"
+        codex_md.write_text(f"user\n{setup_mod._codex_agents_block()}\nkeep\n", encoding="utf-8")
+        copilot_md = tmp_path / "copilot.md"
+        copilot_md.write_text(f"user\n{setup_mod._copilot_instructions_block()}\nkeep\n", encoding="utf-8")
+        monkeypatch.setattr(setup_mod, "_get_claude_skill_target", lambda: targets[0])
+        monkeypatch.setattr(setup_mod, "_get_codex_skill_target", lambda: targets[1])
+        monkeypatch.setattr(setup_mod, "_get_copilot_skill_target", lambda: targets[2])
+        monkeypatch.setattr(setup_mod, "_get_claude_md_path", lambda: claude_md)
+        monkeypatch.setattr(setup_mod, "_get_codex_agents_path", lambda: codex_md)
+        monkeypatch.setattr(setup_mod, "_get_copilot_instructions_path", lambda: copilot_md)
+
+        dry_run = CliRunner().invoke(app, ["setup", "uninstall", "--dry-run"])
+        assert dry_run.exit_code == 0, dry_run.output
+        assert all(target.exists() for target in targets)
+
+        result = CliRunner().invoke(app, ["setup", "uninstall"])
+
+        assert result.exit_code == 0, result.output
+        assert all(not target.exists() for target in targets)
+        assert claude_md.read_text(encoding="utf-8") == "user\nkeep\n"
+        assert codex_md.read_text(encoding="utf-8") == "user\nkeep\n"
+        assert copilot_md.read_text(encoding="utf-8") == "user\nkeep\n"
+        assert "preserved: managed Markdown files" in result.output
+
+    def test_explicit_state_cleanup_requires_yes(self) -> None:
+        from atlassian_skills.cli.main import app
+
+        result = CliRunner().invoke(app, ["setup", "uninstall", "--state"])
+
+        assert result.exit_code == 7
+        assert "require --yes" in result.stderr

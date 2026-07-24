@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import subprocess
 from unittest.mock import MagicMock, patch
@@ -484,12 +485,14 @@ class TestResolveCredentialProviders:
     def test_command_nonzero_exit_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
         monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
-        profile = Profile(storage="command", credential_command="bad-cmd")
+        command_secret = "secret-tool lookup account raw-command-secret"
+        stderr_secret = "provider failed with token=raw-stderr-secret"
+        profile = Profile(storage="command", credential_command=command_secret)
 
         mock_result = MagicMock()
-        mock_result.returncode = 1
+        mock_result.returncode = 17
         mock_result.stdout = ""
-        mock_result.stderr = "command not found"
+        mock_result.stderr = stderr_secret
 
         with (
             patch("atlassian_skills.core.auth.subprocess.run", return_value=mock_result),
@@ -497,23 +500,37 @@ class TestResolveCredentialProviders:
         ):
             resolve_credential("corp", "jira", profile)
 
-        assert "command not found" in (exc_info.value.hint or "")
+        error = exc_info.value
+        rendered = "\n".join((error.message, error.hint or "", json.dumps(error.to_dict(), sort_keys=True)))
+        assert "exited 17" in error.message
+        assert command_secret not in rendered
+        assert stderr_secret not in rendered
+        assert "raw-command-secret" not in rendered
+        assert "raw-stderr-secret" not in rendered
 
     def test_command_timeout_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)
         monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
-        profile = Profile(storage="command", credential_command="slow-cmd")
+        command_secret = "secret-tool lookup account timeout-command-secret"
+        stderr_secret = "partial stderr timeout-stderr-secret"
+        profile = Profile(storage="command", credential_command=command_secret)
 
         with (
             patch(
                 "atlassian_skills.core.auth.subprocess.run",
-                side_effect=subprocess.TimeoutExpired("slow-cmd", 5),
+                side_effect=subprocess.TimeoutExpired(command_secret, 5, stderr=stderr_secret),
             ),
             pytest.raises(AuthError) as exc_info,
         ):
             resolve_credential("corp", "jira", profile)
 
-        assert "timed out" in str(exc_info.value).lower()
+        error = exc_info.value
+        rendered = "\n".join((error.message, error.hint or "", json.dumps(error.to_dict(), sort_keys=True)))
+        assert "timed out" in error.message.lower()
+        assert command_secret not in rendered
+        assert stderr_secret not in rendered
+        assert "timeout-command-secret" not in rendered
+        assert "timeout-stderr-secret" not in rendered
 
     def test_command_without_credential_command_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ATLS_CORP_JIRA_TOKEN", raising=False)

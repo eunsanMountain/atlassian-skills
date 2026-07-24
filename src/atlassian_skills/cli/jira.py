@@ -12,10 +12,12 @@ from atlassian_skills.core.dryrun import format_dry_run
 from atlassian_skills.core.errors import AtlasError, ValidationError
 from atlassian_skills.core.format import OutputFormat, format_output
 from atlassian_skills.core.format.markdown import (
+    WriteConversionResult,
     _SectionNotFoundError,
     format_md_issue,
-    jira_wiki_to_md,
-    jira_wiki_to_md_with_options,
+    jira_wiki_to_md_result,
+    jira_wiki_to_md_with_options_result,
+    md_to_jira_wiki_result,
 )
 from atlassian_skills.core.models import WriteResult
 from atlassian_skills.core.stdin import read_body
@@ -106,6 +108,55 @@ def _handle_error(err: AtlasError, fmt: OutputFormat) -> None:
         if err.hint:
             typer.echo(f"Hint:  {err.hint}", err=True)
     raise typer.Exit(err.exit_code)
+
+
+def _emit_conversion_warnings(ctx: typer.Context, warnings: tuple[str, ...]) -> None:
+    if ctx.obj.get("quiet"):
+        return
+    for message in warnings:
+        typer.echo(f"# conversion: {message}", err=True)
+
+
+def _conversion_diagnostics(result: WriteConversionResult) -> dict[str, Any]:
+    return {
+        "push_safe": result.push_safe,
+        "warnings": list(result.warnings),
+        "losses": list(result.losses),
+    }
+
+
+def _assert_write_conversion_safe(result: WriteConversionResult) -> None:
+    if result.push_safe and not result.losses:
+        return
+    raise ValidationError(
+        "The Markdown body cannot be converted without losing content.",
+        hint="Resolve the reported conversion losses before publishing.",
+        context=_conversion_diagnostics(result),
+    )
+
+
+def _output_with_write_diagnostics(
+    ctx: typer.Context,
+    output: Any,
+    fmt: OutputFormat,
+    conversion: WriteConversionResult,
+) -> Any:
+    has_diagnostics = bool(conversion.warnings or conversion.losses or not conversion.push_safe)
+    if not has_diagnostics:
+        return output
+    if fmt != OutputFormat.JSON:
+        _emit_conversion_warnings(ctx, conversion.warnings + conversion.losses)
+        return output
+    if isinstance(output, dict):
+        payload: Any = dict(output)
+    elif hasattr(output, "model_dump"):
+        payload = output.model_dump(mode="json", exclude_none=True)
+    else:
+        payload = output
+    if isinstance(payload, dict):
+        payload["conversion"] = _conversion_diagnostics(conversion)
+        return payload
+    return {"result": payload, "conversion": _conversion_diagnostics(conversion)}
 
 
 def _issue_to_compact_dict(issue: Issue) -> dict[str, Any]:
@@ -263,11 +314,14 @@ def issue_get(
             return
 
         issue = client.get_issue(key, fields=field_list)
+        conversion_warnings: tuple[str, ...] = ()
 
         # Task 1: --body-repr conversion on the description field.
         if body_repr and issue.description:
             if body_repr == "md":
-                issue.description = jira_wiki_to_md(issue.description)
+                conversion = jira_wiki_to_md_result(issue.description)
+                issue.description = conversion.markdown
+                conversion_warnings += conversion.warnings
             # "raw" and "wiki" keep the original wiki markup (Server stores wiki natively)
 
         if fmt == OutputFormat.MD and (section or heading_promotion or notice_prefixes):
@@ -276,23 +330,36 @@ def issue_get(
                 # body_repr=md: already converted, but section/notice extraction still works on md text
                 # body_repr unset: full wiki→md conversion + section extraction
                 try:
-                    body_md = jira_wiki_to_md_with_options(
+                    conversion = jira_wiki_to_md_with_options_result(
                         description_raw,
                         section=section,
                         heading_promotion=heading_promotion,
                         drop_leading_notice=notice_prefixes,
                         skip_conversion=bool(body_repr),
                     )
+                    body_md = conversion.markdown
+                    conversion_warnings += conversion.warnings
                 except _SectionNotFoundError as exc:
                     raise ValidationError(f"Section '{exc.section}' not found in issue body") from exc
             else:
                 # body_repr=raw/wiki: keep as-is, section extraction not meaningful on wiki markup
                 body_md = description_raw
             typer.echo(body_md)
+            _emit_conversion_warnings(ctx, conversion_warnings)
         elif fmt == OutputFormat.MD and body_repr:
             # body_repr already set the body representation → skip format_md_issue's wiki→md conversion
             data = issue.model_dump()
             typer.echo(format_md_issue(data, skip_body_conversion=True))
+            _emit_conversion_warnings(ctx, conversion_warnings)
+        elif fmt == OutputFormat.MD:
+            conversion = jira_wiki_to_md_result(issue.description or "")
+            issue.description = conversion.markdown
+            typer.echo(format_md_issue(_issue_to_json_dict(issue), skip_body_conversion=True))
+            _emit_conversion_warnings(ctx, conversion.warnings)
+        elif fmt == OutputFormat.JSON and body_repr == "md":
+            payload = _issue_to_json_dict(issue)
+            payload["conversion"] = {"warnings": list(conversion_warnings)}
+            typer.echo(format_output(payload, fmt))
         else:
             typer.echo(_render_issue(issue, fmt))
     except AtlasError as e:
@@ -324,19 +391,33 @@ def issue_search(
         result = client.search(jql, fields=field_list, max_results=limit)
         if fmt == OutputFormat.MD and (section or heading_promotion or notice_prefixes):
             parts: list[str] = []
+            conversion_warnings: list[str] = []
             for issue in result.issues:
                 description_raw = issue.description or ""
                 try:
-                    body_md = jira_wiki_to_md_with_options(
+                    conversion = jira_wiki_to_md_with_options_result(
                         description_raw,
                         section=section,
                         heading_promotion=heading_promotion,
                         drop_leading_notice=notice_prefixes,
                     )
+                    body_md = conversion.markdown
+                    conversion_warnings.extend(f"{issue.key}: {message}" for message in conversion.warnings)
                 except _SectionNotFoundError as exc:
                     raise ValidationError(f"Section '{exc.section}' not found in issue '{issue.key}' body") from exc
                 parts.append(f"# {issue.key}: {issue.summary or ''}\n\n{body_md}")
             typer.echo("\n\n---\n\n".join(parts))
+            _emit_conversion_warnings(ctx, tuple(conversion_warnings))
+        elif fmt == OutputFormat.MD:
+            parts = []
+            conversion_warnings = []
+            for issue in result.issues:
+                conversion = jira_wiki_to_md_result(issue.description or "")
+                issue.description = conversion.markdown
+                parts.append(format_md_issue(_issue_to_json_dict(issue), skip_body_conversion=True))
+                conversion_warnings.extend(f"{issue.key}: {message}" for message in conversion.warnings)
+            typer.echo("\n\n---\n\n".join(parts))
+            _emit_conversion_warnings(ctx, tuple(conversion_warnings))
         else:
             typer.echo(_render_issue_list(result.issues, fmt))
     except AtlasError as e:
@@ -844,12 +925,13 @@ def issue_create(
             "issuetype": {"name": type},
             "summary": summary,
         }
+        body_conversion = WriteConversionResult(body="")
         if body_file:
             body_text = read_body(body_file=body_file)
             if body_format == "md":
-                from atlassian_skills.core.format.markdown import md_to_jira_wiki
-
-                body_text = md_to_jira_wiki(body_text)
+                body_conversion = md_to_jira_wiki_result(body_text)
+                _assert_write_conversion_safe(body_conversion)
+                body_text = body_conversion.body
             fields["description"] = body_text
         if fields_json:
             try:
@@ -859,15 +941,17 @@ def issue_create(
 
         if dry_run:
             client = _make_client(ctx.obj)
+            _emit_conversion_warnings(ctx, body_conversion.warnings + body_conversion.losses)
             typer.echo(format_dry_run("POST", f"{client.base_url}/rest/api/2/issue", body={"fields": fields}))
             return
 
         client = _make_client(ctx.obj)
         result = client.create_issue(fields)
         if fmt == OutputFormat.COMPACT:
-            typer.echo(format_output(WriteResult(action="created", key=result.get("key", ""), summary=summary), fmt))
+            output = WriteResult(action="created", key=result.get("key", ""), summary=summary)
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, output, fmt, body_conversion), fmt))
         else:
-            typer.echo(format_output(result, fmt))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, result, fmt, body_conversion), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -918,16 +1002,17 @@ def issue_update(
                 )
 
         fields: dict[str, Any] = {}
+        body_conversion = WriteConversionResult(body="")
         if body_file:
             body_text = read_body(body_file=body_file)
             if body_format == "md":
-                from atlassian_skills.core.format.markdown import md_to_jira_wiki
-
-                body_text = md_to_jira_wiki(
+                body_conversion = md_to_jira_wiki_result(
                     body_text,
                     heading_promotion=heading_promotion or "jira",
                     passthrough_prefixes=passthrough_prefix or None,
                 )
+                _assert_write_conversion_safe(body_conversion)
+                body_text = body_conversion.body
             fields["description"] = body_text
         if fields_json:
             try:
@@ -938,15 +1023,18 @@ def issue_update(
         fields.update(customfield_updates)
 
         if dry_run:
+            _emit_conversion_warnings(ctx, body_conversion.warnings + body_conversion.losses)
             typer.echo(format_dry_run("PUT", f"{client.base_url}/rest/api/2/issue/{key}", body={"fields": fields}))
             return
 
         result = client.update_issue(key, fields=fields or None)
         _verify_customfield_updates(client, key, customfield_updates)
         if fmt == OutputFormat.COMPACT:
-            typer.echo(format_output(WriteResult(action="updated", key=key), fmt))
+            compact_output = WriteResult(action="updated", key=key)
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, compact_output, fmt, body_conversion), fmt))
         else:
-            typer.echo(format_output(result or {"status": "updated", "key": key}, fmt))
+            result_output = result or {"status": "updated", "key": key}
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, result_output, fmt, body_conversion), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1081,20 +1169,23 @@ def comment_add(
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         text = read_body(body=body, body_file=body_file)
+        body_conversion = WriteConversionResult(body=text)
         if body_format == "md":
-            from atlassian_skills.core.format.markdown import md_to_jira_wiki
-
-            text = md_to_jira_wiki(text)
+            body_conversion = md_to_jira_wiki_result(text)
+            _assert_write_conversion_safe(body_conversion)
+            text = body_conversion.body
         if dry_run:
             client = _make_client(ctx.obj)
+            _emit_conversion_warnings(ctx, body_conversion.warnings + body_conversion.losses)
             typer.echo(format_dry_run("POST", f"{client.base_url}/rest/api/2/issue/{key}/comment", body={"body": text}))
             return
         client = _make_client(ctx.obj)
         result = client.add_comment(key, text)
         if fmt == OutputFormat.COMPACT:
-            typer.echo(format_output(WriteResult(action="commented", key=key, id=result.get("id")), fmt))
+            output = WriteResult(action="commented", key=key, id=result.get("id"))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, output, fmt, body_conversion), fmt))
         else:
-            typer.echo(format_output(result, fmt))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, result, fmt, body_conversion), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1116,16 +1207,18 @@ def comment_edit(
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         text = read_body(body=body, body_file=body_file)
+        body_conversion = WriteConversionResult(body=text)
         if body_format == "md":
-            from atlassian_skills.core.format.markdown import md_to_jira_wiki
-
-            text = md_to_jira_wiki(text)
+            body_conversion = md_to_jira_wiki_result(text)
+            _assert_write_conversion_safe(body_conversion)
+            text = body_conversion.body
         client = _make_client(ctx.obj)
         result = client.edit_comment(key, comment_id, text)
         if fmt == OutputFormat.COMPACT:
-            typer.echo(format_output(WriteResult(action="edited", key=key, summary=comment_id), fmt))
+            output = WriteResult(action="edited", key=key, summary=comment_id)
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, output, fmt, body_conversion), fmt))
         else:
-            typer.echo(format_output(result, fmt))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, result, fmt, body_conversion), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1178,18 +1271,18 @@ def worklog_add(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        body_conversion = WriteConversionResult(body=comment or "")
         if comment and comment_format == "md":
-            from atlassian_skills.core.format.markdown import md_to_jira_wiki
-
-            comment = md_to_jira_wiki(comment)
+            body_conversion = md_to_jira_wiki_result(comment)
+            _assert_write_conversion_safe(body_conversion)
+            comment = body_conversion.body
         client = _make_client(ctx.obj)
         result = client.add_worklog(key, time_spent_seconds, comment=comment, started=started)
         if fmt == OutputFormat.COMPACT:
-            typer.echo(
-                format_output(WriteResult(action="worklog added", key=key, summary=str(result.get("id") or "")), fmt)
-            )
+            output = WriteResult(action="worklog added", key=key, summary=str(result.get("id") or ""))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, output, fmt, body_conversion), fmt))
         else:
-            typer.echo(format_output(result, fmt))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, result, fmt, body_conversion), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 

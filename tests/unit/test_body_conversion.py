@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from atlassian_skills.core.errors import ValidationError
 from atlassian_skills.core.format.markdown import (
     _drop_notice_lines,
     _extract_section,
     _SectionNotFoundError,
     confluence_storage_to_md,
+    confluence_storage_to_md_result,
     jira_wiki_to_md,
     jira_wiki_to_md_with_options,
     md_to_confluence_storage,
+    md_to_confluence_storage_result,
     md_to_jira_wiki,
+    md_to_jira_wiki_result,
 )
 from atlassian_skills.jira.preprocessing import (
     normalize_smart_links,
@@ -47,6 +52,19 @@ def test_jira_wiki_to_md_preserves_headings() -> None:
     """Basic heading conversion."""
     md = jira_wiki_to_md("h2. 방향\n내용")
     assert "방향" in md
+
+
+@pytest.mark.parametrize(
+    "converter",
+    [
+        jira_wiki_to_md,
+        jira_wiki_to_md_with_options,
+    ],
+)
+def test_jira_wiki_warnings_are_not_appended_to_document_body(converter: Callable[[str], str]) -> None:
+    result = converter("[~sample-user]")
+
+    assert "[converted:" not in result
 
 
 def test_md_to_jira_wiki_basic() -> None:
@@ -226,11 +244,67 @@ def test_confluence_storage_empty() -> None:
     assert confluence_storage_to_md("") == ""
 
 
+def test_confluence_readable_profile_has_no_control_or_lossy_footer() -> None:
+    xhtml = '<p><span style="color:var(--ds-text-accent-green, #216e4e)">Ready</span></p>'
+
+    result = confluence_storage_to_md(xhtml)
+
+    assert "<!-- atls:" not in result
+    assert "Ready" in result
+    assert "data-cfx-color" not in result
+    assert "[converted:" not in result
+
+
 def test_confluence_storage_nested() -> None:
     xhtml = "<ul><li>Item A<ul><li>Nested B</li></ul></li></ul>"
     result = confluence_storage_to_md(xhtml)
     assert "Item A" in result
     assert "Nested B" in result
+
+
+def test_confluence_hard_break_uses_canonical_br_and_reaches_a_fixed_point() -> None:
+    storage = "<p>alpha<br/>beta</p>"
+
+    markdown = confluence_storage_to_md_result(storage, profile="editable").markdown
+    assert markdown == "alpha<br>beta\n"
+
+    rendered = md_to_confluence_storage_result(markdown).body
+    assert rendered == "<p>alpha<br/>beta</p>"
+    assert confluence_storage_to_md_result(rendered, profile="editable").markdown == markdown
+
+
+def test_confluence_image_comment_uses_canonical_order_and_space_separated_attributes() -> None:
+    storage = (
+        '<p><ac:image ac:align="center" ac:thumbnail="true" ac:width="320" ac:height="180">'
+        '<ri:attachment ri:filename="diagram.png"/></ac:image></p>'
+    )
+
+    markdown = confluence_storage_to_md_result(storage, profile="editable").markdown
+
+    assert markdown == (
+        "![](diagram.png)"
+        "<!-- cfxmark:img w=320 h=180 thumbnail=1 align=center -->"
+        '<!-- cfxmark:asset src="diagram.png" -->\n'
+    )
+    assert "cfxmark:w=" not in markdown
+    assert "w=320,h=" not in markdown
+    assert md_to_confluence_storage_result(markdown).body == (
+        '<p><ac:image ac:width="320" ac:height="180" ac:thumbnail="true" ac:align="center">'
+        '<ri:attachment ri:filename="diagram.png"/></ac:image></p>'
+    )
+
+
+def test_confluence_table_cell_image_uses_the_same_canonical_comment_grammar() -> None:
+    storage = (
+        "<table><thead><tr><th>Image</th></tr></thead><tbody><tr><td>"
+        '<ac:image ac:width="100"><ri:attachment ri:filename="cell.png"/></ac:image>'
+        "</td></tr></tbody></table>"
+    )
+
+    markdown = confluence_storage_to_md_result(storage, profile="editable").markdown
+
+    assert '| ![](cell.png)<!-- cfxmark:img w=100 --><!-- cfxmark:asset src="cell.png" --> |' in markdown
+    assert "cfxmark:w=" not in markdown
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +320,26 @@ def test_md_to_storage_basic() -> None:
 
 def test_md_to_storage_empty() -> None:
     assert md_to_confluence_storage("") == ""
+
+
+def test_write_conversion_results_retain_diagnostics() -> None:
+    jira_result = md_to_jira_wiki_result('[label](https://example.invalid "tooltip")')
+    storage_result = md_to_confluence_storage_result("```text\r\nline one\r\nline two\r\n```\r\n")
+
+    assert "tooltip" not in jira_result.body
+    assert any("title" in warning for warning in jira_result.warnings)
+    assert any("normalized to LF" in warning for warning in storage_result.warnings)
+
+
+def test_regular_windows_line_endings_do_not_emit_code_warning() -> None:
+    result = md_to_confluence_storage_result("line one\r\nline two\r\n")
+
+    assert result.warnings == ()
+
+
+def test_invalid_markdown_conversion_raises_validation_error() -> None:
+    with pytest.raises(ValidationError, match="could not be converted"):
+        md_to_confluence_storage_result("| Header |\n| --- |\n| `left|right` |\n")
 
 
 # ---------------------------------------------------------------------------

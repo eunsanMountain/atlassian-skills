@@ -16,6 +16,7 @@ from atlassian_skills.bitbucket.models import (
     PullRequestComment,
 )
 from atlassian_skills.core.auth import Credential
+from atlassian_skills.core.errors import ValidationError
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "bitbucket"
 BASE_URL = "https://bitbucket.example.com"
@@ -265,6 +266,27 @@ def test_list_pr_comments_paginate_to_fill_limit() -> None:
     # Followed to page 2 to fill 2 comments, then capped. Old code ignored the
     # limit and would have returned all 3.
     assert [c.id for c in result] == [1, 2]
+
+
+@respx.mock
+def test_bitbucket_pagination_rejects_repeated_start_token() -> None:
+    activities = f"{BASE_URL}{API}/projects/PROJ/repos/my-repo/pull-requests/1/activities"
+    respx.get(activities).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "values": [],
+                "isLastPage": False,
+                "nextPageStart": 0,
+            },
+        )
+    )
+    client = BitbucketClient(BASE_URL, cred)
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.list_pull_request_comments("PROJ", "my-repo", 1)
+
+    assert exc_info.value.context == {"reason": "pagination_cycle", "next_start": 0}
 
 
 # ---------------------------------------------------------------------------

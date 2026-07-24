@@ -46,6 +46,7 @@ class Attachment(BaseModel):
 
     id: str
     title: str
+    version: PageVersion | int | None = None
     media_type: str | None = Field(default=None, alias="mediaType")
     file_size: int | None = Field(default=None, alias="fileSize")
     links: PageLinks | None = Field(default=None, alias="_links")
@@ -93,13 +94,18 @@ class Page(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _extract_body_storage(cls, data: Any) -> Any:
-        """Extract body_storage from nested body.storage.value if present."""
-        if isinstance(data, dict) and not data.get("body_storage"):
+        """Extract storage and rendered view bodies from nested response fields."""
+        if isinstance(data, dict):
             body = data.get("body")
             if isinstance(body, dict):
-                storage = body.get("storage")
-                if isinstance(storage, dict):
-                    data["body_storage"] = storage.get("value", "")
+                if not data.get("body_storage"):
+                    storage = body.get("storage")
+                    if isinstance(storage, dict):
+                        data["body_storage"] = storage.get("value", "")
+                if not data.get("body_view"):
+                    view = body.get("view")
+                    if isinstance(view, dict):
+                        data["body_view"] = view.get("value", "")
         return data
 
     @model_validator(mode="before")

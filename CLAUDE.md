@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.2.13 (Confluence `page pull-batch` multi-page pulls; native-by-default attachment writes with an optional Windows compatibility writer; `jira attachment download` saves files; atomic Confluence attachment downloads; consistent version reporting across CLI/doctor; keyring + shell-command credential storage with per-product commands; legacy `setup all/codex/claude/paths/status` deprecated for removal in 0.3.0)
+- **Current version**: 0.3.0 (portable Markdown-first Confluence workflow, source-bound informed consent, state-free body/asset recovery, and smart asset synchronization)
 
 ## Build & Run
 
@@ -94,7 +94,7 @@ docs/                       # design docs and analyses
 
 1. **The CLI is the product** — the skill is a thin wrapper that calls it
 2. **Token efficiency** — compact format is the default; ≥50% reduction at L1 vs MCP
-3. **Single cfxmark dependency** — both Confluence XHTML and Jira wiki conversion go through cfxmark (>=0.4)
+3. **Single cfxmark dependency** — both Confluence XHTML and Jira wiki conversion go through cfxmark (>=0.5)
 4. **Server/DC only** — Cloud compatibility is a non-goal
 5. **Byte-preserving raw** — `--format=raw` does not alter a single byte of the server response
 
@@ -105,7 +105,7 @@ docs/                       # design docs and analyses
 | `httpx` | REST client (sync) |
 | `typer` + `rich` | CLI framework |
 | `pydantic` | Response models |
-| `cfxmark>=0.4` | Confluence XHTML ↔ md, Jira wiki ↔ md |
+| `cfxmark>=0.5` | Confluence XHTML ↔ md artifacts, Jira wiki ↔ md |
 | `platformdirs` | Config paths |
 
 ## Authentication (§7.1)

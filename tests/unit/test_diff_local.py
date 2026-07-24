@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from atlassian_skills.confluence.diff_local import diff_local
 from atlassian_skills.confluence.models import Page, PageVersion
 from atlassian_skills.core.format.markdown import md_to_confluence_storage
@@ -40,6 +42,11 @@ class TestDiffIdentical:
         assert exit_code == 0
         assert diff_output == ""
 
+        result = diff_local(client, "12345", local_file)
+        assert result.push_safe is True
+        assert result.warnings == ()
+        assert result.losses == ()
+
 
 class TestDiffDifferent:
     def test_different_returns_one(self, tmp_path: Path) -> None:
@@ -74,6 +81,17 @@ class TestDiffWhitespaceNormalization:
 
         assert exit_code == 0
         assert diff_output == ""
+
+    def test_boundary_nbsp_difference_is_reported(self, tmp_path: Path) -> None:
+        page = _make_page(body_storage="<p>A</p>")
+        client = _make_client(page)
+        local_file = tmp_path / "page.md"
+        local_file.write_text("\u00a0A\u00a0\n", encoding="utf-8")
+
+        result = diff_local(client, "12345", local_file)
+
+        assert result.exit_code == 1
+        assert "A" in result.diff_output
 
 
 class TestDiffPassthrough:
@@ -120,3 +138,28 @@ class TestDiffPassthrough:
         # This test validates the flag has an effect — the key assertion is in
         # test_passthrough_prefix_ignored_in_diff above
         assert exit_code in (0, 1)  # Either way is valid; key point is flag changes behavior
+
+
+class TestDiffDiagnostics:
+    def test_reports_unsupported_server_content(self, tmp_path: Path) -> None:
+        page = _make_page(
+            body_storage=('<ac:structured-macro xmlns:ac="http://atlassian.com/content" ac:name="sample-unknown"/>')
+        )
+        client = _make_client(page)
+        local_file = tmp_path / "page.md"
+        local_file.write_text("# Local replacement\n", encoding="utf-8")
+
+        result = diff_local(client, "12345", local_file)
+
+        assert result.push_safe is False
+        assert any("server:" in loss for loss in result.losses)
+
+    def test_non_utf8_local_file_raises_validation_error(self, tmp_path: Path) -> None:
+        client = _make_client(_make_page(body_storage="<p>Server</p>"))
+        local_file = tmp_path / "page.md"
+        local_file.write_bytes(b"\xff\xfe")
+
+        from atlassian_skills.core.errors import ValidationError
+
+        with pytest.raises(ValidationError, match="UTF-8"):
+            diff_local(client, "12345", local_file)

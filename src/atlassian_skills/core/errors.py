@@ -62,6 +62,13 @@ class AtlasError(Exception):
         return d
 
 
+class InternalError(AtlasError):
+    """Redacted emergency error emitted only by the console entrypoint boundary."""
+
+    code = "INTERNAL_ERROR"
+    exit_code = ExitCode.GENERIC
+
+
 class NotFoundError(AtlasError):
     code = "NOT_FOUND"
     exit_code = ExitCode.NOT_FOUND
@@ -90,6 +97,31 @@ class AuthError(AtlasError):
 class ValidationError(AtlasError):
     code = "VALIDATION"
     exit_code = ExitCode.VALIDATION
+
+
+class MigrationConsentRequiredError(ValidationError):
+    code = "MIGRATION_CONSENT_REQUIRED"
+
+
+class ConversionConsentRequiredError(ValidationError):
+    code = "CONVERSION_CONSENT_REQUIRED"
+
+
+def consent_retry_action(
+    argv: tuple[str, ...],
+    *,
+    option: str,
+    fingerprint: str,
+    description_code: str,
+) -> dict[str, Any]:
+    """Build the one approval-gated retry action allowed by consent errors."""
+
+    return {
+        "id": "retry_with_consent",
+        "requires_user_approval": True,
+        "description_code": description_code,
+        "argv": [*argv, option, fingerprint],
+    }
 
 
 class NetworkError(AtlasError):

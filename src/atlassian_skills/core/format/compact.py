@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from atlassian_skills.core.attachment_io import escape_bidi_controls_for_display
+
 if TYPE_CHECKING:
     from atlassian_skills.bitbucket.models import (
         Branch,
@@ -168,7 +170,7 @@ def _format_jira_attachment(att: JiraAttachment) -> str:
     created = att.created or ""
     size = att.size or 0
     mime = att.mime_type or ""
-    return f"{att.id} | {att.filename} | {mime} | {size} | {author} | {created}"
+    return f"{att.id} | {escape_bidi_controls_for_display(att.filename)} | {mime} | {size} | {author} | {created}"
 
 
 def _format_jira_comment(comment: JiraComment) -> str:
@@ -196,7 +198,7 @@ def _format_confluence_attachment(attachment: Attachment) -> str:
     """Format a Confluence Attachment as a compact one-liner."""
     media = attachment.media_type or ""
     size = attachment.file_size or 0
-    return f"{attachment.id} | {attachment.title} | {media} | {size}B"
+    return f"{attachment.id} | {escape_bidi_controls_for_display(attachment.title)} | {media} | {size}B"
 
 
 def _format_project(project: Project) -> str:

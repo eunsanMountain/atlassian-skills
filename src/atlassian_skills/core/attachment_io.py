@@ -6,18 +6,31 @@ import secrets
 import shutil
 import stat
 import subprocess
-from collections.abc import Iterable
-from dataclasses import dataclass
+import tempfile
+from collections.abc import Iterable, Iterator
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
 from atlassian_skills.core.config import load_config
+from atlassian_skills.core.directory_capability import DirectoryCapability, DirectoryCapabilityPool
 from atlassian_skills.core.errors import AtlasError, ValidationError
 
 _ATOMIC_DOWNLOAD_CREATE_ATTEMPTS = 10
 _ATTACHMENT_WRITE_TIMEOUT_SECONDS = 300
 _COMPATIBLE_CAPABILITY_TIMEOUT_SECONDS = 15
 _ERROR_DETAIL_LIMIT = 500
+_BIDI_CONTROL_CODEPOINTS = frozenset(
+    {
+        0x061C,
+        0x200E,
+        0x200F,
+        *range(0x202A, 0x202F),
+        *range(0x2066, 0x206A),
+    }
+)
 
 _COMPATIBLE_CAPABILITY_SCRIPT = "exec perl -MDigest::SHA -e 'exit 0'"
 _COMPATIBLE_BATCH_COMMAND = 'exec perl -e "$1"'
@@ -50,20 +63,29 @@ while (defined(my $stage = <STDIN>)) {
     my $destination = field();
     my $backup = field();
     my $expected = field();
-    push @items, [$stage, $destination, $backup, $expected];
+    my $before = field();
+    push @items, [$stage, $destination, $backup, $expected, $before];
 }
 
 for my $item (@items) {
-    my ($stage, undef, undef, $expected) = @$item;
+    my ($stage, undef, undef, $expected, undef) = @$item;
     die "staged hash mismatch: $stage" unless digest_file($stage) eq $expected;
 }
 
 for my $item (@items) {
-    my ($stage, $destination, $backup, $expected) = @$item;
-    if (-e $destination || -l $destination) {
+    my ($stage, $destination, $backup, $expected, $before) = @$item;
+    if ($before ne '') {
+        die "destination missing: $destination" unless -f $destination && !-l $destination;
+        die "destination changed: $destination" unless digest_file($destination) eq $before;
+        die "backup exists: $backup" if -e $backup || -l $backup;
         rename($destination, $backup) or die "backup $destination: $!";
+        die "backup changed: $backup" unless digest_file($backup) eq $before;
+        link($stage, $destination) or die "publish $destination: $!";
+        unlink($stage) or die "remove stage $stage: $!";
+    } else {
+        link($stage, $destination) or die "publish new $destination: $!";
+        unlink($stage) or die "remove stage $stage: $!";
     }
-    rename($stage, $destination) or die "publish $destination: $!";
     die "final hash mismatch: $destination" unless digest_file($destination) eq $expected;
 }
 """.strip()
@@ -79,30 +101,50 @@ class AttachmentWriter:
     kind: AttachmentWriterKind
     directory: Path | None = None
     bash_path: Path | None = None
+    requested_directory: Path | None = field(default=None, compare=False)
 
 
 class AttachmentBatchState(str, Enum):
     STAGING = "staging"
     COMMITTED = "committed"
     ABORTED = "aborted"
+    RECOVERY_REQUIRED = "recovery_required"
 
 
 @dataclass
 class _BatchItem:
+    capability: DirectoryCapability
     stage: Path
     destination: Path
     backup: Path | None
     expected_hash: str
+    before_exists: bool
+    before_hash: str | None
+    before_identity: str | None
+    published_identity: str | None = None
 
 
 def _is_windows() -> bool:
     return os.name == "nt"
 
 
+def escape_bidi_controls_for_display(value: str) -> str:
+    """Make directional controls visible without changing remote identity values."""
+
+    return "".join(
+        f"\\u{ord(character):04x}" if ord(character) in _BIDI_CONTROL_CODEPOINTS else character for character in value
+    )
+
+
 def safe_attachment_filename(title: str, fallback_id: str) -> str:
     """Return a Windows-safe filename that cannot escape its output directory."""
     leaf = title.replace("\\", "/").rsplit("/", 1)[-1].lstrip(".")
-    safe = "".join("_" if character in '<>:"/\\|?*' or ord(character) < 32 else character for character in leaf)
+    safe = "".join(
+        "_"
+        if character in '<>:"/\\|?*' or ord(character) < 32 or ord(character) in _BIDI_CONTROL_CODEPOINTS
+        else character
+        for character in leaf
+    )
     safe = safe.rstrip(" .")
     if not safe:
         safe = f"attachment_{fallback_id}"
@@ -127,56 +169,115 @@ def allocate_attachment_filename(title: str, fallback_id: str, used_names: set[s
     return safe_name
 
 
-def _existing_mode(destination: Path) -> int | None:
+def _existing_mode(capability: DirectoryCapability, leaf: str) -> int | None:
     if os.name != "posix":
         return None
     try:
-        destination_stat = destination.lstat()
+        destination_stat = capability.lstat_leaf(leaf)
     except FileNotFoundError:
         return None
     return stat.S_IMODE(destination_stat.st_mode) if stat.S_ISREG(destination_stat.st_mode) else None
 
 
-def _unique_part_path(directory: Path, prefix: str) -> Path:
-    return directory / f".{prefix}-{secrets.token_hex(16)}.part"
+def _assert_destination_safe(capability: DirectoryCapability, leaf: str, destination: Path) -> None:
+    try:
+        destination_stat = capability.lstat_leaf(leaf)
+    except FileNotFoundError:
+        return
+    file_attributes = int(getattr(destination_stat, "st_file_attributes", 0))
+    reparse_flag = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    if stat.S_ISLNK(destination_stat.st_mode) or file_attributes & reparse_flag:
+        raise ValidationError(
+            f"Attachment destination must not be a symlink or reparse point: {destination}",
+            context={"reason": "unsafe_attachment_destination", "path": str(destination)},
+        )
+    if not stat.S_ISREG(destination_stat.st_mode):
+        raise ValidationError(
+            f"Attachment destination must be an ordinary file: {destination}",
+            context={"reason": "unsafe_attachment_destination", "path": str(destination)},
+        )
+    if destination_stat.st_nlink != 1:
+        raise ValidationError(
+            f"Attachment destination must not have multiple hard links: {destination}",
+            context={"reason": "unsafe_attachment_destination", "path": str(destination)},
+        )
 
 
-def _stage_bytes(destination: Path, content: bytes) -> Path:
-    existing_mode = _existing_mode(destination)
+def _assert_item_destination_unchanged(item: _BatchItem) -> None:
+    leaf = item.destination.name
+    exists = item.capability.leaf_exists(leaf)
+    if exists != item.before_exists:
+        raise ValidationError(
+            f"Attachment destination changed after staging: {item.destination}",
+            context={"reason": "attachment_destination_changed", "path": str(item.destination)},
+        )
+    if not item.before_exists:
+        return
+    _assert_destination_safe(item.capability, leaf, item.destination)
+    actual_identity = item.capability.file_identity(leaf)
+    actual_hash = item.capability.sha256(leaf)
+    if actual_identity != item.before_identity or actual_hash != item.before_hash:
+        raise ValidationError(
+            f"Attachment destination changed after staging: {item.destination}",
+            context={
+                "reason": "attachment_destination_changed",
+                "path": str(item.destination),
+                "expected_file_identity": item.before_identity,
+                "actual_file_identity": actual_identity,
+                "expected_sha256": item.before_hash,
+                "actual_sha256": actual_hash,
+            },
+        )
+
+
+def _unique_part_path(capability: DirectoryCapability, prefix: str) -> Path:
+    return capability.path_for_leaf(f".{prefix}-{secrets.token_hex(16)}.part")
+
+
+def _stage_bytes(capability: DirectoryCapability, destination: Path, content: bytes) -> Path:
+    existing_mode = _existing_mode(capability, destination.name)
     for _ in range(_ATOMIC_DOWNLOAD_CREATE_ATTEMPTS):
-        stage = _unique_part_path(destination.parent, "atls-download")
+        stage = _unique_part_path(capability, "atls-download")
         try:
-            handle = stage.open("xb")
+            capability.write_bytes_exclusive(stage.name, content, mode=0o666)
         except FileExistsError:
             continue
-        try:
-            with handle:
-                handle.write(content)
-            if existing_mode is not None:
-                stage.chmod(existing_mode)
-            return stage
-        except BaseException:
-            _safe_unlink(stage)
-            raise
+        if existing_mode is not None:
+            capability.chmod_leaf(stage.name, existing_mode)
+        return stage
     raise FileExistsError(f"Unable to create a temporary download file for {destination}")
 
 
-def _atomic_write_bytes(destination: Path, content: bytes) -> None:
+def _atomic_write_bytes(capability: DirectoryCapability, destination: Path, content: bytes) -> None:
     """Write bytes completely before atomically publishing the destination."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    stage = _stage_bytes(destination, content)
+    _assert_destination_safe(capability, destination.name, destination)
+    stage = _stage_bytes(capability, destination, content)
     try:
-        os.replace(stage, destination)
+        _assert_destination_safe(capability, destination.name, destination)
+        capability.replace(stage.name, destination.name)
     except BaseException:
-        _safe_unlink(stage)
+        capability.unlink(stage.name, missing_ok=True)
         raise
+
+
+def atomic_write_bytes_bound(
+    capability: DirectoryCapability,
+    destination_leaf: str,
+    content: bytes,
+) -> Path:
+    """Atomically publish bytes through an already acquired directory capability."""
+
+    output = capability.path_for_leaf(destination_leaf)
+    _atomic_write_bytes(capability, output, content)
+    return output
 
 
 def atomic_write_bytes(destination: str | Path, content: bytes) -> Path:
     """Atomically publish ordinary local bytes without resolving an attachment writer."""
-    output = Path(destination).resolve()
-    _atomic_write_bytes(output, content)
-    return output
+    raw = Path(destination).expanduser()
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    with DirectoryCapability.acquire(raw.parent) as capability:
+        return atomic_write_bytes_bound(capability, raw.name, content)
 
 
 def _git_bash_candidates() -> list[Path]:
@@ -256,9 +357,14 @@ def verify_compatible_attachment_writer(bash_path: Path | None = None) -> Path:
 
 def resolve_attachment_writer(directory: str | Path) -> AttachmentWriter:
     """Resolve the configured attachment writer without running a capability probe."""
-    resolved_directory = Path(directory).resolve()
+    requested_directory = Path(directory).expanduser().absolute()
+    resolved_directory = requested_directory.resolve()
     if not _is_windows() or load_config().attachment_writer == "native":
-        return AttachmentWriter(AttachmentWriterKind.NATIVE, resolved_directory)
+        return AttachmentWriter(
+            AttachmentWriterKind.NATIVE,
+            resolved_directory,
+            requested_directory=requested_directory,
+        )
 
     bash_path = find_git_bash()
     if bash_path is None:
@@ -266,24 +372,12 @@ def resolve_attachment_writer(directory: str | Path) -> AttachmentWriter:
             "Compatibility attachment writer is configured but Git Bash was not found",
             hint="Run atls setup and select the native writer, or install Git for Windows",
         )
-    return AttachmentWriter(AttachmentWriterKind.COMPATIBLE, resolved_directory, bash_path.resolve())
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _safe_unlink(path: Path) -> None:
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError:
-        pass
+    return AttachmentWriter(
+        AttachmentWriterKind.COMPATIBLE,
+        resolved_directory,
+        bash_path.resolve(),
+        requested_directory=requested_directory,
+    )
 
 
 class AttachmentWriteBatch:
@@ -291,6 +385,13 @@ class AttachmentWriteBatch:
 
     def __init__(self, writer: AttachmentWriter | None = None) -> None:
         self._writer = writer
+        self._capabilities = DirectoryCapabilityPool()
+        self._writer_requested_directory: Path | None = None
+        self._writer_capability: DirectoryCapability | None = None
+        if writer is not None and writer.directory is not None:
+            requested = writer.requested_directory or writer.directory
+            self._writer_requested_directory = requested.expanduser().absolute()
+            self._writer_capability = self._capabilities.acquire(self._writer_requested_directory)
         self._items: list[_BatchItem] = []
         self._destinations: set[Path] = set()
         self.state = AttachmentBatchState.STAGING
@@ -303,29 +404,68 @@ class AttachmentWriteBatch:
     def destinations(self) -> tuple[Path, ...]:
         return tuple(item.destination for item in self._items)
 
+    def bind_directory(self, directory: str | Path) -> DirectoryCapability:
+        """Acquire and retain a destination capability before remote bytes are fetched."""
+
+        requested = Path(directory).expanduser().absolute()
+        requested.mkdir(parents=True, exist_ok=True)
+        return self._capabilities.acquire(requested)
+
+    def bind_child_directory(self, parent: DirectoryCapability, leaf: str) -> DirectoryCapability:
+        """Create/open a direct child through an already-bound parent capability."""
+
+        return self._capabilities.acquire_child(parent, leaf)
+
     def add(self, destination: str | Path, content: bytes) -> Path:
         if self.state is not AttachmentBatchState.STAGING:
             raise RuntimeError(f"Cannot add files to a {self.state.value} attachment batch")
 
-        output = Path(destination).resolve()
+        raw = Path(destination).expanduser()
+        requested_parent = raw.parent.absolute()
+        if (
+            self._writer_capability is not None
+            and self._writer_requested_directory is not None
+            and os.path.normcase(str(requested_parent)) == os.path.normcase(str(self._writer_requested_directory))
+        ):
+            capability = self._writer_capability
+        else:
+            requested_parent.mkdir(parents=True, exist_ok=True)
+            capability = self._capabilities.acquire(requested_parent)
+        output = capability.path_for_leaf(raw.name)
         if output in self._destinations:
             raise ValidationError(f"Duplicate attachment destination in one batch: {output}")
-        if output.is_dir():
-            raise ValidationError(f"Attachment destination is a directory: {output}")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        if self._writer is None:
-            self._writer = resolve_attachment_writer(output.parent)
+        try:
+            _assert_destination_safe(capability, output.name, output)
+            before_exists = capability.leaf_exists(output.name)
+            before_hash = capability.sha256(output.name) if before_exists else None
+            before_identity = capability.file_identity(output.name) if before_exists else None
+            if self._writer is None:
+                self._writer = resolve_attachment_writer(capability.directory)
 
-        stage = _stage_bytes(output, content)
+            stage = _stage_bytes(capability, output, content)
+        except OSError as error:
+            raise ValidationError(
+                "Attachment publication preflight could not access its destination",
+                context={
+                    "reason": "attachment_preflight_io_failed",
+                    "path": str(output),
+                    "failure": type(error).__name__,
+                },
+            ) from error
         item = _BatchItem(
+            capability=capability,
             stage=stage,
             destination=output,
             backup=(
-                _unique_part_path(output.parent, "atls-backup")
-                if self._writer.kind is AttachmentWriterKind.COMPATIBLE
+                _unique_part_path(capability, "atls-backup")
+                if self._writer.kind is AttachmentWriterKind.COMPATIBLE and before_exists
                 else None
             ),
             expected_hash=hashlib.sha256(content).hexdigest(),
+            before_exists=before_exists,
+            before_hash=before_hash,
+            before_identity=before_identity,
+            published_identity=capability.file_identity(stage.name),
         )
         self._items.append(item)
         self._destinations.add(output)
@@ -334,50 +474,92 @@ class AttachmentWriteBatch:
     def commit(self) -> list[Path]:
         if self.state is not AttachmentBatchState.STAGING:
             raise RuntimeError(f"Cannot commit a {self.state.value} attachment batch")
-        if not self._items:
-            self.state = AttachmentBatchState.COMMITTED
-            return []
+        try:
+            if not self._items:
+                self.state = AttachmentBatchState.COMMITTED
+                return []
 
-        writer = self._writer
-        assert writer is not None
-        if writer.kind is AttachmentWriterKind.COMPATIBLE:
-            self._commit_compatible(writer)
-        else:
-            self._commit_native()
-        self.state = AttachmentBatchState.COMMITTED
-        return list(self.destinations)
+            writer = self._writer
+            assert writer is not None
+            try:
+                for item in self._items:
+                    _assert_item_destination_unchanged(item)
+            except BaseException:
+                for item in self._items:
+                    try:
+                        item.capability.unlink(item.stage.name, missing_ok=True)
+                    except OSError as error:
+                        raise ValidationError(
+                            "Attachment stage could not be removed after publication",
+                            context={"reason": "attachment_cleanup_io_failed", "path": str(item.stage)},
+                        ) from error
+                self.state = AttachmentBatchState.ABORTED
+                raise
+            if writer.kind is AttachmentWriterKind.COMPATIBLE:
+                self._commit_compatible(writer)
+            else:
+                self._commit_native()
+            self.state = AttachmentBatchState.COMMITTED
+            return list(self.destinations)
+        finally:
+            self._capabilities.close()
 
     def abort(self) -> None:
         if self.state is not AttachmentBatchState.STAGING:
             return
-        for item in self._items:
-            _safe_unlink(item.stage)
-            if item.backup is not None:
-                _safe_unlink(item.backup)
-        self.state = AttachmentBatchState.ABORTED
+        try:
+            if any(item.backup is not None and item.capability.leaf_exists(item.backup.name) for item in self._items):
+                self.state = AttachmentBatchState.RECOVERY_REQUIRED
+                return
+            for item in self._items:
+                item.capability.unlink(item.stage.name, missing_ok=True)
+            self.state = AttachmentBatchState.ABORTED
+        finally:
+            self._capabilities.close()
 
     def _commit_native(self) -> None:
-        if len(self._items) == 1:
-            item = self._items[0]
-            try:
-                os.replace(item.stage, item.destination)
-            except BaseException:
-                _safe_unlink(item.stage)
-                self.state = AttachmentBatchState.ABORTED
-                raise
-            return
-
         for item in self._items:
-            item.backup = _unique_part_path(item.destination.parent, "atls-backup")
+            if item.before_exists:
+                item.backup = _unique_part_path(item.capability, "atls-backup")
+        active_destination: Path | None = None
         try:
             for item in self._items:
-                assert item.backup is not None
-                if item.destination.exists() or item.destination.is_symlink():
-                    os.replace(item.destination, item.backup)
-                os.replace(item.stage, item.destination)
-                if _file_sha256(item.destination) != item.expected_hash:
+                active_destination = item.destination
+                _assert_item_destination_unchanged(item)
+                if item.before_exists:
+                    assert item.backup is not None
+                    try:
+                        item.capability.promote_no_replace(item.destination.name, item.backup.name)
+                    except FileExistsError as error:
+                        raise ValidationError(
+                            f"Attachment backup path already exists: {item.backup}",
+                            context={"reason": "attachment_backup_collision", "path": str(item.backup)},
+                        ) from error
+                    backup_identity = item.capability.file_identity(item.backup.name)
+                    if (
+                        backup_identity != item.before_identity
+                        or item.capability.sha256(item.backup.name) != item.before_hash
+                    ):
+                        raise ValidationError(
+                            f"Attachment backup changed during publication: {item.destination}",
+                            context={
+                                "reason": "attachment_destination_changed",
+                                "path": str(item.destination),
+                                "expected_file_identity": item.before_identity,
+                                "actual_file_identity": backup_identity,
+                            },
+                        )
+                try:
+                    item.capability.promote_no_replace(item.stage.name, item.destination.name)
+                except FileExistsError as error:
+                    raise ValidationError(
+                        f"Attachment destination appeared during publication: {item.destination}",
+                        context={"reason": "attachment_destination_changed", "path": str(item.destination)},
+                    ) from error
+                item.published_identity = item.capability.file_identity(item.destination.name)
+                if item.capability.sha256(item.destination.name) != item.expected_hash:
                     raise OSError(f"Final attachment hash mismatch: {item.destination}")
-        except BaseException:
+        except BaseException as error:
             recovery_errors = self._recover()
             self.state = AttachmentBatchState.ABORTED
             if recovery_errors:
@@ -385,8 +567,17 @@ class AttachmentWriteBatch:
                     f"Native attachment batch failed and recovery was incomplete: {'; '.join(recovery_errors)}",
                     hint="Do not remove remaining .atls-backup files until their original destinations are restored",
                 ) from None
+            if isinstance(error, (KeyboardInterrupt, SystemExit, AtlasError)):
+                raise
+            raise ValidationError(
+                f"Native attachment publication failed for {active_destination}",
+                context={"reason": "attachment_publication_io_failed", "failure": type(error).__name__},
+            ) from error
+        try:
+            self._discard_backups()
+        except BaseException:
+            self.state = AttachmentBatchState.RECOVERY_REQUIRED
             raise
-        self._discard_backups()
 
     def _commit_compatible(self, writer: AttachmentWriter) -> None:
         if writer.bash_path is None:
@@ -397,6 +588,8 @@ class AttachmentWriteBatch:
                 hint="Run atls setup and select an available attachment writer",
             )
 
+        for item in self._items:
+            item.capability.revalidate()
         manifest = b"".join(
             field.encode("utf-8") + b"\0"
             for item in self._items
@@ -405,6 +598,7 @@ class AttachmentWriteBatch:
                 item.destination.as_posix(),
                 item.backup.as_posix() if item.backup is not None else "",
                 item.expected_hash,
+                item.before_hash or "",
             )
         )
         try:
@@ -416,6 +610,26 @@ class AttachmentWriteBatch:
                 timeout=_ATTACHMENT_WRITE_TIMEOUT_SECONDS,
                 shell=False,
             )
+            for item in self._items:
+                item.capability.revalidate()
+                item.published_identity = item.capability.file_identity(item.destination.name)
+                if not item.before_exists:
+                    continue
+                assert item.backup is not None
+                backup_identity = item.capability.file_identity(item.backup.name)
+                if (
+                    backup_identity != item.before_identity
+                    or item.capability.sha256(item.backup.name) != item.before_hash
+                ):
+                    raise ValidationError(
+                        f"Attachment backup changed during compatibility publication: {item.destination}",
+                        context={
+                            "reason": "attachment_destination_changed",
+                            "path": str(item.destination),
+                            "expected_file_identity": item.before_identity,
+                            "actual_file_identity": backup_identity,
+                        },
+                    )
         except BaseException as exc:
             recovery_errors = self._recover()
             self.state = AttachmentBatchState.ABORTED
@@ -435,37 +649,169 @@ class AttachmentWriteBatch:
                 message,
                 hint=hint,
             ) from exc
-        self._discard_backups()
+        try:
+            self._discard_backups()
+        except BaseException:
+            self.state = AttachmentBatchState.RECOVERY_REQUIRED
+            raise
 
     def _recover(self) -> list[str]:
         errors: list[str] = []
         for item in reversed(self._items):
-            if item.backup is not None and (item.backup.exists() or item.backup.is_symlink()):
+            if item.backup is not None and item.capability.leaf_exists(item.backup.name):
+                if item.capability.leaf_exists(item.destination.name):
+                    try:
+                        if (
+                            item.published_identity is None
+                            or item.capability.file_identity(item.destination.name) != item.published_identity
+                            or item.capability.sha256(item.destination.name) != item.expected_hash
+                        ):
+                            errors.append(f"preserve unrelated {item.destination}")
+                            continue
+                        item.capability.unlink(item.destination.name)
+                    except OSError as exc:
+                        errors.append(f"remove {item.destination}: {exc}")
+                        continue
                 try:
-                    item.destination.unlink(missing_ok=True)
-                except OSError as exc:
-                    errors.append(f"remove {item.destination}: {exc}")
-                    continue
-                try:
-                    os.replace(item.backup, item.destination)
+                    try:
+                        item.capability.promote_no_replace(item.backup.name, item.destination.name)
+                    except FileExistsError as exc:
+                        errors.append(f"preserve concurrent {item.destination}: {exc}")
                 except OSError as exc:
                     errors.append(f"restore {item.destination} from {item.backup}: {exc}")
-            elif not item.stage.exists():
+            elif not item.before_exists and item.capability.leaf_exists(item.destination.name):
                 try:
-                    item.destination.unlink(missing_ok=True)
+                    if (
+                        item.published_identity is not None
+                        and item.capability.file_identity(item.destination.name) == item.published_identity
+                        and item.capability.sha256(item.destination.name) == item.expected_hash
+                    ):
+                        item.capability.unlink(item.destination.name)
                 except OSError as exc:
                     errors.append(f"remove new {item.destination}: {exc}")
             try:
-                item.stage.unlink(missing_ok=True)
+                item.capability.unlink(item.stage.name, missing_ok=True)
             except OSError as exc:
                 errors.append(f"remove stage {item.stage}: {exc}")
         return errors
 
     def _discard_backups(self) -> None:
         for item in self._items:
-            _safe_unlink(item.stage)
+            if (
+                item.published_identity is None
+                or item.capability.file_identity(item.destination.name) != item.published_identity
+                or item.capability.sha256(item.destination.name) != item.expected_hash
+            ):
+                raise ValidationError(
+                    "Attachment destination changed before backup cleanup",
+                    context={"reason": "attachment_cleanup_conflict", "path": str(item.destination)},
+                )
+        for item in self._items:
+            if item.capability.leaf_exists(item.stage.name):
+                if (
+                    item.capability.file_identity(item.stage.name) != item.published_identity
+                    or item.capability.sha256(item.stage.name) != item.expected_hash
+                ):
+                    raise ValidationError(
+                        "Attachment stage changed before cleanup",
+                        context={"reason": "attachment_cleanup_conflict", "path": str(item.stage)},
+                    )
+                item.capability.unlink(item.stage.name, missing_ok=True)
             if item.backup is not None:
-                _safe_unlink(item.backup)
+                if item.capability.leaf_exists(item.backup.name):
+                    if (
+                        item.capability.file_identity(item.backup.name) != item.before_identity
+                        or item.capability.sha256(item.backup.name) != item.before_hash
+                    ):
+                        raise ValidationError(
+                            "Attachment backup changed before cleanup",
+                            context={"reason": "attachment_cleanup_conflict", "path": str(item.backup)},
+                        )
+                    try:
+                        item.capability.unlink(item.backup.name)
+                    except OSError as error:
+                        raise ValidationError(
+                            "Attachment backup could not be removed after publication",
+                            context={"reason": "attachment_cleanup_io_failed", "path": str(item.backup)},
+                        ) from error
+
+
+@contextmanager
+def open_verified_attachment_snapshot(
+    path: Path,
+    *,
+    managed_root: Path,
+    expected_identity: str,
+    expected_sha256: str,
+    reference: str,
+) -> Iterator[BinaryIO]:
+    """Yield a snapshot opened through no-follow directory capabilities."""
+
+    try:
+        relative = PurePosixPath(reference)
+        if relative.is_absolute() or any(part in {"", ".", ".."} for part in relative.parts):
+            raise ValidationError(
+                "Managed attachment reference is not portable",
+                context={"reason": "asset_changed_after_preflight", "src": reference},
+            )
+        expected_path = managed_root.joinpath(*relative.parts).absolute()
+        if path.absolute() != expected_path:
+            raise ValidationError(
+                "Managed attachment path no longer matches its portable reference",
+                context={"reason": "asset_changed_after_preflight", "src": reference},
+            )
+        root_info = managed_root.lstat()
+        root_attributes = int(getattr(root_info, "st_file_attributes", 0))
+        reparse_flag = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400))
+        if not stat.S_ISDIR(root_info.st_mode) or stat.S_ISLNK(root_info.st_mode) or root_attributes & reparse_flag:
+            raise ValidationError(
+                "Managed attachment root changed after preflight",
+                context={"reason": "asset_changed_after_preflight", "src": reference},
+            )
+        with ExitStack() as capabilities:
+            current = capabilities.enter_context(DirectoryCapability.acquire(managed_root))
+            for part in relative.parts[:-1]:
+                current = capabilities.enter_context(current.acquire_child_directory(part, create=False))
+            stream = capabilities.enter_context(
+                current.open_readonly(
+                    relative.name,
+                    expected_identity=expected_identity,
+                    expected_sha256=expected_sha256.removeprefix("sha256:"),
+                )
+            )
+            with tempfile.TemporaryFile(mode="w+b") as snapshot:
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+                    snapshot.write(chunk)
+                if digest.hexdigest() != expected_sha256.removeprefix("sha256:"):
+                    raise ValidationError(
+                        "Managed attachment changed after preflight",
+                        context={"reason": "asset_changed_after_preflight", "src": reference},
+                    )
+                snapshot.flush()
+                snapshot.seek(0)
+                yield snapshot
+    except ValidationError as error:
+        if (error.context or {}).get("reason") == "asset_changed_after_preflight":
+            raise
+        raise ValidationError(
+            "Managed attachment path changed after preflight",
+            context={
+                "reason": "asset_changed_after_preflight",
+                "src": reference,
+                "failure": str((error.context or {}).get("reason", type(error).__name__)),
+            },
+        ) from error
+    except OSError as error:
+        raise ValidationError(
+            "Managed attachment could not be reopened safely for upload",
+            context={
+                "reason": "asset_changed_after_preflight",
+                "src": reference,
+                "failure": type(error).__name__,
+            },
+        ) from error
 
 
 def write_attachments_batch(

@@ -21,6 +21,7 @@ from atlassian_skills.confluence.models import (
 )
 from atlassian_skills.core.attachment_io import AttachmentWriter, AttachmentWriterKind
 from atlassian_skills.core.auth import Credential
+from atlassian_skills.core.directory_capability import DirectoryCapability
 from atlassian_skills.core.errors import AtlasError
 from atlassian_skills.jira.models import User
 
@@ -72,6 +73,20 @@ def test_get_page_returns_page(client: ConfluenceClient) -> None:
     assert page.title == "[PROJ-3] 검색 결과 정렬 개선"
     assert page.space is not None
     assert page.space.key == "TESTSPACE"
+
+
+@respx.mock
+def test_get_page_extracts_server_rendered_view(client: ConfluenceClient) -> None:
+    fixture = {
+        "id": "12345678",
+        "title": "Rendered",
+        "body": {"view": {"value": "<p>server HTML</p>", "representation": "view"}},
+    }
+    respx.get(f"{BASE_URL}/rest/api/content/12345678").mock(return_value=httpx.Response(200, json=fixture))
+
+    page = client.get_page("12345678", expand="body.view")
+
+    assert page.body_view == "<p>server HTML</p>"
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +284,31 @@ def test_list_attachments_returns_attachments(client: ConfluenceClient) -> None:
     assert attachments[0].file_size == 12345
 
 
+def test_list_attachments_default_does_not_truncate_after_fifty(client: ConfluenceClient) -> None:
+    raw_attachments = [
+        {
+            "id": f"att{index}",
+            "title": f"attachment-{index}.bin",
+            "mediaType": "application/octet-stream",
+            "fileSize": index,
+            "_links": {"download": f"/download/attachments/100/attachment-{index}.bin"},
+        }
+        for index in range(81)
+    ]
+    paginated = MagicMock(return_value=raw_attachments)
+    client.get_paginated_links = paginated
+
+    attachments = client.list_attachments("100")
+
+    assert len(attachments) == 81
+    paginated.assert_called_once_with(
+        "/rest/api/content/100/child/attachment",
+        params={"limit": 200, "expand": "version,extensions.mediaType,extensions.fileSize"},
+        items_key="results",
+        limit=None,
+    )
+
+
 # ---------------------------------------------------------------------------
 # get_page_images
 # ---------------------------------------------------------------------------
@@ -425,11 +465,13 @@ def test_download_attachment_publishes_same_directory_part_file(
     download_link = "/download/attachments/99/image.png?api=v2"
     respx.get(f"{BASE_URL}/download/attachments/99/image.png").mock(return_value=httpx.Response(200, content=content))
     destination = tmp_path / "image.png"
-    real_replace = os.replace
-    replace_calls: list[tuple[Path, Path]] = []
+    real_promote = DirectoryCapability.promote_no_replace
+    promote_calls: list[tuple[Path, Path]] = []
 
-    def observe_replace(source: Path, target: Path) -> None:
-        replace_calls.append((source, target))
+    def observe_promote(capability: DirectoryCapability, source_leaf: str, target_leaf: str) -> None:
+        source = capability.path_for_leaf(source_leaf)
+        target = capability.path_for_leaf(target_leaf)
+        promote_calls.append((source, target))
         assert source.parent == destination.parent
         assert source.name.startswith(".atls-download-")
         assert source.name.endswith(".part")
@@ -440,14 +482,14 @@ def test_download_attachment_publishes_same_directory_part_file(
         assert target == destination
         assert not destination.exists()
         assert source.read_bytes() == content
-        real_replace(source, target)
+        real_promote(capability, source_leaf, target_leaf)
 
-    monkeypatch.setattr("atlassian_skills.core.attachment_io.os.replace", observe_replace)
+    monkeypatch.setattr(DirectoryCapability, "promote_no_replace", observe_promote)
 
     writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path)
     out = client.download_attachment("att100", destination, download_link=download_link, writer=writer)
 
-    assert len(replace_calls) == 1
+    assert len(promote_calls) == 1
     assert out == destination
     assert out.read_bytes() == content
     assert list(tmp_path.glob("*.part")) == []
@@ -491,22 +533,23 @@ def test_download_attachment_uses_unique_part_names(
         return_value=httpx.Response(200, content=b"content")
     )
     destination = tmp_path / "repeated.bin"
-    real_replace = os.replace
-    source_names: list[str] = []
+    real_promote = DirectoryCapability.promote_no_replace
+    part_source_names: list[str] = []
 
-    def capture_source_name(source: Path, target: Path) -> None:
-        source_names.append(source.name)
-        real_replace(source, target)
+    def capture_source_name(capability: DirectoryCapability, source_leaf: str, target_leaf: str) -> None:
+        source = capability.path_for_leaf(source_leaf)
+        if source.name.endswith(".part"):
+            part_source_names.append(source.name)
+        real_promote(capability, source_leaf, target_leaf)
 
-    monkeypatch.setattr("atlassian_skills.core.attachment_io.os.replace", capture_source_name)
+    monkeypatch.setattr(DirectoryCapability, "promote_no_replace", capture_source_name)
 
     writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path)
     client.download_attachment("att102", destination, download_link=download_link, writer=writer)
     client.download_attachment("att102", destination, download_link=download_link, writer=writer)
 
-    assert len(source_names) == 2
-    assert len(set(source_names)) == 2
-    assert all(name.endswith(".part") for name in source_names)
+    assert len(part_source_names) == 2
+    assert len(set(part_source_names)) == 2
     assert list(tmp_path.glob("*.part")) == []
 
 
@@ -525,13 +568,18 @@ def test_download_attachment_replace_failure_preserves_destination_and_cleans_pa
     replace_error = OSError("replace failed")
     temporary_paths: list[Path] = []
 
-    def fail_replace(source: Path, target: Path) -> None:
-        temporary_paths.append(source)
-        assert source.read_bytes() == b"replacement-content"
-        assert target == destination
-        raise replace_error
+    real_promote = DirectoryCapability.promote_no_replace
 
-    monkeypatch.setattr("atlassian_skills.core.attachment_io.os.replace", fail_replace)
+    def fail_promote(capability: DirectoryCapability, source_leaf: str, target_leaf: str) -> None:
+        source = capability.path_for_leaf(source_leaf)
+        target = capability.path_for_leaf(target_leaf)
+        if target == destination and source.name.startswith(".atls-download-"):
+            temporary_paths.append(source)
+            assert source.read_bytes() == b"replacement-content"
+            raise replace_error
+        real_promote(capability, source_leaf, target_leaf)
+
+    monkeypatch.setattr(DirectoryCapability, "promote_no_replace", fail_promote)
 
     with pytest.raises(AtlasError) as exc_info:
         writer = AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path)

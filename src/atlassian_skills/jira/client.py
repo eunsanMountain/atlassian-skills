@@ -9,7 +9,7 @@ from atlassian_skills.core.attachment_io import (
     resolve_attachment_writer,
 )
 from atlassian_skills.core.auth import Credential
-from atlassian_skills.core.client import BaseClient
+from atlassian_skills.core.client import MAX_ATTACHMENT_DOWNLOAD_BYTES, BaseClient
 from atlassian_skills.core.errors import AtlasError, ValidationError
 from atlassian_skills.jira.models import (
     Board,
@@ -650,18 +650,15 @@ class JiraClient(BaseClient):
 
     def download_attachments(self, key: str, output_dir: str | Path) -> list[Path]:
         """Download every attachment for an issue to output_dir."""
-        attachments = self.get_attachment_content(key)
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        if not attachments:
-            return []
-
         resolved_out_dir = out_dir.resolve()
         writer = resolve_attachment_writer(out_dir)
         batch = AttachmentWriteBatch(writer)
         paths: list[Path] = []
         used_names: set[str] = set()
         try:
+            attachments = self.get_attachment_content(key)
             for attachment in attachments:
                 safe_name = allocate_attachment_filename(attachment.filename, attachment.id, used_names)
                 destination = out_dir / safe_name
@@ -671,7 +668,7 @@ class JiraClient(BaseClient):
                     raise ValidationError(
                         f"Attachment {attachment.id} ({attachment.filename}) does not provide a content URL"
                     )
-                response = self.get(attachment.content)
+                response = self.get(attachment.content, max_response_bytes=MAX_ATTACHMENT_DOWNLOAD_BYTES)
                 batch.add(destination, response.content)
                 paths.append(destination)
             batch.commit()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from atlassian_skills.core.errors import ValidationError
 from atlassian_skills.core.pagination import collect_all, paginate_links, paginate_offset
 
 # ---------------------------------------------------------------------------
@@ -114,6 +115,46 @@ def test_links_limit_stops_early() -> None:
     assert len(pages) == 2
     all_items = collect_all(iter(pages))
     assert len(all_items) == 6  # collected items in yielded pages (limit is a soft stop)
+
+
+def test_links_repeated_next_url_fails_closed() -> None:
+    calls: list[str | None] = []
+
+    def fetch(next_url: str | None) -> dict:
+        calls.append(next_url)
+        return {"results": [], "_links": {"next": "/same"}}
+
+    with pytest.raises(ValidationError) as exc_info:
+        list(paginate_links(fetch))
+
+    assert exc_info.value.context == {"reason": "pagination_cycle"}
+    assert calls == [None, "/same"]
+
+
+def test_links_invalid_next_token_is_structured_validation_error() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        list(paginate_links(lambda _next: {"results": [], "_links": {"next": {"page": 2}}}))
+
+    assert exc_info.value.context == {"reason": "pagination_token_invalid"}
+
+
+def test_offset_hard_page_limit_fails_closed() -> None:
+    calls: list[int] = []
+
+    def fetch(start_at: int, max_results: int) -> dict:
+        calls.append(start_at)
+        return {
+            "startAt": start_at,
+            "maxResults": max_results,
+            "total": 1_000_000,
+            "issues": [{"id": start_at}],
+        }
+
+    with pytest.raises(ValidationError) as exc_info:
+        list(paginate_offset(fetch, max_results_per_page=1, max_pages=2))
+
+    assert exc_info.value.context == {"reason": "pagination_page_limit", "max_pages": 2}
+    assert calls == [0, 1]
 
 
 # ---------------------------------------------------------------------------

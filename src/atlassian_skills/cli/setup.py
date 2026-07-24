@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 import typer
@@ -242,20 +243,20 @@ def _install(source: Path, target: Path) -> str:
     `atls upgrade` (which silently runs `setup --skills-only` after each upgrade,
     even when SKILL.md content hasn't changed across the patch release).
     """
-    new_content = source.read_text(encoding="utf-8")
+    new_content = source.read_bytes()
     if target.exists():
         try:
-            existing = target.read_text(encoding="utf-8")
+            existing = target.read_bytes()
             if existing == new_content:
                 return f"  {target}: unchanged"
         except OSError:
             pass
         backup = target.with_suffix(target.suffix + ".bak")
         shutil.copy2(target, backup)
-        target.write_text(new_content, encoding="utf-8")
+        target.write_bytes(new_content)
         return f"  {target}: updated (backup: {backup})"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(new_content, encoding="utf-8")
+    target.write_bytes(new_content)
     return f"  {target}: installed"
 
 
@@ -383,14 +384,14 @@ _CANONICAL_SKILL_DIR = ASSETS_DIR / "skills" / "atls"
 
 
 # ---------------------------------------------------------------------------
-# Shim deprecation warning (0.2.7 → 0.3.0 migration aid)
+# Shim deprecation warning (retained through 0.3.x as a migration aid)
 # ---------------------------------------------------------------------------
 
 
 def _emit_deprecation(command: str) -> None:
     """Stderr-only deprecation warning for legacy `setup <command>` calls."""
     typer.echo(
-        f"⚠ deprecated: 'atls setup {command}' will be removed in 0.3.0. Use 'atls setup' (wizard) instead.",
+        f"⚠ deprecated: 'atls setup {command}' will be removed in 0.4.0. Use 'atls setup' (wizard) instead.",
         err=True,
     )
 
@@ -995,10 +996,10 @@ def setup_entry(
 
 
 # ---------------------------------------------------------------------------
-# Legacy subcommands — DEPRECATED, removed in 0.3.0
+# Legacy subcommands — DEPRECATED, retained as 0.3.x compatibility shims
 #
 # These reproduce 0.2.6 behaviour to keep existing automation working through the
-# 0.2.7 release. Each one emits a stderr deprecation line and otherwise behaves
+# 0.3.x line. Each one emits a stderr deprecation line and otherwise behaves
 # identically to 0.2.6. `atls upgrade` itself does NOT call any of these — it calls
 # `atls setup --skills-only` directly so users don't see warnings on every upgrade.
 # ---------------------------------------------------------------------------
@@ -1086,3 +1087,147 @@ def setup_status() -> None:
                 typer.echo(f"  {name}: no ATLS block at {path}")
         else:
             typer.echo(f"  {name}: not found ({path})")
+
+
+def _remove_atls_skill(target: Path, *, dry_run: bool) -> str:
+    directory = target.parent
+    if not directory.exists():
+        return f"preserved: skill not installed at {directory}"
+    marker_files = [
+        path
+        for path in directory.rglob("*")
+        if path.is_file() and "installed-by: atls" in path.read_text(encoding="utf-8", errors="ignore")
+    ]
+    if not marker_files:
+        return f"preserved: unowned skill directory at {directory}"
+    if not dry_run:
+        for path in marker_files:
+            path.unlink()
+        for path in sorted((item for item in directory.rglob("*") if item.is_dir()), reverse=True):
+            with suppress(OSError):
+                path.rmdir()
+        with suppress(OSError):
+            directory.rmdir()
+    return f"{'would remove' if dry_run else 'removed'}: {len(marker_files)} installed skill file(s) under {directory}"
+
+
+def _remove_routing_block(path: Path, start_marker: str, end_marker: str, *, dry_run: bool) -> str:
+    if not path.exists():
+        return f"preserved: routing file missing at {path}"
+    content = path.read_text(encoding="utf-8")
+    pattern = re.compile(re.escape(start_marker) + r".*?" + re.escape(end_marker) + r"\n?", re.DOTALL)
+    if pattern.search(content) is None:
+        return f"preserved: no atls routing block in {path}"
+    if not dry_run:
+        path.write_text(pattern.sub("", content), encoding="utf-8")
+    return f"{'would remove' if dry_run else 'removed'}: atls routing block in {path}"
+
+
+def _legacy_state_path() -> Path:
+    from platformdirs import PlatformDirs
+
+    return PlatformDirs("atlassian-skills", appauthor=False).user_state_path / "state.sqlite3"
+
+
+def _cleanup_legacy_state(*, dry_run: bool) -> dict[str, object]:
+    """Remove only an exact, regular legacy atls SQLite artifact without opening it."""
+
+    import stat
+
+    path = _legacy_state_path()
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return {"status": "not_found", "path": str(path), "bytes": 0, "paths": []}
+    reparse = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400))
+    attributes = int(getattr(info, "st_file_attributes", 0))
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or attributes & reparse:
+        raise typer.BadParameter("legacy state path is not an owned regular file", param_hint="--state")
+    try:
+        with path.open("rb") as stream:
+            header = stream.read(72)
+    except OSError as error:
+        raise typer.BadParameter("legacy state header cannot be read safely", param_hint="--state") from error
+    application_id = int.from_bytes(header[68:72], "big") if len(header) >= 72 else None
+    if not header.startswith(b"SQLite format 3\x00") or application_id != 0x41544C53:
+        raise typer.BadParameter("legacy state file identity is not an atls SQLite database", param_hint="--state")
+    owned = [path]
+    for suffix in ("-wal", "-shm"):
+        companion = Path(f"{path}{suffix}")
+        try:
+            companion_info = companion.lstat()
+        except FileNotFoundError:
+            continue
+        companion_attributes = int(getattr(companion_info, "st_file_attributes", 0))
+        if (
+            not stat.S_ISREG(companion_info.st_mode)
+            or stat.S_ISLNK(companion_info.st_mode)
+            or companion_attributes & reparse
+        ):
+            raise typer.BadParameter("legacy state companion is not an owned regular file", param_hint="--state")
+        owned.append(companion)
+    total_bytes = sum(item.stat().st_size for item in owned)
+    if not dry_run:
+        for item in reversed(owned):
+            item.unlink()
+    return {
+        "status": "would_remove" if dry_run else "removed",
+        "path": str(path),
+        "bytes": total_bytes,
+        "paths": [str(item) for item in owned],
+    }
+
+
+@setup_app.command("uninstall")
+def setup_uninstall(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report exact owned paths without changing them"),
+    state: bool = typer.Option(False, "--state", help="Also remove the verified legacy candidate DB/WAL/SHM"),
+    config: bool = typer.Option(False, "--config", help="Also remove the atls config.toml file"),
+    credentials: bool = typer.Option(False, "--credentials", help="Also delete configured keyring token entries"),
+    yes: bool = typer.Option(False, "--yes", help="Confirm explicit state/config/credential deletion"),
+) -> None:
+    """Remove installed skill/routing surfaces; preserve user state and content by default."""
+    if not dry_run and (state or config or credentials) and not yes:
+        typer.echo("Error: --state, --config, and --credentials require --yes", err=True)
+        raise typer.Exit(7)
+    messages = [
+        _remove_atls_skill(_get_claude_skill_target(), dry_run=dry_run),
+        _remove_atls_skill(_get_codex_skill_target(), dry_run=dry_run),
+        _remove_atls_skill(_get_copilot_skill_target(), dry_run=dry_run),
+        _remove_routing_block(_get_claude_md_path(), _ATLS_CLAUDE_BLOCK_START, _ATLS_CLAUDE_BLOCK_END, dry_run=dry_run),
+        _remove_routing_block(
+            _get_codex_agents_path(), _ATLS_CODEX_BLOCK_START, _ATLS_CODEX_BLOCK_END, dry_run=dry_run
+        ),
+        _remove_routing_block(
+            _get_copilot_instructions_path(),
+            _ATLS_COPILOT_BLOCK_START,
+            _ATLS_COPILOT_BLOCK_END,
+            dry_run=dry_run,
+        ),
+    ]
+    if state:
+        result = _cleanup_legacy_state(dry_run=dry_run)
+        removed_paths = result["paths"]
+        file_count = len(removed_paths) if isinstance(removed_paths, list) else 0
+        messages.append(f"{result['status']}: legacy state {result['path']} bytes={result['bytes']} files={file_count}")
+    if config:
+        from atlassian_skills.core.config import config_path
+
+        path = config_path()
+        existed = path.exists()
+        if existed and not dry_run:
+            path.unlink()
+        action = "would remove" if dry_run and existed else "removed" if existed else "not found"
+        messages.append(f"{action}: config {path}")
+    if credentials:
+        from atlassian_skills.core.config import load_config
+
+        profiles = tuple(load_config().profiles) or ("default",)
+        if dry_run:
+            messages.append(f"would delete: up to {len(profiles) * len(_PRODUCTS)} keyring entries")
+        else:
+            deleted = sum(_delete_token_keyring(profile, product) for profile in profiles for product in _PRODUCTS)
+            messages.append(f"deleted: {deleted} keyring entries")
+    messages.append("preserved: managed Markdown files, sidecar assets, remote Atlassian content")
+    for message in messages:
+        typer.echo(message)

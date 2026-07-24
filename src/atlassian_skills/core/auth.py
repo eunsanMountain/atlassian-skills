@@ -75,13 +75,12 @@ def _resolve_token_from_provider(profile_name: str, product: str, profile: Profi
         except subprocess.TimeoutExpired as exc:
             raise AuthError(
                 f"credential command timed out for profile '{profile_name}', product '{product}'.",
-                hint=f"Check that this command completes promptly: {command}",
+                hint="Verify the configured credential provider in a secure terminal and ensure it completes promptly.",
             ) from exc
         if result.returncode != 0:
-            detail = result.stderr.strip() or command
             raise AuthError(
                 f"credential command exited {result.returncode} for profile '{profile_name}', product '{product}'.",
-                hint=f"stderr: {detail}",
+                hint="Run the configured credential provider manually in a secure terminal and verify its exit status.",
             )
         return result.stdout.strip() or None
 

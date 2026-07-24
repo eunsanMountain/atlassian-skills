@@ -85,6 +85,18 @@ class TestJiraWikiToMdWithOptions:
             jira_wiki_to_md_with_options(self.WIKI_WITH_SECTIONS, section="Missing")
         assert exc_info.value.section == "Missing"
 
+    def test_section_ignores_heading_syntax_inside_fenced_code(self) -> None:
+        markdown = (
+            "## Target\nbefore\n\n```markdown\n## Not a boundary\ninside code\n```\n\nafter\n\n## Next\noutside\n"
+        )
+
+        result = jira_wiki_to_md_with_options(markdown, section="Target", skip_conversion=True)
+
+        assert "## Not a boundary" in result
+        assert "inside code" in result
+        assert "after" in result
+        assert "outside" not in result
+
     def test_drop_leading_notice(self) -> None:
         wiki = "NOTE: ignore this\nnormal content"
         result = jira_wiki_to_md_with_options(wiki, drop_leading_notice=["NOTE:"])

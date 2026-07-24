@@ -10,6 +10,7 @@ import respx
 from atlassian_skills.bitbucket.client import BitbucketClient
 from atlassian_skills.bitbucket.models import BuildStatus, DiffStat, PullRequest, PullRequestComment, Task
 from atlassian_skills.core.auth import Credential
+from atlassian_skills.core.errors import ValidationError
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "bitbucket"
 BASE_URL = "https://bitbucket.example.com"
@@ -166,6 +167,21 @@ def test_get_build_statuses_uses_build_status_api() -> None:
     assert result[1].state == "FAILED"
     # Verify it uses the build-status API, not self.API
     assert "/rest/build-status/1.0/" in str(route.calls[0].request.url)
+
+
+@respx.mock
+def test_get_build_statuses_rejects_repeated_start_token() -> None:
+    respx.get(f"{BASE_URL}/rest/build-status/1.0/commits/abc123").mock(
+        return_value=httpx.Response(
+            200,
+            json={"values": [], "isLastPage": False, "nextPageStart": 0},
+        )
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.get_build_statuses("abc123")
+
+    assert exc_info.value.context == {"reason": "pagination_cycle", "next_start": 0}
 
 
 # ---------------------------------------------------------------------------

@@ -103,9 +103,9 @@ def render_auth_status(profile_name: str = "default", *, resolve: bool = False) 
 
         elif prof.storage == "command":
             cmd = _command_for(prof, product)
-            disp = (cmd[:40] + "…") if cmd and len(cmd) > 40 else (cmd or "(no command)")
+            disp = "configured (redacted)" if cmd else "not configured"
             if not resolve:
-                typer.echo(f"  [{product}] storage=command (configured: {disp})")
+                typer.echo(f"  [{product}] storage=command ({disp})")
                 continue
             try:
                 cred = resolve_credential(profile_name, product, prof)

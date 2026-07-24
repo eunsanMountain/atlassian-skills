@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import sys
+from collections.abc import Sequence
 
+import cfxmark
 import typer
 
 from atlassian_skills import __version__
+from atlassian_skills.core.errors import AtlasError, InternalError, ValidationError
 from atlassian_skills.core.format import OutputFormat
 
 
@@ -99,3 +103,47 @@ def _register_sub_apps() -> None:
 
 
 _register_sub_apps()
+
+
+def _entrypoint_wants_json(argv: Sequence[str]) -> bool:
+    requested: str | None = None
+    for index, argument in enumerate(argv):
+        if argument.startswith("--format="):
+            requested = argument.partition("=")[2]
+        elif argument == "--format" and index + 1 < len(argv):
+            requested = argv[index + 1]
+    return requested == OutputFormat.JSON.value
+
+
+def _emit_entrypoint_error(error: AtlasError) -> None:
+    if _entrypoint_wants_json(sys.argv[1:]):
+        sys.stdout.write(json.dumps(error.to_dict()) + "\n")
+        return
+    sys.stderr.write(f"Error: {error.message}\n")
+    if error.hint:
+        sys.stderr.write(f"Hint:  {error.hint}\n")
+
+
+def entrypoint() -> None:
+    """Run Typer behind a final redacted exception boundary for installed consoles."""
+
+    try:
+        app()
+    except AtlasError as error:
+        _emit_entrypoint_error(error)
+        raise SystemExit(error.exit_code) from None
+    except cfxmark.CfxmarkError as error:
+        normalized = ValidationError(
+            "Confluence or Jira markup conversion failed",
+            context={"reason": "conversion_failed", "failure": type(error).__name__},
+        )
+        _emit_entrypoint_error(normalized)
+        raise SystemExit(normalized.exit_code) from None
+    except Exception as error:
+        internal = InternalError(
+            "Unexpected internal error",
+            hint="Retry with a minimal command and report the failure type if it persists.",
+            context={"failure": type(error).__name__},
+        )
+        _emit_entrypoint_error(internal)
+        raise SystemExit(internal.exit_code) from None

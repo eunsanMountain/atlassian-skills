@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import cfxmark
 import pytest
 
 from atlassian_skills.confluence.models import Attachment, Page, PageVersion
 from atlassian_skills.confluence.pull_md import PullResult, pull_md, pull_pages_batch
-from atlassian_skills.core.errors import AtlasError
+from atlassian_skills.core.errors import AtlasError, ValidationError
 
 
 def _make_page(body_storage: str, title: str = "Test Page", version: int = 1) -> Page:
@@ -38,6 +39,59 @@ class TestPullMdReturnsContent:
         assert result.title == "My Page"
         assert "Hello" in result.markdown
         assert "World" in result.markdown
+        assert result.push_safe is True
+        assert result.losses == ()
+
+    def test_unsupported_content_is_explicitly_not_push_safe(self) -> None:
+        # A body-carrying macro: body-less macros now round-trip byte-exactly
+        # through cfxmark's managed opaque payload transport and are push-safe.
+        page = _make_page(
+            body_storage=(
+                '<p xmlns:ac="http://atlassian.com/content">Text<ac:structured-macro ac:name="sample-unknown">'
+                "<ac:rich-text-body><p>inner</p></ac:rich-text-body></ac:structured-macro></p>"
+            )
+        )
+        client = _make_client(page)
+
+        result = pull_md(client, "12345")
+
+        assert result.push_safe is False
+        assert "cfxmark:unsupported" in result.markdown
+        assert 'macro="sample-unknown"' in result.markdown
+        assert "<ac:structured-macro" not in result.markdown
+
+    def test_inline_jira_and_paragraph_toc_are_editable(self) -> None:
+        page = _make_page(
+            body_storage=(
+                '<p><ac:structured-macro ac:name="toc"/></p>'
+                '<p>Related: <ac:structured-macro ac:name="jira">'
+                '<ac:parameter ac:name="key">DOC-123</ac:parameter>'
+                "</ac:structured-macro></p>"
+            )
+        )
+        client = _make_client(page)
+
+        result = pull_md(client, "12345")
+
+        assert result.push_safe is True
+        assert "::: toc" in result.markdown
+        assert '{{jira key="DOC-123"}}' in result.markdown
+        assert "cfxmark:unsupported" not in result.markdown
+
+    def test_nested_table_remains_not_push_safe(self) -> None:
+        page = _make_page(
+            body_storage=(
+                "<table><tbody><tr><td>Outer</td><td>"
+                "<table><tbody><tr><td>Inner</td></tr></tbody></table>"
+                "</td></tr></tbody></table>"
+            )
+        )
+        client = _make_client(page)
+
+        result = pull_md(client, "12345")
+
+        assert result.push_safe is False
+        assert "cfxmark:unsupported" in result.markdown
 
 
 class TestPullMdWritesFile:
@@ -65,6 +119,40 @@ class TestPullMdPassthrough:
         result = pull_md(client, "12345", passthrough_prefixes=["ac:"])
 
         assert isinstance(result, PullResult)
+
+    def test_reserved_passthrough_prefix_raises_atlas_error(self, tmp_path: Path) -> None:
+        """An invalid passthrough prefix must surface as an AtlasError so the CLI
+        renders a JSON envelope (exit 7) instead of letting a bare
+        ManagedManifestError escape as a Rich traceback."""
+        page = _make_page(body_storage="<p>Content</p>")
+        client = _make_client(page)
+
+        with pytest.raises(ValidationError) as excinfo:
+            pull_md(
+                client,
+                "12345",
+                output_path=tmp_path / "page.md",
+                passthrough_prefixes=["atls:owned"],
+                portable=True,
+            )
+        assert isinstance(excinfo.value, AtlasError)
+        assert (excinfo.value.context or {}).get("reason") == "reserved_passthrough_prefix"
+
+    def test_batch_reserved_passthrough_prefix_raises_atlas_error(self, tmp_path: Path) -> None:
+        """pull_pages_batch shares the same passthrough guard as pull_md."""
+        page = _make_page(body_storage="<p>Content</p>")
+        client = _make_client(page)
+
+        with pytest.raises(ValidationError) as excinfo:
+            pull_pages_batch(
+                client,
+                ["12345"],
+                tmp_path,
+                passthrough_prefixes=["cfxmark:x"],
+                portable=True,
+            )
+        assert isinstance(excinfo.value, AtlasError)
+        assert (excinfo.value.context or {}).get("reason") == "reserved_passthrough_prefix"
 
 
 class TestPullMdJsonVersion:
@@ -103,8 +191,113 @@ class TestPullMdResolveAssetsSidecar:
         client.fetch_attachment_bytes.assert_called_once_with("att-001", None)
         assert (asset_dir / "diagram.png").read_bytes() == b"image-bytes"
         assert "assets/diagram.png" in result
-        # Marker is preserved
-        assert '<!-- cfxmark:asset src="diagram.png" -->' in result
+        # Managed Markdown contains only the final binding marker; asset
+        # identity lives in the global state database.
+        assert '<!-- cfxmark:asset src="diagram.png" -->' not in result
+
+    def test_sidecar_preserves_image_metadata(self, tmp_path: Path) -> None:
+        md_with_marker = (
+            "![diagram](diagram.png#cfxmark:w=320,h=180,thumbnail=1,align=center)"
+            '<!-- cfxmark:asset src="diagram.png" -->\n'
+        )
+        from atlassian_skills.confluence.pull_md import _resolve_assets_sidecar
+
+        client = MagicMock()
+        client.list_attachments.return_value = [Attachment(id="att-001", title="diagram.png")]
+        client.fetch_attachment_bytes.return_value = b"image-bytes"
+
+        result = _resolve_assets_sidecar(
+            client,
+            "12345",
+            md_with_marker,
+            tmp_path / "assets",
+            tmp_path / "page.md",
+        )
+
+        assert "assets/diagram.png#cfxmark:w=320,h=180,thumbnail=1,align=center" in result
+
+    def test_sidecar_preserves_canonical_image_comment_metadata(self, tmp_path: Path) -> None:
+        md_with_marker = (
+            "![diagram](diagram.png)"
+            "<!-- cfxmark:img w=320 h=180 thumbnail=1 align=center -->"
+            '<!-- cfxmark:asset src="diagram.png" -->\n'
+        )
+        from atlassian_skills.confluence.pull_md import _resolve_assets_sidecar
+
+        client = MagicMock()
+        client.list_attachments.return_value = [Attachment(id="att-001", title="diagram.png")]
+        client.fetch_attachment_bytes.return_value = b"image-bytes"
+
+        result = _resolve_assets_sidecar(
+            client,
+            "12345",
+            md_with_marker,
+            tmp_path / "assets",
+            tmp_path / "page.md",
+        )
+
+        assert "![diagram](assets/diagram.png)<!-- cfxmark:img w=320 h=180 thumbnail=1 align=center -->" in result
+        assert "cfxmark:asset" not in result
+
+    def test_sidecar_percent_encodes_unsafe_path_characters(self, tmp_path: Path) -> None:
+        original_name = "Screen Shot #1%.png"
+        md_with_marker = f'![diagram](remote)<!-- cfxmark:asset src="{original_name}" -->\n'
+        from atlassian_skills.confluence.pull_md import _resolve_assets_sidecar
+
+        client = MagicMock()
+        client.list_attachments.return_value = [Attachment(id="att-001", title=original_name)]
+        client.fetch_attachment_bytes.return_value = b"image-bytes"
+
+        result = _resolve_assets_sidecar(
+            client,
+            "12345",
+            md_with_marker,
+            tmp_path / "asset folder",
+            tmp_path / "page.md",
+        )
+
+        assert "asset%20folder/Screen%20Shot%20%231%25.png" in result
+
+    def test_sidecar_rewrites_angle_destination_with_parenthesis(self, tmp_path: Path) -> None:
+        original_name = "diagram (final).png"
+        md_with_marker = f'![diagram](<remote)>)<!-- cfxmark:asset src="{original_name}" -->\n'
+        from atlassian_skills.confluence.pull_md import _resolve_assets_sidecar
+
+        client = MagicMock()
+        client.list_attachments.return_value = [Attachment(id="att-001", title=original_name)]
+        client.fetch_attachment_bytes.return_value = b"image-bytes"
+
+        result = _resolve_assets_sidecar(
+            client,
+            "12345",
+            md_with_marker,
+            tmp_path / "assets",
+            tmp_path / "page.md",
+        )
+
+        assert "assets/diagram%20%28final%29.png" in result
+
+    def test_sidecar_preserves_metadata_from_angle_destination(self, tmp_path: Path) -> None:
+        original_name = "wide diagram.png"
+        md_with_marker = (
+            f'![diagram](<remote file#cfxmark:w=320,h=180,align=center>)<!-- cfxmark:asset src="{original_name}" -->\n'
+        )
+        from atlassian_skills.confluence.pull_md import _resolve_assets_sidecar
+
+        client = MagicMock()
+        client.list_attachments.return_value = [Attachment(id="att-001", title=original_name)]
+        client.fetch_attachment_bytes.return_value = b"image-bytes"
+
+        result = _resolve_assets_sidecar(
+            client,
+            "12345",
+            md_with_marker,
+            tmp_path / "assets",
+            tmp_path / "page.md",
+        )
+
+        assert "assets/wide%20diagram.png#cfxmark:w=320,h=180,align=center" in result
+        assert "asset folder/Screen Shot #1%.png" not in result
 
     def test_sidecar_preserves_non_asset_content(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Non-asset content is unchanged by sidecar resolution."""
@@ -163,8 +356,12 @@ class TestPullPagesBatch:
             [Attachment(id="att-2", title="image.png")],
         ]
         client.fetch_attachment_bytes.side_effect = [b"first", b"second"]
-        marker = '![img](remote)<!-- cfxmark:asset src="image.png" -->'
-        monkeypatch.setattr(pull_module, "_convert_storage", lambda *_args: marker)
+        marker = '![img](remote#cfxmark:w=320,h=180,thumbnail=1,align=center)<!-- cfxmark:asset src="image.png" -->'
+        monkeypatch.setattr(
+            pull_module,
+            "_convert_storage",
+            lambda *_args: cfxmark.ConversionResult(markdown=marker),
+        )
         real_commit = pull_module.AttachmentWriteBatch.commit
         commits: list[int] = []
 
@@ -181,7 +378,9 @@ class TestPullPagesBatch:
         assert results[0].path.parent != results[1].path.parent
         assert results[0].path.parent.name.endswith("--100")
         assert results[1].path.parent.name.endswith("--200")
-        assert "assets/image.png" in results[0].path.read_text(encoding="utf-8")
+        expected_link = "assets/image.png#cfxmark:w=320,h=180,thumbnail=1,align=center"
+        assert expected_link in results[0].path.read_text(encoding="utf-8")
+        assert expected_link in results[1].path.read_text(encoding="utf-8")
         assert (results[0].path.parent / "assets" / "image.png").read_bytes() == b"first"
         assert (results[1].path.parent / "assets" / "image.png").read_bytes() == b"second"
 
@@ -196,7 +395,11 @@ class TestPullPagesBatch:
         ]
         client.fetch_attachment_bytes.side_effect = [b"first", AtlasError("download failed")]
         marker = '![img](remote)<!-- cfxmark:asset src="image.png" -->'
-        monkeypatch.setattr(pull_module, "_convert_storage", lambda *_args: marker)
+        monkeypatch.setattr(
+            pull_module,
+            "_convert_storage",
+            lambda *_args: cfxmark.ConversionResult(markdown=marker),
+        )
 
         with pytest.raises(AtlasError, match="download failed"):
             pull_pages_batch(client, ["100", "200"], tmp_path)

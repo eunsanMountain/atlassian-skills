@@ -62,6 +62,34 @@ def test_cli_jira_issue_get_json_format() -> None:
 
 
 @respx.mock
+def test_cli_jira_issue_get_json_reports_conversion_warnings() -> None:
+    fixture = _load("get-issue-proj3.json")
+    fixture["description"] = "[~sample-user]"
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=fixture))
+
+    result = runner.invoke(
+        app,
+        ["jira", "issue", "get", "PROJ-3", "--body-repr", "md", "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["conversion"]["warnings"] == ["user mention [~sample-user] dropped"]
+
+
+@respx.mock
+def test_cli_jira_issue_get_md_emits_conversion_warnings_to_stderr() -> None:
+    fixture = _load("get-issue-proj3.json")
+    fixture["description"] = "[~sample-user]"
+    respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-3").mock(return_value=httpx.Response(200, json=fixture))
+
+    result = runner.invoke(app, ["jira", "issue", "get", "PROJ-3", "--format", "md"])
+
+    assert result.exit_code == 0, result.output
+    assert "# conversion: user mention [~sample-user] dropped" in result.stderr
+
+
+@respx.mock
 def test_cli_jira_issue_get_not_found_exit_code() -> None:
     """404 response maps to exit code 2 (NOT_FOUND)."""
     respx.get(f"{JIRA_URL}/rest/api/2/issue/PROJ-999").mock(
@@ -217,6 +245,40 @@ def test_cli_jira_issue_create_success() -> None:
 
 
 @respx.mock
+def test_cli_jira_issue_create_json_includes_write_conversion_warnings(tmp_path: Path) -> None:
+    created = {"id": "123456", "key": "PROJ-42", "self": f"{JIRA_URL}/rest/api/2/issue/123456"}
+    respx.post(f"{JIRA_URL}/rest/api/2/issue").mock(return_value=httpx.Response(201, json=created))
+    body_file = tmp_path / "body.md"
+    body_file.write_text('[label](https://example.invalid "tooltip")\n', encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "jira",
+            "issue",
+            "create",
+            "--project",
+            "PROJ",
+            "--type",
+            "Bug",
+            "--summary",
+            "Test bug",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["conversion"]["push_safe"] is True
+    assert any("title" in warning for warning in payload["conversion"]["warnings"])
+
+
+@respx.mock
 def test_cli_jira_issue_update_dry_run() -> None:
     """--dry-run on issue update shows PUT preview without calling update endpoint."""
     result = runner.invoke(
@@ -226,6 +288,31 @@ def test_cli_jira_issue_update_dry_run() -> None:
     assert result.exit_code == 0, result.output
     assert "PUT" in result.output
     assert "PROJ-3" in result.output
+
+
+@respx.mock
+def test_cli_jira_issue_update_dry_run_emits_write_conversion_warnings(tmp_path: Path) -> None:
+    body_file = tmp_path / "body.md"
+    body_file.write_text('[label](https://example.invalid "tooltip")\n', encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "jira",
+            "issue",
+            "update",
+            "PROJ-3",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "# conversion:" in result.stderr
+    assert "title" in result.stderr
 
 
 @respx.mock

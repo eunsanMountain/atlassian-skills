@@ -456,6 +456,21 @@ def test_upload_attachment_success(client: ConfluenceClient, tmp_path: Path) -> 
 
 
 @respx.mock
+def test_upload_attachment_uses_explicit_remote_filename(client: ConfluenceClient, tmp_path: Path) -> None:
+    file_path = tmp_path / "safe-staging-name.bin"
+    file_path.write_bytes(b"exact bytes")
+    route = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att300", "title": "a*b.png"}]})
+    )
+
+    client.upload_attachment("100", file_path, filename="a*b.png")
+
+    request = route.calls.last.request
+    assert b'filename="a*b.png"' in request.content
+    assert b"exact bytes" in request.content
+
+
+@respx.mock
 def test_upload_attachments_batch_replace_mode(client: ConfluenceClient, tmp_path: Path) -> None:
     file1 = tmp_path / "report.txt"
     file1.write_text("report content")

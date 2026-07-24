@@ -1,0 +1,184 @@
+{
+  "schema": "atls-cli-delta-classification-v1",
+  "baseline": "atls v0.2.13 (2d0b887)",
+  "target": "atls 0.3.0 (Markdown-first informed migration)",
+  "plan": ".omx/plans/atls-0.3.0-markdown-first-informed-migration-plan.md",
+  "plan_sha256": "945b8eae8af5e5cd8f141011a4d16cf1a6fd800cd342a971d78d662beba583ef",
+  "note": [
+    "Plan 4.4 makes v0.2.13 the public compatibility baseline: anything not listed here",
+    "must stay byte-identical in the CLI surface.",
+    "'entries' classifies the v0.2.13 -> target 0.3.0 delta.",
+    "'candidate_only' lists surface that exists in the withdrawn 0.3.0 candidate (2e765e2)",
+    "but is absent from both v0.2.13 and the target, so it is neither a baseline delta nor",
+    "an addition; Story 11 deletes it. Tracking it separately keeps the gate honest while",
+    "the withdrawn candidate is still checked out."
+  ],
+  "entries": {
+    "confluence page create": {
+      "classification": "changed",
+      "plan_ref": "5.7, Story 9",
+      "reason": "Markdown writes use source-bound informed-consent preflight.",
+      "params": {
+        "accept_conversion": {
+          "classification": "added",
+          "plan_ref": "5.7, Story 9",
+          "reason": "Requires the exact returned source-conversion fingerprint before a lossy create."
+        }
+      }
+    },
+    "confluence page get": {
+      "classification": "changed",
+      "plan_ref": "5.2, Story 10",
+      "reason": "Readable Markdown can preserve explicitly selected HTML-comment prefixes.",
+      "params": {
+        "passthrough_prefix": {
+          "classification": "added",
+          "plan_ref": "5.2, Story 10",
+          "reason": "Canonical repeatable prefix allowlist for readable Markdown conversion."
+        }
+      }
+    },
+    "confluence page inspect": {
+      "classification": "added",
+      "plan_ref": "5.2, Story 10",
+      "reason": "Read-only page diagnostics and workflow recommendation surface."
+    },
+    "confluence page pull-batch": {
+      "classification": "changed",
+      "plan_ref": "5.3.1, Story 6",
+      "reason": "Batch pull keeps the existing command while adopting the same portable manifest and asset materialization contract as pull-md.",
+      "params": {
+        "no_assets": {
+          "classification": "added",
+          "plan_ref": "5.3.1, Story 6",
+          "reason": "Explicitly records referenced attachments as verified remote-only manifest entries."
+        }
+      }
+    },
+    "confluence page pull-md": {
+      "classification": "changed",
+      "plan_ref": "4.4 breaking-change table",
+      "reason": "--output becomes required; readable stdout moves to `page get --body-repr=md`.",
+      "params": {
+        "output": {
+          "classification": "changed",
+          "change": "required: false -> true",
+          "plan_ref": "4.4, 5.3"
+        },
+        "no_assets": {
+          "classification": "added",
+          "plan_ref": "5.3, Story 6",
+          "reason": "Explicitly records referenced attachments as verified remote-only manifest entries."
+        }
+      }
+    },
+    "confluence page push-md": {
+      "classification": "changed",
+      "plan_ref": "4.4 breaking-change table, 5.6",
+      "reason": "Ad-hoc attachment flags are replaced by managed `cfxmark:asset` identity and smart sync; --reason/--minor-edit are additive version-message controls.",
+      "params": {
+        "asset_dir": {
+          "classification": "removed",
+          "plan_ref": "4.4",
+          "reason": "Superseded by managed asset identity in the Markdown manifest."
+        },
+        "attachment": {
+          "classification": "removed",
+          "plan_ref": "4.4",
+          "reason": "Superseded by managed asset identity in the Markdown manifest."
+        },
+        "attachment_if_exists": {
+          "classification": "removed",
+          "plan_ref": "4.4",
+          "reason": "Superseded by attachment ID/version/hash smart sync."
+        },
+        "reason": {
+          "classification": "added",
+          "plan_ref": "5.6",
+          "reason": "Confluence version message; combined after the generated migration/append prefix."
+        },
+        "minor_edit": {
+          "classification": "added",
+          "plan_ref": "5.6",
+          "reason": "Marks the Confluence version as a minor edit."
+        },
+        "accept_migration": {
+          "classification": "added",
+          "plan_ref": "5.4, Story 7",
+          "reason": "Requires the exact source-bound migration fingerprint before a consented write."
+        }
+      }
+    },
+    "confluence page update": {
+      "classification": "changed",
+      "plan_ref": "5.7",
+      "reason": "Additive version-message controls only; --if-version stays optional per 4.4.",
+      "params": {
+        "reason": {
+          "classification": "added",
+          "plan_ref": "5.7",
+          "reason": "Confluence version message."
+        },
+        "minor_edit": {
+          "classification": "added",
+          "plan_ref": "5.7",
+          "reason": "Marks the Confluence version as a minor edit."
+        },
+        "accept_migration": {
+          "classification": "added",
+          "plan_ref": "5.7, Story 9",
+          "reason": "Requires the exact source-bound migration fingerprint before a lossy update."
+        }
+      }
+    },
+    "confluence page copy": {
+      "classification": "added",
+      "plan_ref": "5.9",
+      "reason": "Verified client-side page copy; kept in the target surface for run-owned validation copies."
+    },
+    "confluence page patch-text": {
+      "classification": "added",
+      "plan_ref": "5.8",
+      "reason": "Exact plain-text leaf patch; the canonical low-cost edit path in the target model."
+    },
+    "confluence page validate-local": {
+      "classification": "added",
+      "plan_ref": "5.4",
+      "reason": "Offline managed-file validation; rewritten file-first in Story 5-7 but the command stays."
+    },
+    "setup uninstall": {
+      "classification": "added",
+      "plan_ref": "4.4 (atls uninstall --state), 10.4",
+      "reason": "Removes atls-installed skill files and routing blocks; --state performs legacy local-state cleanup without opening a SQLite runtime."
+    }
+  },
+  "candidate_only": {
+    "plan_ref": "4.4 breaking-change table (candidate-only row), 10.3",
+    "owner_story": "Story 11",
+    "reason": "Present only in the withdrawn 0.3.0 candidate (2e765e2). Never published, so removing it carries no public compatibility debt. File-first consent replaces it.",
+    "paths": [
+      "confluence page migration",
+      "confluence page migration accept",
+      "confluence page migration list",
+      "confluence page migration revoke",
+      "confluence page table-style",
+      "confluence page table-style set",
+      "state",
+      "state backup",
+      "state compact",
+      "state detach",
+      "state doctor",
+      "state export",
+      "state list",
+      "state path",
+      "state prune",
+      "state purge",
+      "state recover",
+      "state relocate",
+      "state repair-marker",
+      "state restore",
+      "state show",
+      "state stats"
+    ]
+  }
+}

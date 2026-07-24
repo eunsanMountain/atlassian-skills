@@ -4,6 +4,7 @@ import httpx
 import pytest
 import respx
 
+import atlassian_skills.core.client as client_module
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.client import BaseClient
 from atlassian_skills.core.errors import (
@@ -90,6 +91,226 @@ def test_basic_auth_header_injected() -> None:
     client.get("/rest/api/2/issue/PROJ-1")
     sent = route.calls[0].request.headers["authorization"]
     assert sent == f"Basic {expected}"
+
+
+@pytest.mark.parametrize(
+    ("base_url", "absolute_url", "credential", "expected_authorization"),
+    [
+        (
+            "https://jira.example.com",
+            "https://jira.example.com/rest/api/2/serverInfo",
+            Credential(method="pat", token="pat-secret"),
+            "Bearer pat-secret",
+        ),
+        (
+            "https://jira.example.com:443",
+            "HTTPS://JIRA.EXAMPLE.COM/rest/api/2/serverInfo",
+            Credential(method="pat", token="pat-secret"),
+            "Bearer pat-secret",
+        ),
+        (
+            "https://jira.example.com",
+            "https://JIRA.EXAMPLE.COM:443/rest/api/2/serverInfo",
+            Credential(method="basic", token="basic-secret", username="alice"),
+            "Basic YWxpY2U6YmFzaWMtc2VjcmV0",
+        ),
+    ],
+)
+def test_same_origin_absolute_url_keeps_authorization(
+    base_url: str,
+    absolute_url: str,
+    credential: Credential,
+    expected_authorization: str,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={}, request=request)
+
+    client = BaseClient(base_url, credential)
+    client._client.close()
+    client._client = httpx.Client(transport=httpx.MockTransport(respond))
+
+    response = client.get(absolute_url)
+
+    assert response.status_code == 200
+    assert requests[0].headers["authorization"] == expected_authorization
+
+
+@pytest.mark.parametrize(
+    "absolute_url",
+    [
+        "https://other.example.com/rest/api/2/serverInfo",
+        "http://jira.example.com/rest/api/2/serverInfo",
+        "https://jira.example.com:444/rest/api/2/serverInfo",
+        "https://user:password@jira.example.com/rest/api/2/serverInfo",
+    ],
+)
+def test_unsafe_absolute_url_is_rejected_before_request(absolute_url: str) -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={}, request=request)
+
+    client = make_client()
+    client._client.close()
+    client._client = httpx.Client(transport=httpx.MockTransport(respond))
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.get(absolute_url)
+
+    assert exc_info.value.context == {"reason": "unsafe_absolute_url"}
+    assert requests == []
+
+
+def test_malformed_absolute_url_is_structured_validation_error() -> None:
+    client = make_client()
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.get("https://jira.example.com:invalid/rest/api/2/serverInfo")
+
+    assert exc_info.value.context == {"reason": "invalid_request_url"}
+
+
+@pytest.mark.parametrize("declared_size", [11, 1_000])
+def test_bounded_response_rejects_oversized_content_length_before_buffering(declared_size: int) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"Content-Length": str(declared_size)},
+            content=b"small",
+            request=request,
+        )
+
+    client = make_client()
+    client._client.close()
+    client._client = httpx.Client(transport=httpx.MockTransport(respond))
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.get("/download", max_response_bytes=10)
+
+    assert exc_info.value.context == {
+        "reason": "response_too_large",
+        "max_bytes": 10,
+        "content_length": declared_size,
+    }
+
+
+def test_bounded_response_rejects_chunked_body_after_limit() -> None:
+    class Chunks(httpx.SyncByteStream):
+        def __iter__(self) -> object:
+            yield b"123456"
+            yield b"78901"
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=Chunks(), request=request)
+
+    client = make_client()
+    client._client.close()
+    client._client = httpx.Client(transport=httpx.MockTransport(respond))
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.get("/download", max_response_bytes=10)
+
+    assert exc_info.value.context == {"reason": "response_too_large", "max_bytes": 10}
+
+
+def test_bounded_response_returns_content_within_limit() -> None:
+    client = make_client()
+    client._client.close()
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"bounded", request=request))
+    )
+
+    response = client.get("/download", max_response_bytes=10)
+
+    assert response.content == b"bounded"
+
+
+def test_default_api_response_is_streamed_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(client_module, "MAX_API_RESPONSE_BYTES", 10)
+    client = make_client()
+    client._client.close()
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"too-large-body", request=request))
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.get("/rest/api/2/search")
+
+    assert exc_info.value.context["reason"] == "response_too_large"
+    assert exc_info.value.context["max_bytes"] == 10
+
+
+def test_bounded_oversized_rate_limit_retries_before_mapping_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Oversized(httpx.SyncByteStream):
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __iter__(self) -> object:
+            yield b"x" * 1024
+
+        def close(self) -> None:
+            self.closed = True
+
+    streams: list[Oversized] = []
+    requests = 0
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        stream = Oversized()
+        streams.append(stream)
+        return httpx.Response(
+            429,
+            headers={"Content-Length": str(101 * 1024 * 1024)},
+            stream=stream,
+            request=request,
+        )
+
+    monkeypatch.setattr("atlassian_skills.core.client.time.sleep", lambda _seconds: None)
+    client = make_client(max_retries=1)
+    client._client.close()
+    client._client = httpx.Client(transport=httpx.MockTransport(respond))
+
+    with pytest.raises(RateLimitError):
+        client.get("/download", max_response_bytes=10)
+
+    assert requests == 2
+    assert all(stream.closed for stream in streams)
+
+
+def test_bounded_oversized_auth_error_keeps_auth_exit_contract() -> None:
+    class Oversized(httpx.SyncByteStream):
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __iter__(self) -> object:
+            yield b"not authorized" * 10_000
+
+        def close(self) -> None:
+            self.closed = True
+
+    stream = Oversized()
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            401,
+            headers={"Content-Length": str(101 * 1024 * 1024)},
+            stream=stream,
+            request=request,
+        )
+
+    client = make_client()
+    client._client.close()
+    client._client = httpx.Client(transport=httpx.MockTransport(respond))
+
+    with pytest.raises(AuthError):
+        client.get("/download", max_response_bytes=10)
+
+    assert stream.closed is True
 
 
 # ---------------------------------------------------------------------------

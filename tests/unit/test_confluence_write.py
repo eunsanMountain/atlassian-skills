@@ -9,6 +9,7 @@ import respx
 
 from atlassian_skills.confluence.client import ConfluenceClient
 from atlassian_skills.core.auth import Credential
+from atlassian_skills.core.errors import NetworkError
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "confluence"
 BASE_URL = "https://confluence.example.com"
@@ -63,6 +64,21 @@ def test_create_page_with_ancestor(client: ConfluenceClient) -> None:
     assert sent_body["ancestors"] == [{"id": "12345"}]
 
 
+@respx.mock
+def test_create_page_does_not_retry_an_ambiguous_post(client: ConfluenceClient) -> None:
+    route = respx.post(f"{BASE_URL}/rest/api/content").mock(
+        side_effect=[
+            httpx.ConnectError("synthetic response loss"),
+            httpx.Response(200, json={"id": "would-be-duplicate"}),
+        ]
+    )
+
+    with pytest.raises(NetworkError):
+        client.create_page("TEST", "Unique run title", "<p>body</p>")
+
+    assert route.call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # update_page
 # ---------------------------------------------------------------------------
@@ -73,12 +89,21 @@ def test_update_page(client: ConfluenceClient) -> None:
     expected = _load("update-page-expected.json")
     route = respx.put(f"{BASE_URL}/rest/api/content/12345678").mock(return_value=httpx.Response(200, json=expected))
 
-    result = client.update_page("12345678", "Updated Title", "<p>Updated content</p>", version_number=3)
+    result = client.update_page(
+        "12345678",
+        "Updated Title",
+        "<p>Updated content</p>",
+        version_number=3,
+        reason="Explain the edit",
+        minor_edit=True,
+    )
 
     assert result["id"] == "12345678"
     assert result["version"]["number"] == 3
     sent_body = json.loads(route.calls[0].request.content)
     assert sent_body["version"]["number"] == 3
+    assert sent_body["version"]["message"] == "Explain the edit"
+    assert sent_body["version"]["minorEdit"] is True
     assert sent_body["title"] == "Updated Title"
 
 
@@ -375,6 +400,55 @@ def test_upload_attachment_sets_nocheck_header(client: ConfluenceClient, tmp_pat
 
     req = route.calls[0].request
     assert req.headers.get("X-Atlassian-Token") == "nocheck"
+
+
+@respx.mock
+def test_upload_attachment_raw_uses_explicit_remote_filename(client: ConfluenceClient, tmp_path: Path) -> None:
+    local_file = tmp_path / "a_b.png"
+    local_file.write_bytes(b"\x89PNG\r\n")
+    route = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att401", "title": "a*b.png"}]})
+    )
+
+    client._upload_attachment_raw("100", local_file, filename="a*b.png")
+
+    content = route.calls[0].request.content
+    assert b'filename="a*b.png"' in content
+    assert b'filename="a_b.png"' not in content
+
+
+@respx.mock
+def test_upload_attachment_raw_versions_existing_attachment_by_id(client: ConfluenceClient, tmp_path: Path) -> None:
+    local_file = tmp_path / "local.png"
+    local_file.write_bytes(b"new")
+    route = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment/att-1/data").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-1", "version": {"number": 5}}]})
+    )
+
+    client._upload_attachment_raw("100", local_file, filename="remote.png", attachment_id="att-1")
+
+    assert route.called
+    assert b'filename="remote.png"' in route.calls[0].request.content
+
+
+@respx.mock
+def test_upload_attachment_raw_does_not_retry_ambiguous_multipart_post(
+    client: ConfluenceClient, tmp_path: Path
+) -> None:
+    local_file = tmp_path / "local.png"
+    local_file.write_bytes(b"new")
+    route = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        side_effect=[
+            httpx.Response(500, text="unknown upload outcome"),
+            httpx.Response(200, json={"results": [{"id": "att-2", "version": {"number": 1}}]}),
+        ]
+    )
+
+    with pytest.raises(NetworkError) as exc_info:
+        client._upload_attachment_raw("100", local_file, filename="remote.png")
+
+    assert exc_info.value.http_status == 500
+    assert route.call_count == 1
 
 
 # ---------------------------------------------------------------------------

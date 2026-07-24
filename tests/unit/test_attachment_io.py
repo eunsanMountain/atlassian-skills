@@ -13,6 +13,8 @@ from atlassian_skills.core.attachment_io import (
     AttachmentWriteBatch,
     AttachmentWriter,
     AttachmentWriterKind,
+    atomic_write_bytes,
+    escape_bidi_controls_for_display,
     find_git_bash,
     resolve_attachment_writer,
     safe_attachment_filename,
@@ -21,6 +23,7 @@ from atlassian_skills.core.attachment_io import (
 )
 from atlassian_skills.core.config import Config
 from atlassian_skills.core.errors import AtlasError, ValidationError
+from atlassian_skills.core.file_identity import inspect_file_identity
 
 
 def _emulate_compatible_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
@@ -28,14 +31,21 @@ def _emulate_compatible_run(args: list[str], **kwargs: object) -> subprocess.Com
     assert isinstance(manifest, bytes)
     fields = manifest.split(b"\0")
     assert fields.pop() == b""
-    assert len(fields) % 4 == 0
-    for offset in range(0, len(fields), 4):
-        stage, destination, backup, expected = (Path(value.decode("utf-8")) for value in fields[offset : offset + 4])
-        assert hashlib.sha256(stage.read_bytes()).hexdigest() == str(expected)
-        if destination.exists():
+    assert len(fields) % 5 == 0
+    for offset in range(0, len(fields), 5):
+        stage_value, destination_value, backup_value, expected_value, before_value = fields[offset : offset + 5]
+        stage = Path(stage_value.decode("utf-8"))
+        destination = Path(destination_value.decode("utf-8"))
+        backup = Path(backup_value.decode("utf-8"))
+        expected = expected_value.decode("ascii")
+        before = before_value.decode("ascii")
+        assert hashlib.sha256(stage.read_bytes()).hexdigest() == expected
+        if before:
+            assert hashlib.sha256(destination.read_bytes()).hexdigest() == before
             os.replace(destination, backup)
-        os.replace(stage, destination)
-        assert hashlib.sha256(destination.read_bytes()).hexdigest() == str(expected)
+        os.link(stage, destination)
+        stage.unlink()
+        assert hashlib.sha256(destination.read_bytes()).hexdigest() == expected
     return subprocess.CompletedProcess(args, 0, stdout=b"", stderr=b"")
 
 
@@ -120,6 +130,129 @@ def test_native_batch_publishes_without_subprocess(tmp_path: Path, monkeypatch: 
     assert list(tmp_path.glob(".atls-*.part")) == []
 
 
+@pytest.mark.parametrize("writer_kind", ["atomic", "batch"])
+def test_attachment_write_rejects_final_symlink_without_touching_target(tmp_path: Path, writer_kind: str) -> None:
+    victim = tmp_path / "victim.bin"
+    victim.write_bytes(b"keep-me")
+    destination = tmp_path / "asset.bin"
+    destination.symlink_to(victim)
+
+    with pytest.raises(ValidationError) as exc_info:
+        if writer_kind == "atomic":
+            atomic_write_bytes(destination, b"attacker-bytes")
+        else:
+            batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path))
+            batch.add(destination, b"attacker-bytes")
+
+    assert exc_info.value.context["reason"] == "unsafe_attachment_destination"
+    assert victim.read_bytes() == b"keep-me"
+    assert destination.is_symlink()
+
+
+def test_native_attachment_batch_does_not_clobber_file_created_after_staging(tmp_path: Path) -> None:
+    destination = tmp_path / "asset.bin"
+    batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path))
+    batch.add(destination, b"managed")
+    destination.write_bytes(b"user-owned")
+
+    with pytest.raises(ValidationError) as exc_info:
+        batch.commit()
+
+    assert exc_info.value.context["reason"] == "attachment_destination_changed"
+    assert destination.read_bytes() == b"user-owned"
+
+
+def test_atomic_write_fsyncs_parent_directory_after_replace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Path] = []
+    original = attachment_io.DirectoryCapability.fsync
+
+    def observed_fsync(capability: attachment_io.DirectoryCapability) -> None:
+        calls.append(capability.directory)
+        original(capability)
+
+    monkeypatch.setattr(attachment_io.DirectoryCapability, "fsync", observed_fsync)
+
+    destination = atomic_write_bytes(tmp_path / "journal.md", b"durable")
+
+    assert destination.read_bytes() == b"durable"
+    assert calls == [tmp_path.resolve()]
+
+
+def test_compatible_attachment_batch_rejects_collision_before_subprocess(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "asset.bin"
+    bash = (tmp_path / "Git Bash" / "bash.exe").resolve()
+    batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.COMPATIBLE, tmp_path, bash))
+    batch.add(destination, b"managed")
+    destination.write_bytes(b"user-owned")
+    subprocess_called = False
+
+    def unexpected_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        nonlocal subprocess_called
+        subprocess_called = True
+        raise AssertionError("compatible writer must not run after a failed destination preflight")
+
+    monkeypatch.setattr(subprocess, "run", unexpected_run)
+
+    with pytest.raises(ValidationError) as exc_info:
+        batch.commit()
+
+    assert exc_info.value.context["reason"] == "attachment_destination_changed"
+    assert subprocess_called is False
+    assert destination.read_bytes() == b"user-owned"
+
+
+def test_native_attachment_batch_rejects_existing_file_replaced_after_staging(tmp_path: Path) -> None:
+    destination = tmp_path / "asset.bin"
+    destination.write_bytes(b"original")
+    batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path))
+    batch.add(destination, b"managed")
+    replacement = tmp_path / "replacement.bin"
+    replacement.write_bytes(b"concurrent")
+    os.replace(replacement, destination)
+
+    with pytest.raises(ValidationError) as exc_info:
+        batch.commit()
+
+    assert exc_info.value.context["reason"] == "attachment_destination_changed"
+    assert destination.read_bytes() == b"concurrent"
+
+
+def test_native_attachment_batch_restores_same_bytes_inode_swap_before_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "asset.bin"
+    replacement = tmp_path / "replacement.bin"
+    destination.write_bytes(b"old")
+    replacement.write_bytes(b"old")
+    batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path))
+    batch.add(destination, b"new")
+    replacement_identity = inspect_file_identity(replacement).key
+    real_replace = os.replace
+    real_promote = attachment_io.DirectoryCapability.promote_no_replace
+    swapped = False
+
+    def swap_then_backup(
+        capability: attachment_io.DirectoryCapability,
+        source_leaf: str,
+        target_leaf: str,
+    ) -> None:
+        nonlocal swapped
+        if source_leaf == destination.name and not swapped:
+            swapped = True
+            real_replace(replacement, destination)
+        real_promote(capability, source_leaf, target_leaf)
+
+    monkeypatch.setattr(attachment_io.DirectoryCapability, "promote_no_replace", swap_then_backup)
+
+    with pytest.raises(ValidationError):
+        batch.commit()
+
+    assert inspect_file_identity(destination).key == replacement_identity
+    assert destination.read_bytes() == b"old"
+
+
 def test_native_multi_file_failure_restores_previous_destinations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -130,21 +263,54 @@ def test_native_multi_file_failure_restores_previous_destinations(
     batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path))
     batch.add(first, b"new-first")
     batch.add(second, b"new-second")
-    real_replace = os.replace
+    real_promote = attachment_io.DirectoryCapability.promote_no_replace
 
-    def fail_second_publish(source: Path, destination: Path) -> None:
-        if source.name.startswith(".atls-download-") and destination == second.resolve():
+    def fail_second_publish(
+        capability: attachment_io.DirectoryCapability,
+        source_leaf: str,
+        destination_leaf: str,
+    ) -> None:
+        if source_leaf.startswith(".atls-download-") and destination_leaf == second.name:
             raise OSError("forced second publish failure")
-        real_replace(source, destination)
+        real_promote(capability, source_leaf, destination_leaf)
 
-    monkeypatch.setattr(os, "replace", fail_second_publish)
+    monkeypatch.setattr(attachment_io.DirectoryCapability, "promote_no_replace", fail_second_publish)
 
-    with pytest.raises(OSError, match="forced second publish failure"):
+    with pytest.raises(ValidationError) as exc_info:
         batch.commit()
+    assert exc_info.value.context["reason"] == "attachment_publication_io_failed"
 
     assert first.read_bytes() == b"old-first"
     assert second.read_bytes() == b"old-second"
     assert list(tmp_path.glob(".atls-*.part")) == []
+
+
+def test_native_cleanup_conflict_preserves_backup_through_outer_abort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = tmp_path / "asset.bin"
+    concurrent = tmp_path / "concurrent.bin"
+    destination.write_bytes(b"old")
+    concurrent.write_bytes(b"concurrent")
+    batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path))
+    batch.add(destination, b"new")
+    real_discard = batch._discard_backups
+
+    def race_then_discard() -> None:
+        os.replace(concurrent, destination)
+        real_discard()
+
+    monkeypatch.setattr(batch, "_discard_backups", race_then_discard)
+
+    with pytest.raises(ValidationError) as exc_info:
+        batch.commit()
+    assert exc_info.value.context["reason"] == "attachment_cleanup_conflict"
+    assert batch.state is AttachmentBatchState.RECOVERY_REQUIRED
+    batch.abort()
+    backups = list(tmp_path.glob(".atls-backup-*.part"))
+    assert destination.read_bytes() == b"concurrent"
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == b"old"
 
 
 @pytest.mark.parametrize("count", [1, 20, 300])
@@ -179,11 +345,36 @@ def test_compatible_batch_uses_one_nul_manifest_subprocess(
         "atls",
         attachment_io._COMPATIBLE_BATCH_PERL,
     ]
-    assert kwargs["input"].count(b"\0") == count * 4  # type: ignore[union-attr]
+    assert kwargs["input"].count(b"\0") == count * 5  # type: ignore[union-attr]
     assert kwargs["shell"] is False
     assert all(path.read_bytes() == content for path, content in expected.items())
     assert not any(str(path) in attachment_io._COMPATIBLE_BATCH_PERL for path in expected)
     assert list(tmp_path.rglob(".atls-*.part")) == []
+
+
+def test_compatible_attachment_batch_restores_same_bytes_inode_swap_before_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bash = (tmp_path / "Git Bash" / "bash.exe").resolve()
+    destination = tmp_path / "asset.bin"
+    replacement = tmp_path / "replacement.bin"
+    destination.write_bytes(b"old")
+    replacement.write_bytes(b"old")
+    replacement_identity = inspect_file_identity(replacement).key
+
+    def race_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        os.replace(replacement, destination)
+        return _emulate_compatible_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", race_run)
+    batch = AttachmentWriteBatch(AttachmentWriter(AttachmentWriterKind.COMPATIBLE, tmp_path, bash))
+    batch.add(destination, b"new")
+
+    with pytest.raises(AtlasError):
+        batch.commit()
+
+    assert inspect_file_identity(destination).key == replacement_identity
+    assert destination.read_bytes() == b"old"
 
 
 def test_empty_compatible_batch_uses_zero_subprocesses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -209,7 +400,7 @@ def test_compatible_partial_failure_restores_existing_destinations(
     def fail_after_one(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         manifest = kwargs["input"]
         assert isinstance(manifest, bytes)
-        stage_value, destination_value, backup_value, _expected, *_rest = manifest.split(b"\0")
+        stage_value, destination_value, backup_value, _expected, _before, *_rest = manifest.split(b"\0")
         os.replace(Path(destination_value.decode()), Path(backup_value.decode()))
         os.replace(Path(stage_value.decode()), Path(destination_value.decode()))
         if failure == "timeout":
@@ -258,19 +449,25 @@ def test_recovery_failure_preserves_backup_for_manual_restore(tmp_path: Path, mo
     def publish_then_fail(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
         manifest = kwargs["input"]
         assert isinstance(manifest, bytes)
-        stage_value, destination_value, backup_value, _expected, _end = manifest.split(b"\0")
+        stage_value, destination_value, backup_value, _expected, _before, _end = manifest.split(b"\0")
         stage = Path(stage_value.decode())
         target = Path(destination_value.decode())
         backup = Path(backup_value.decode())
         real_replace(target, backup)
         real_replace(stage, target)
 
-        def fail_restore(source: Path, restored: Path) -> None:
-            if source == backup and restored == target:
-                raise OSError("restore blocked")
-            real_replace(source, restored)
+        real_promote = attachment_io.DirectoryCapability.promote_no_replace
 
-        monkeypatch.setattr(os, "replace", fail_restore)
+        def fail_restore(
+            capability: attachment_io.DirectoryCapability,
+            source_leaf: str,
+            restored_leaf: str,
+        ) -> None:
+            if source_leaf == backup.name and restored_leaf == target.name:
+                raise OSError("restore blocked")
+            real_promote(capability, source_leaf, restored_leaf)
+
+        monkeypatch.setattr(attachment_io.DirectoryCapability, "promote_no_replace", fail_restore)
         raise subprocess.CalledProcessError(1, args, stderr=b"forced failure")
 
     monkeypatch.setattr(subprocess, "run", publish_then_fail)
@@ -301,3 +498,31 @@ def test_safe_attachment_filename_handles_traversal_windows_names_and_trailing_c
     assert safe_attachment_filename(r"..\..\CON.txt", "12") == "_CON.txt"
     assert safe_attachment_filename("bad:name?.png. ", "12") == "bad_name_.png"
     assert safe_attachment_filename("..", "12") == "attachment_12"
+
+
+@pytest.mark.parametrize(
+    "control",
+    [
+        "\u061c",
+        "\u200e",
+        "\u200f",
+        "\u202a",
+        "\u202b",
+        "\u202c",
+        "\u202d",
+        "\u202e",
+        "\u2066",
+        "\u2067",
+        "\u2068",
+        "\u2069",
+    ],
+)
+def test_safe_attachment_filename_neutralizes_bidi_controls(control: str) -> None:
+    assert safe_attachment_filename(f"left{control}right.png", "12") == "left_right.png"
+
+
+def test_bidi_controls_are_visible_in_human_output_without_changing_source_text() -> None:
+    source = "invoice\u202egnp.exe"
+
+    assert escape_bidi_controls_for_display(source) == r"invoice\u202egnp.exe"
+    assert source == "invoice\u202egnp.exe"

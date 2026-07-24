@@ -255,6 +255,22 @@ def test_search_paginates_until_limit_of_content_results(client: ConfluenceClien
     assert [p.id for p in result.results] == ["1", "2", "3"]
 
 
+@respx.mock
+def test_search_rejects_repeated_next_link(client: ConfluenceClient) -> None:
+    repeated = "/rest/api/search?cql=siteSearch&limit=3&start=3"
+    page = {
+        "results": [],
+        "totalSize": 10,
+        "_links": {"next": repeated},
+    }
+    respx.get(f"{BASE_URL}/rest/api/search").mock(return_value=httpx.Response(200, json=page))
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.search("siteSearch ~ 'demo'", limit=3)
+
+    assert exc_info.value.context == {"reason": "pagination_cycle"}
+
+
 # ---------------------------------------------------------------------------
 # get_children
 # ---------------------------------------------------------------------------
@@ -654,7 +670,7 @@ def test_upload_attachment_success(client: ConfluenceClient, tmp_path: Path) -> 
 
     result = client.upload_attachment("100", test_file)
 
-    assert result[0]["id"] == "att200"
+    assert result["id"] == "att200"
 
 
 # ---------------------------------------------------------------------------
@@ -706,7 +722,7 @@ def test_upload_attachments_batch_skip_existing(client: ConfluenceClient, tmp_pa
     results = client.upload_attachments_batch("600", [file1, file2], if_exists="skip")
 
     # result[0] is the skipped dict {"title": ..., "skipped": True}
-    # result[1] is the raw API response (a list from multipart upload)
+    # result[1] is the normalized single attachment response.
     assert len(results) == 2
     skipped = [r for r in results if isinstance(r, dict) and r.get("skipped")]
     assert len(skipped) == 1

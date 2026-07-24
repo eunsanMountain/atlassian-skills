@@ -9,6 +9,7 @@ import respx
 from typer.testing import CliRunner
 
 from atlassian_skills.cli.main import app
+from atlassian_skills.confluence.stateless_write import build_source_conversion
 from atlassian_skills.core.config import Config
 from atlassian_skills.core.errors import ExitCode
 
@@ -94,8 +95,254 @@ def test_cli_confluence_page_get_body_repr_md() -> None:
     respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
         return_value=httpx.Response(200, json=_RAW_PAGE)
     )
-    result = runner.invoke(app, ["confluence", "page", "get", "12345678", "--body-repr", "md"])
+    result = runner.invoke(
+        app,
+        ["confluence", "page", "get", "12345678", "--body-repr", "md", "--format", "md"],
+    )
     assert result.exit_code == 0, result.output
+    assert result.stdout == "Test content\n"
+    assert "<!-- atls:" not in result.stdout
+    assert "# conversion: push_safe=false" in result.stderr
+
+
+@respx.mock
+def test_cli_confluence_page_get_md_passthrough_is_canonical_and_content_only() -> None:
+    page = dict(_RAW_PAGE)
+    page["body"] = {
+        "storage": {
+            "value": "<!-- custom:keep --><p>Body</p>",
+            "representation": "storage",
+        }
+    }
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=page)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "get",
+            "12345678",
+            "--body-repr",
+            "md",
+            "--passthrough-prefix",
+            "zeta:",
+            "--passthrough-prefix",
+            "custom:",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["conversion_options"]["passthrough_prefixes"] == ["custom:", "zeta:"]
+    assert "atls:managed" not in payload["body_storage"]
+
+
+@pytest.mark.parametrize("body_repr", ["raw", "storage", "view"])
+def test_cli_confluence_page_get_rejects_passthrough_without_markdown_conversion(body_repr: str) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "get",
+            "12345678",
+            "--body-repr",
+            body_repr,
+            "--passthrough-prefix",
+            "custom:",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    assert json.loads(result.output)["error"]["context"]["reason"] == "passthrough_requires_markdown_conversion"
+
+
+@respx.mock
+def test_cli_confluence_page_get_view_raw_is_exact_server_rendered_html() -> None:
+    rendered = '<div class="content"><p>Rendered</p></div>'
+    page = {**_RAW_PAGE, "body": {"view": {"value": rendered, "representation": "view"}}}
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=page)
+    )
+
+    result = runner.invoke(
+        app,
+        ["confluence", "page", "get", "12345678", "--body-repr", "view", "--format", "raw"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output == rendered
+
+
+@respx.mock
+def test_cli_confluence_page_get_view_json_marks_body_non_publishable() -> None:
+    page = {**_RAW_PAGE, "body": {"view": {"value": "<p>Rendered</p>", "representation": "view"}}}
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=page)
+    )
+
+    result = runner.invoke(
+        app,
+        ["--format", "json", "confluence", "page", "get", "12345678", "--body-repr", "view"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["representation"] == "view"
+    assert payload["editable"] is False
+    assert payload["publishable"] is False
+    assert payload["reason"] == "server-rendered-html"
+
+
+@respx.mock
+def test_cli_confluence_page_inspect_append_recommends_dry_run_proof() -> None:
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678(?:\?|$)").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE)
+    )
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [], "size": 0})
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "inspect",
+            "12345678",
+            "--intent",
+            "append",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["recommended_workflow"] == "pull-md"
+    assert payload["preferred_proof"] == "exact_remote_prefix_append"
+    assert payload["managed_artifact_created"] is False
+
+
+@respx.mock
+def test_cli_confluence_page_get_md_has_no_control_marker() -> None:
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE)
+    )
+
+    result = runner.invoke(app, ["--format", "md", "confluence", "page", "get", "12345678"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("# [PROJ-3]")
+    assert "<!-- atls:" not in result.output
+    assert "# conversion: push_safe=false" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("format_args", "expects_json"),
+    [
+        (["--body-repr", "md", "--format", "json"], True),
+        (["--body-repr", "md", "--format", "md"], False),
+    ],
+)
+@respx.mock
+def test_cli_confluence_readable_markdown_reports_omitted_table_backgrounds(
+    format_args: list[str],
+    expects_json: bool,
+) -> None:
+    colored_page = dict(_RAW_PAGE)
+    colored_page["body"] = {
+        "storage": {
+            "value": (
+                '<table><tbody><tr><th data-highlight-colour="#fff0b3">Heading</th>'
+                '<td style="background-color: #deebff">Value</td><td>Plain</td></tr></tbody></table>'
+            ),
+            "representation": "storage",
+        }
+    }
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=colored_page)
+    )
+
+    result = runner.invoke(app, ["confluence", "page", "get", "12345678", *format_args])
+
+    assert result.exit_code == 0, result.output
+    if expects_json:
+        payload = json.loads(result.stdout)
+        assert payload["conversion"]["diagnostics"] == [
+            {
+                "code": "table-cell-background-omitted",
+                "severity": "warning",
+                "count": 2,
+                "message": (
+                    "Readable Markdown omits the backgrounds of 2 table cells; "
+                    "the remote page remains the presentation source of truth."
+                ),
+            }
+        ]
+        assert result.stderr == ""
+    else:
+        assert "data-highlight-colour" not in result.stdout
+        assert result.stderr.count("table-cell-background-omitted") == 1
+        assert "count=2" in result.stderr
+
+
+@respx.mock
+def test_cli_confluence_readable_markdown_has_no_background_warning_when_none_are_omitted() -> None:
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE)
+    )
+
+    result = runner.invoke(
+        app,
+        ["confluence", "page", "get", "12345678", "--body-repr", "md", "--format", "json"],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert "diagnostics" not in payload["conversion"]
+    assert result.stderr == ""
+
+
+@respx.mock
+def test_cli_confluence_empty_page_get_md_is_content_only_and_not_json() -> None:
+    empty_page = dict(_RAW_PAGE)
+    empty_page["body"] = {"storage": {"value": "", "representation": "storage"}}
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=empty_page)
+    )
+
+    result = runner.invoke(app, ["confluence", "page", "get", "12345678", "--format", "md"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("# [PROJ-3]")
+    assert "<!-- atls:" not in result.output
+    assert not result.output.lstrip().startswith("{")
+    assert "# conversion: push_safe=false" in result.stderr
+
+
+@respx.mock
+def test_cli_confluence_page_history_md_emits_conversion_diagnostics() -> None:
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE)
+    )
+
+    result = runner.invoke(
+        app,
+        ["confluence", "page", "history", "12345678", "2", "--format", "md"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("# [PROJ-3]")
+    assert "<!-- atls:" not in result.output
+    assert "# conversion: push_safe=false" in result.stderr
 
 
 @respx.mock
@@ -204,7 +451,18 @@ def test_cli_confluence_page_create_success(tmp_path: Path) -> None:
     """page create POSTs and returns created page id."""
     body_file = tmp_path / "body.html"
     body_file.write_text("<p>Hello world</p>")
+    created = {
+        **_RAW_PAGE_CREATED,
+        "ancestors": [],
+        "body": {"storage": {"value": "<p>Hello world</p>", "representation": "storage"}},
+    }
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/search").mock(
+        return_value=httpx.Response(200, json={"results": [], "size": 0})
+    )
     respx.post(f"{CONFLUENCE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=_RAW_PAGE_CREATED))
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/123456789").mock(
+        return_value=httpx.Response(200, json=created)
+    )
     result = runner.invoke(
         app,
         [
@@ -227,13 +485,181 @@ def test_cli_confluence_page_create_success(tmp_path: Path) -> None:
 
 
 @respx.mock
+def test_cli_confluence_page_create_json_includes_write_conversion_warnings(tmp_path: Path) -> None:
+    body_file = tmp_path / "body.md"
+    body_file.write_bytes(b"\xef\xbb\xbf# Heading\r\n\r\n```text\r\nBody\r\n```\r\n")
+    candidate = build_source_conversion(body_file.read_bytes().decode("utf-8-sig")).candidate_storage
+    created = {
+        **_RAW_PAGE_CREATED,
+        "ancestors": [],
+        "body": {"storage": {"value": candidate, "representation": "storage"}},
+    }
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/search").mock(
+        return_value=httpx.Response(200, json={"results": [], "size": 0})
+    )
+    respx.post(f"{CONFLUENCE_URL}/rest/api/content").mock(return_value=httpx.Response(200, json=_RAW_PAGE_CREATED))
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/123456789").mock(
+        return_value=httpx.Response(200, json=created)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "create",
+            "--space",
+            "TESTSPACE",
+            "--title",
+            "Test Page",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data["conversion"]["push_safe"] is True
+    assert any("normalized to LF" in warning for warning in data["conversion"]["warnings"])
+
+
+def test_cli_confluence_page_create_rejects_readable_markdown(tmp_path: Path) -> None:
+    body_file = tmp_path / "body.md"
+    body_file.write_text("<!-- atls:mode=readable push=blocked -->\n\n# Read only\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "confluence",
+            "page",
+            "create",
+            "--space",
+            "SPACE",
+            "--title",
+            "Read only",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 7
+    assert "generated for reading only" in result.output
+
+
+@respx.mock
+def test_cli_confluence_page_create_loss_requires_returned_conversion_fingerprint(tmp_path: Path) -> None:
+    body_file = tmp_path / "lossy.md"
+    body_file.write_text("x <span>raw</span> y\n", encoding="utf-8")
+    post = respx.post(f"{CONFLUENCE_URL}/rest/api/content").mock(
+        return_value=httpx.Response(500, json={"message": "must not write"})
+    )
+
+    dry_run = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "create",
+            "--space",
+            "TESTSPACE",
+            "--title",
+            "User supplied title",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+            "--dry-run",
+        ],
+    )
+    assert dry_run.exit_code == 0, dry_run.output
+    dry_payload = json.loads(dry_run.output)
+    assert dry_payload["status"] == "conversion_consent_required"
+    assert dry_payload["conversion_fingerprint"].startswith("conv_sha256:")
+    dry_action = dry_payload["next_actions"][0]
+    assert dry_action["id"] == "retry_with_consent"
+    assert dry_action["requires_user_approval"] is True
+    assert dry_action["description_code"] == "REVIEW_CONVERSION_AND_RETRY"
+    assert dry_action["argv"][-2:] == ["--accept-conversion", dry_payload["conversion_fingerprint"]]
+
+    actual = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "create",
+            "--space",
+            "TESTSPACE",
+            "--title",
+            "User supplied title",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+        ],
+    )
+    assert actual.exit_code == ExitCode.VALIDATION, actual.output
+    error = json.loads(actual.output)["error"]
+    assert error["code"] == "CONVERSION_CONSENT_REQUIRED"
+    context = error["context"]
+    assert context["reason"] == "conversion_consent_required"
+    assert context["next_actions"] == [dry_action]
+    assert post.called is False
+
+    human = runner.invoke(
+        app,
+        [
+            "confluence",
+            "page",
+            "create",
+            "--space",
+            "TESTSPACE",
+            "--title",
+            "User supplied title",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+        ],
+    )
+    assert human.exit_code == ExitCode.VALIDATION, human.output
+    summary_at = human.output.index("Loss summary:")
+    alternative_at = human.output.index("Alternative:")
+    retry_at = human.output.index("Retry:")
+    assert summary_at < alternative_at < retry_at
+    assert "\n\nRetry:" in human.output
+    assert "--accept-conversion conv_sha256:" in human.output
+    assert human.output.rstrip().splitlines()[-1].startswith("Retry: atls confluence page create ")
+    assert post.called is False
+
+
+@respx.mock
 def test_cli_confluence_page_update(tmp_path: Path) -> None:
     """page update fetches current version then PUTs new content."""
     body_file = tmp_path / "body.html"
     body_file.write_text("<p>Updated content</p>")
     # GET is called with query params by the client
+    updated = {
+        **_RAW_PAGE,
+        "version": {"number": 3},
+        "body": {"storage": {"value": "<p>Updated content</p>", "representation": "storage"}},
+    }
     respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
-        return_value=httpx.Response(200, json=_RAW_PAGE)
+        side_effect=[
+            httpx.Response(200, json=_RAW_PAGE),
+            httpx.Response(200, json=_RAW_PAGE),
+            httpx.Response(200, json=updated),
+        ]
     )
     respx.put(f"{CONFLUENCE_URL}/rest/api/content/12345678").mock(return_value=httpx.Response(200, json=_RAW_PAGE))
     result = runner.invoke(
@@ -257,6 +683,77 @@ def test_cli_confluence_page_update_dry_run(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     assert "PUT" in result.output
+
+
+@respx.mock
+def test_cli_confluence_page_update_md_loss_is_read_only_without_exact_consent(tmp_path: Path) -> None:
+    body_file = tmp_path / "lossy.md"
+    body_file.write_text("x <span>raw</span> y\n", encoding="utf-8")
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE)
+    )
+    put = respx.put(f"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(500, json={"message": "must not write"})
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "update",
+            "12345678",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+            "--if-version",
+            "2",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    error = json.loads(result.output)["error"]
+    assert error["code"] == "MIGRATION_CONSENT_REQUIRED"
+    context = error["context"]
+    assert context["reason"] == "migration_consent_required"
+    assert context["migration_fingerprint"].startswith("mig_sha256:")
+    assert context["source_conversion_report"]["occurrences"]
+    action = context["next_actions"][0]
+    assert action["id"] == "retry_with_consent"
+    assert action["requires_user_approval"] is True
+    assert action["description_code"] == "REVIEW_MIGRATION_AND_RETRY"
+    assert action["argv"][-2:] == ["--accept-migration", context["migration_fingerprint"]]
+    assert put.called is False
+
+    human = runner.invoke(
+        app,
+        [
+            "confluence",
+            "page",
+            "update",
+            "12345678",
+            "--body-file",
+            str(body_file),
+            "--body-format",
+            "md",
+            "--if-version",
+            "2",
+        ],
+    )
+    assert human.exit_code == ExitCode.VALIDATION, human.output
+    summary_at = human.output.index("Loss summary:")
+    alternative_at = human.output.index("Alternative:")
+    retry_at = human.output.index("Retry:")
+    assert summary_at < alternative_at < retry_at
+    assert "\n\nRetry:" in human.output
+    assert "--accept-migration mig_sha256:" in human.output
+    assert human.output.rstrip().splitlines()[-1].startswith("Retry: atls confluence page update 12345678 ")
+    assert str(_RAW_PAGE["title"]) not in human.output
+    assert CONFLUENCE_URL not in human.output
+    assert put.called is False
 
 
 @respx.mock
@@ -287,14 +784,13 @@ def test_cli_confluence_page_delete_dry_run() -> None:
 
 
 @respx.mock
-def test_cli_confluence_page_push_md_reads_stdin_and_skips_missing_asset_dir(tmp_path: Path) -> None:
-    """push-md accepts --md-file=- and treats a missing asset dir as empty."""
+def test_cli_confluence_page_push_md_rejects_stdin_without_binding_identity(tmp_path: Path) -> None:
+    """Managed push rejects stdin before any page read."""
     current_page = dict(_RAW_PAGE)
     current_page["body"] = {"storage": {"value": "<p>Old content</p>", "representation": "storage"}}
     respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
         return_value=httpx.Response(200, json=current_page)
     )
-    missing_assets = tmp_path / "assets"
     result = runner.invoke(
         app,
         [
@@ -305,18 +801,95 @@ def test_cli_confluence_page_push_md_reads_stdin_and_skips_missing_asset_dir(tmp
             "12345678",
             "--md-file",
             "-",
-            "--asset-dir",
-            str(missing_assets),
             "--dry-run",
             "--format",
             "json",
         ],
         input="# Updated from stdin\n",
     )
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == ExitCode.VALIDATION, result.output
     data = json.loads(result.output)
-    assert data["status"] == "dry_run"
-    assert data["would_update"] is True
+    assert data["error"]["code"] == "VALIDATION"
+    assert data["error"]["context"]["reason"] == "managed_file_required"
+
+
+def test_cli_confluence_page_push_md_missing_file_is_json_not_found(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.md"
+
+    result = runner.invoke(
+        app,
+        [
+            "confluence",
+            "page",
+            "push-md",
+            "12345678",
+            "--md-file",
+            str(missing),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.NOT_FOUND
+    assert result.stderr == ""
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "NOT_FOUND"
+    assert payload["error"]["context"] == {"reason": "managed_file_not_found", "path": str(missing)}
+
+
+def test_cli_confluence_page_push_md_rejects_readable_input_before_network() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "push-md",
+            "12345678",
+            "--md-file",
+            "-",
+        ],
+        input="<!-- atls:mode=readable push=blocked -->\n\n# Read only\n",
+    )
+
+    assert result.exit_code == ExitCode.VALIDATION
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "VALIDATION"
+
+
+@respx.mock
+def test_cli_confluence_diff_local_json_reports_conversion_safety(tmp_path: Path) -> None:
+    current_page = dict(_RAW_PAGE)
+    current_page["body"] = {
+        "storage": {
+            "value": ('<ac:structured-macro xmlns:ac="http://atlassian.com/content" ac:name="sample-unknown"/>'),
+            "representation": "storage",
+        }
+    }
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=current_page)
+    )
+    local_file = tmp_path / "page.md"
+    local_file.write_text("# Replacement\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "diff-local",
+            "12345678",
+            str(local_file),
+        ],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["conversion"]["push_safe"] is False
+    assert any("server:" in loss for loss in payload["conversion"]["losses"])
 
 
 def test_cli_confluence_page_pull_batch_uses_one_client_and_formats_results(
@@ -357,6 +930,38 @@ def test_cli_confluence_page_pull_batch_uses_one_client_and_formats_results(
     assert payload[0]["assets"] == 10
 
 
+def test_cli_confluence_page_pull_batch_does_not_emit_legacy_state_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from atlassian_skills.confluence.pull_md import PullPageResult
+
+    monkeypatch.setattr("atlassian_skills.cli.confluence._make_client", lambda _ctx: object())
+    managed = tmp_path / "Page One--100" / "Page One.md"
+    monkeypatch.setattr(
+        "atlassian_skills.confluence.pull_md.pull_pages_batch",
+        lambda *_args, **_kwargs: [
+            PullPageResult(
+                "100",
+                "Page One",
+                managed,
+                3,
+                0,
+                migration_report={"schema": "cfxmark-migration-report-v1", "occurrences": []},
+                migration_report_sha256="sha256:" + "a" * 64,
+            )
+        ],
+    )
+
+    result = runner.invoke(
+        app,
+        ["confluence", "page", "pull-batch", "100", "--output-dir", str(tmp_path)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "atls state" not in result.output
+    assert "binding" not in result.stderr.lower()
+
+
 # ---------------------------------------------------------------------------
 # Exit code matrix
 # ---------------------------------------------------------------------------
@@ -379,3 +984,176 @@ def test_cli_confluence_exit_codes(http_status: int, expected_exit: int) -> None
     )
     result = runner.invoke(app, ["confluence", "page", "get", "12345678"])
     assert result.exit_code == expected_exit
+
+
+# ---------------------------------------------------------------------------
+# Story 4.5: patch-text diagnostics through the real CLI entry point
+#
+# The unit tests cover classification; these cover what a person or an agent
+# actually sees. A correct reason that never reaches the terminal is not a
+# usable diagnostic.
+# ---------------------------------------------------------------------------
+
+_RAW_PAGE_INLINE_MARKUP = {
+    "id": "12345678",
+    "title": "Inline markup page",
+    "type": "page",
+    "status": "current",
+    "space": {"key": "TESTSPACE", "name": "Test Lab", "type": "global"},
+    "version": {"number": 2, "when": "2024-01-01T00:00:00.000Z"},
+    "_links": {"webui": "/pages/viewpage.action?pageId=12345678"},
+    "body": {"storage": {"value": "<p><strong>Important</strong> notice</p>", "representation": "storage"}},
+}
+
+
+@respx.mock
+def test_cli_patch_text_boundary_failure_is_actionable_for_humans() -> None:
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE_INLINE_MARKUP)
+    )
+    result = runner.invoke(
+        app,
+        [
+            "confluence",
+            "page",
+            "patch-text",
+            "12345678",
+            "--find",
+            "Important notice",
+            "--replace",
+            "Critical notice",
+            "--if-version",
+            "2",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    # The counts that distinguish "no match" from "several matches" must survive
+    # into the human envelope, not only into --format=json.
+    assert "0 matches" in result.output
+    assert "1 spanning inline markup" in result.output
+    assert "spans inline markup" in result.output
+    assert "Retry --find with the exact text of a single plain-text part." in result.output
+
+
+def test_cli_patch_text_requires_source_version_before_remote_read() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "patch-text",
+            "12345678",
+            "--find",
+            "Alpha",
+            "--replace",
+            "Beta",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    assert json.loads(result.output)["error"]["context"]["reason"] == "patch_version_required"
+
+
+@respx.mock
+def test_cli_patch_text_boundary_failure_json_envelope() -> None:
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE_INLINE_MARKUP)
+    )
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "patch-text",
+            "12345678",
+            "--find",
+            "Important notice",
+            "--replace",
+            "Critical notice",
+            "--if-version",
+            "2",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    context = json.loads(result.output)["error"]["context"]
+    assert context["reason"] == "cross_text_node_boundary"
+    assert context["patchable"] is False
+    assert context["match_count"] == 0
+    assert context["boundary_match_count"] == 1
+    assert context["hint_code"] == "use_single_plain_text_leaf"
+    assert [action["id"] for action in context["next_actions"]] == ["retry_inner_plain_text", "use_pull_md"]
+    for action in context["next_actions"]:
+        assert "argv" not in action
+
+
+@respx.mock
+def test_cli_patch_text_retrying_inside_one_leaf_succeeds() -> None:
+    """The hint has to lead somewhere: the narrower --find must actually work."""
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE_INLINE_MARKUP)
+    )
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "patch-text",
+            "12345678",
+            "--find",
+            "Important",
+            "--replace",
+            "Critical",
+            "--if-version",
+            "2",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["patchable"] is True
+    assert payload["put_count"] == 0
+
+
+@respx.mock
+def test_cli_patch_text_absent_text_is_not_reported_as_ambiguous() -> None:
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_RAW_PAGE_INLINE_MARKUP)
+    )
+    result = runner.invoke(
+        app,
+        [
+            "--format",
+            "json",
+            "confluence",
+            "page",
+            "patch-text",
+            "12345678",
+            "--find",
+            "Nonexistent phrase",
+            "--replace",
+            "X",
+            "--if-version",
+            "2",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    context = json.loads(result.output)["error"]["context"]
+    assert context["reason"] == "text_not_found"
+    # Regression: this used to be reported as text_occurrence_not_unique with a
+    # match_count of 0, telling the caller to disambiguate nothing.
+    assert context["match_count"] == 0
+    assert [action["id"] for action in context["next_actions"]] == ["retry_inner_plain_text"]

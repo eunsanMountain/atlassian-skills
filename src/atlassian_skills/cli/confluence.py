@@ -2,19 +2,28 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import subprocess
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import typer
+from cfxmark.presentation import extract_presentation
 
 from atlassian_skills.confluence.client import ConfluenceClient
-from atlassian_skills.confluence.models import PageVersion
+from atlassian_skills.confluence.migration_preflight import describe_migration_code
+from atlassian_skills.confluence.page_copy import copy_page as copy_confluence_page
 from atlassian_skills.core.auth import resolve_credential
 from atlassian_skills.core.config import get_profile, load_config
 from atlassian_skills.core.dryrun import format_dry_run
-from atlassian_skills.core.errors import AtlasError, ExitCode
+from atlassian_skills.core.errors import AtlasError, ExitCode, NotFoundError, ValidationError, consent_retry_action
 from atlassian_skills.core.format import OutputFormat, format_output
-from atlassian_skills.core.format.markdown import confluence_storage_to_md, md_to_confluence_storage
+from atlassian_skills.core.format.markdown import (
+    WriteConversionResult,
+    confluence_storage_to_md_result,
+    md_to_confluence_storage_result,
+)
 from atlassian_skills.core.models import WriteResult
 from atlassian_skills.core.stdin import read_body
 
@@ -78,13 +87,286 @@ def _resolve_fmt(ctx_obj: dict[str, Any], local_format: str | None) -> OutputFor
     return _fmt(ctx_obj)
 
 
+def _conversion_diagnostics(
+    warnings: tuple[str, ...],
+    losses: tuple[str, ...],
+    push_safe: bool,
+    *,
+    table_background_omitted_count: int = 0,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "push_safe": push_safe,
+        "warnings": list(warnings),
+        "losses": list(losses),
+    }
+    if table_background_omitted_count:
+        payload["diagnostics"] = [
+            {
+                "code": "table-cell-background-omitted",
+                "severity": "warning",
+                "count": table_background_omitted_count,
+                "message": (
+                    f"Readable Markdown omits the backgrounds of {table_background_omitted_count} table cells; "
+                    "the remote page remains the presentation source of truth."
+                ),
+            }
+        ]
+    return payload
+
+
+def _emit_conversion_diagnostics(
+    ctx: typer.Context,
+    warnings: tuple[str, ...],
+    losses: tuple[str, ...],
+    push_safe: bool,
+    *,
+    table_background_omitted_count: int = 0,
+) -> None:
+    if ctx.obj.get("quiet"):
+        return
+    if not push_safe:
+        typer.echo("# conversion: push_safe=false", err=True)
+    for message in (*warnings, *losses):
+        typer.echo(f"# conversion: {message}", err=True)
+    if table_background_omitted_count:
+        typer.echo(
+            "# conversion: table-cell-background-omitted "
+            f"count={table_background_omitted_count}; readable Markdown does not display these backgrounds",
+            err=True,
+        )
+
+
+def _readable_table_background_omission_count(conversion: Any) -> int:
+    if conversion.document is None:
+        return 0
+    return sum(cell.background is not None for cell in extract_presentation(conversion.document).cells)
+
+
+def _output_with_write_diagnostics(
+    ctx: typer.Context,
+    output: Any,
+    fmt: OutputFormat,
+    conversion: WriteConversionResult,
+) -> Any:
+    has_diagnostics = bool(conversion.warnings or conversion.losses or not conversion.push_safe)
+    if not has_diagnostics:
+        return output
+    if fmt != OutputFormat.JSON:
+        _emit_conversion_diagnostics(
+            ctx,
+            conversion.warnings,
+            conversion.losses,
+            conversion.push_safe,
+        )
+        return output
+    if isinstance(output, dict):
+        payload: Any = dict(output)
+    elif hasattr(output, "model_dump"):
+        payload = output.model_dump(mode="json", exclude_none=True)
+    else:
+        payload = output
+    if isinstance(payload, dict):
+        payload["conversion"] = _conversion_diagnostics(
+            conversion.warnings,
+            conversion.losses,
+            conversion.push_safe,
+        )
+        return payload
+    return {
+        "result": payload,
+        "conversion": _conversion_diagnostics(
+            conversion.warnings,
+            conversion.losses,
+            conversion.push_safe,
+        ),
+    }
+
+
+# Counts that explain *why* a selection failed. JSON callers already receive the
+# whole context; without these lines the human reader loses the one number that
+# distinguishes "no match" from "three matches" and has to re-run with
+# --format=json to find out.
+# (context key, label, always show). The primary count is always shown because
+# "0 matches" is itself the answer; the other two are noise when zero.
+_DIAGNOSTIC_COUNT_KEYS = (
+    ("match_count", "matches", True),
+    ("boundary_match_count", "spanning inline markup", False),
+    ("excluded_match_count", "in attributes or macros", False),
+)
+
+# Allowlisted local templates. A description_code that is not listed here is
+# ignored rather than echoed, so no server-provided string can reach the user
+# as if it were an instruction from atls.
+_NEXT_ACTION_TEXT = {
+    "PATCH_RETRY_SINGLE_LEAF": "Retry --find with the exact text of a single plain-text part.",
+    "PATCH_USE_MANAGED_EDIT": "For structural or macro content, use pull-md and edit as Markdown.",
+}
+
+_CONSENT_ACTIONS = {
+    "REVIEW_MIGRATION_AND_RETRY": (
+        "--accept-migration",
+        "mig_sha256:",
+        "Use page inspect and patch-text for a narrow plain-text edit, or revise the managed Markdown and rerun "
+        "--dry-run.",
+    ),
+    "REVIEW_CONVERSION_AND_RETRY": (
+        "--accept-conversion",
+        "conv_sha256:",
+        "Revise unsupported Markdown constructs and rerun --dry-run before approving conversion.",
+    ),
+}
+
+_MIGRATION_EFFECT_LABELS = {
+    "converted": "converted",
+    "normalized": "normalized",
+    "removed": "removed",
+    "unsupported": "unsupported",
+    "fatal": "fatal",
+}
+
+_DIAGNOSTIC_CATEGORY_LABELS = {
+    "readable_simplification": "readable simplification",
+    "canonicalization": "canonicalization",
+    "presentation_loss": "presentation loss",
+    "content_loss": "content loss",
+    "structural_loss": "structural loss",
+    "manual_replacement": "manual replacement",
+}
+
+
+def _report_groups(report: Any, field: str, labels: dict[str, str]) -> list[str]:
+    if not isinstance(report, dict) or not isinstance(report.get("occurrences"), list):
+        return []
+    counts = Counter(
+        occurrence.get(field)
+        for occurrence in report["occurrences"]
+        if isinstance(occurrence, dict) and occurrence.get(field) in labels
+    )
+    return [f"{label}={counts[value]}" for value, label in labels.items() if counts[value]]
+
+
+def _consent_loss_summary(context: dict[str, Any]) -> str | None:
+    groups = _report_groups(context.get("migration_report"), "effect", _MIGRATION_EFFECT_LABELS)
+    groups.extend(_report_groups(context.get("source_conversion_report"), "category", _DIAGNOSTIC_CATEGORY_LABELS))
+    if not groups:
+        conversion = context.get("conversion")
+        losses = conversion.get("losses") if isinstance(conversion, dict) else None
+        if isinstance(losses, list) and losses:
+            groups.append(f"source loss={len(losses)}")
+    return ", ".join(groups) if groups else None
+
+
+def _safe_loss_text(value: Any, *, limit: int = 240) -> str | None:
+    if not isinstance(value, str):
+        return None
+    flattened = " ".join("".join(character if character.isprintable() else " " for character in value).split())
+    if not flattened:
+        return None
+    return flattened if len(flattened) <= limit else flattened[: limit - 1] + "…"
+
+
+def _consent_loss_details(context: dict[str, Any], *, limit: int = 5) -> tuple[str, ...]:
+    details: list[str] = []
+    total = 0
+    for report_key in ("migration_report", "source_conversion_report"):
+        report = context.get(report_key)
+        occurrences = report.get("occurrences") if isinstance(report, dict) else None
+        if not isinstance(occurrences, list):
+            continue
+        for occurrence in occurrences:
+            if not isinstance(occurrence, dict):
+                continue
+            total += 1
+            if len(details) >= limit:
+                continue
+            # Prefer the atls-owned value-free curated description for a known stable
+            # code (shown with the code for traceability); the value-free JSON envelope
+            # already strips cfxmark's display_label, so this restores console
+            # readability without reintroducing any arbitrary-content leak. Fall back to
+            # a display_label only when a caller passes an un-redacted context, then to
+            # the raw stable code.
+            code_value = occurrence.get("code")
+            described = describe_migration_code(code_value if isinstance(code_value, str) else None)
+            if described is not None:
+                label: str | None = f"{described} ({code_value})"
+            else:
+                label = _safe_loss_text(occurrence.get("display_label")) or _safe_loss_text(code_value)
+            impact = _safe_loss_text(occurrence.get("user_impact"))
+            before = _safe_loss_text(occurrence.get("before_summary"))
+            after = _safe_loss_text(occurrence.get("after_summary"))
+            workflow = _safe_loss_text(occurrence.get("suggested_workflow"))
+            lines = [f"Loss detail {len(details) + 1}: {label or 'unlabelled migration'}"]
+            if impact:
+                lines.append(f"  Impact: {impact}")
+            if before or after:
+                lines.append(f"  Change: {before or 'unknown'} -> {after or 'unknown'}")
+            if workflow:
+                lines.append(f"  Suggested: {workflow}")
+            details.append("\n".join(lines))
+    if total > limit:
+        details.append(f"Loss detail: {total - limit} additional occurrence(s) omitted; use --format=json for all.")
+    return tuple(details)
+
+
+def _consent_retry_display(action: Any) -> tuple[str, str] | None:
+    if not isinstance(action, dict) or action.get("id") != "retry_with_consent":
+        return None
+    if action.get("requires_user_approval") is not True:
+        return None
+    rule = _CONSENT_ACTIONS.get(str(action.get("description_code")))
+    argv = action.get("argv")
+    if rule is None or not isinstance(argv, list) or not argv or not all(isinstance(arg, str) for arg in argv):
+        return None
+    consent_option, fingerprint_prefix, alternative = rule
+    if argv[:3] != ["atls", "confluence", "page"] or argv[-2:-1] != [consent_option]:
+        return None
+    digest = argv[-1].removeprefix(fingerprint_prefix)
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        return None
+    display = subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
+    return alternative, display
+
+
 def _handle_error(err: AtlasError, fmt: OutputFormat) -> None:
     if fmt == OutputFormat.JSON:
         typer.echo(json.dumps(err.to_dict()))
     else:
         typer.echo(f"Error: {err.message}", err=True)
+        context = err.context or {}
+        counts = [
+            f"{context[key]} {label}"
+            for key, label, always in _DIAGNOSTIC_COUNT_KEYS
+            if isinstance(context.get(key), int) and (always or context[key])
+        ]
+        if counts:
+            typer.echo(f"Found: {', '.join(counts)}", err=True)
+        actions = context.get("next_actions")
+        consent_retries = (
+            [retry for action in actions if (retry := _consent_retry_display(action)) is not None]
+            if isinstance(actions, list)
+            else []
+        )
+        if consent_retries:
+            summary = _consent_loss_summary(context)
+            if summary:
+                typer.echo(f"Loss summary: {summary}", err=True)
+                for detail in _consent_loss_details(context):
+                    typer.echo(detail, err=True)
+                for alternative, _command in consent_retries:
+                    typer.echo(f"Alternative: {alternative}", err=True)
+            else:
+                typer.echo("Loss summary: unavailable; retry command withheld.", err=True)
+                consent_retries = []
         if err.hint:
             typer.echo(f"Hint:  {err.hint}", err=True)
+        if isinstance(actions, list):
+            for action in actions:
+                text = _NEXT_ACTION_TEXT.get(str(action.get("description_code")))
+                if text:
+                    typer.echo(f"Next:  {text}", err=True)
+        for _alternative, command in consent_retries:
+            typer.echo("", err=True)
+            typer.echo(f"Retry: {command}", err=True)
     raise typer.Exit(err.exit_code)
 
 
@@ -97,34 +379,111 @@ def _handle_error(err: AtlasError, fmt: OutputFormat) -> None:
 def page_get(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
-    body_repr: str | None = typer.Option(None, "--body-repr", help="Body representation: md|raw|storage"),
+    body_repr: str | None = typer.Option(None, "--body-repr", help="Body representation: md|raw|storage|view"),
+    passthrough_prefix: list[str] | None = typer.Option(
+        None,
+        "--passthrough-prefix",
+        help="Preserve an additional HTML comment prefix during Markdown conversion (repeatable)",
+    ),
     format: str | None = typer.Option(None, "--format", "-f", help="Override output format"),
 ) -> None:
     """Get a Confluence page by ID."""
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
 
-    # Task 2: Expand minimization — skip body when compact and no body-repr.
-    needs_body = body_repr in ("md", "raw", "storage") or fmt in (OutputFormat.MD, OutputFormat.RAW)
-    include_body = needs_body or fmt not in (OutputFormat.COMPACT,)
-
     try:
+        if body_repr not in {None, "md", "raw", "storage", "view"}:
+            raise ValidationError(
+                "--body-repr must be md, raw, storage, or view",
+                context={"reason": "invalid_body_representation", "body_repr": body_repr},
+            )
+        markdown_conversion = body_repr == "md" or (body_repr is None and fmt == OutputFormat.MD)
+        if passthrough_prefix and not markdown_conversion:
+            raise ValidationError(
+                "--passthrough-prefix requires Markdown body conversion",
+                context={"reason": "passthrough_requires_markdown_conversion"},
+            )
+        from atlassian_skills.core.managed_manifest import (
+            ManagedManifestError,
+            parse_passthrough,
+            serialize_passthrough,
+        )
+
+        try:
+            canonical_prefixes = parse_passthrough(serialize_passthrough(passthrough_prefix or ()))
+        except ManagedManifestError as error:
+            raise ValidationError("Invalid passthrough prefix", context=error.context) from error
         client = _make_client(ctx.obj)
 
         # RAW format: return server response text verbatim (byte-preserving contract)
-        if fmt == OutputFormat.RAW:
+        if fmt == OutputFormat.RAW and body_repr is None:
             typer.echo(client.get_page_raw_text(page_id))
             return
 
+        if body_repr == "view":
+            page = client.get_page(page_id, expand="body.view,version,space,history", include_body=True)
+            if not isinstance(page.body_view, str):
+                raise ValidationError(
+                    "Confluence rendered view body is missing",
+                    context={"reason": "view_body_missing", "page_id": page_id},
+                )
+            if fmt == OutputFormat.RAW:
+                typer.echo(page.body_view, nl=False)
+            elif fmt == OutputFormat.JSON:
+                payload = page.model_dump(mode="json")
+                payload.update(
+                    {
+                        "representation": "view",
+                        "editable": False,
+                        "publishable": False,
+                        "reason": "server-rendered-html",
+                    }
+                )
+                typer.echo(format_output(payload, fmt))
+            else:
+                typer.echo(page.body_view)
+            return
+
+        needs_body = body_repr in ("md", "raw", "storage") or fmt == OutputFormat.MD
+        include_body = needs_body or fmt != OutputFormat.COMPACT
         page = client.get_page(page_id, include_body=include_body)
 
-        if body_repr == "md" and page.body_storage:
-            page.body_storage = confluence_storage_to_md(page.body_storage)
+        conversion = None
+        if page.body_storage is not None and markdown_conversion:
+            conversion = confluence_storage_to_md_result(
+                page.body_storage,
+                profile="readable",
+                passthrough_prefixes=canonical_prefixes,
+            )
+            if body_repr == "md":
+                page.body_storage = "" if page.body_storage == "" else conversion.markdown or ""
         # "raw" and "storage" keep the storage XHTML as-is
 
-        # When body_repr is specified and fmt=MD, bypass format_output to prevent
-        # double conversion (body_repr already set the body representation).
-        if fmt == OutputFormat.MD and body_repr:
+        if fmt == OutputFormat.JSON and conversion is not None:
+            table_background_omitted_count = _readable_table_background_omission_count(conversion)
+            payload = page.model_dump(mode="json")
+            payload["conversion"] = _conversion_diagnostics(
+                conversion.warnings,
+                conversion.losses,
+                conversion.push_safe,
+                table_background_omitted_count=table_background_omitted_count,
+            )
+            payload["representation"] = "md"
+            payload["editable"] = False
+            payload["publishable"] = False
+            payload["conversion_options"] = {"passthrough_prefixes": list(canonical_prefixes)}
+            typer.echo(format_output(payload, fmt))
+        elif body_repr == "md" and conversion is not None:
+            typer.echo(conversion.markdown or "", nl=False)
+        elif fmt == OutputFormat.MD and conversion is not None:
+            from atlassian_skills.core.format.markdown import format_page_md_document, format_page_md_header
+
+            space_key = page.space.key if page.space else ""
+            header = format_page_md_header(page.title, space_key, page.version)
+            typer.echo(format_page_md_document(header, conversion.markdown or ""))
+        elif fmt == OutputFormat.RAW and body_repr in {"raw", "storage"}:
+            typer.echo(page.body_storage or "", nl=False)
+        elif fmt == OutputFormat.MD and body_repr:
             from atlassian_skills.core.format.markdown import format_page_md_header
 
             space_key = page.space.key if page.space else ""
@@ -132,8 +491,36 @@ def page_get(
             typer.echo(header + (page.body_storage or ""))
         else:
             typer.echo(format_output(page, fmt))
+        if conversion is not None and fmt != OutputFormat.JSON:
+            _emit_conversion_diagnostics(
+                ctx,
+                conversion.warnings,
+                conversion.losses,
+                conversion.push_safe,
+                table_background_omitted_count=_readable_table_background_omission_count(conversion),
+            )
     except AtlasError as e:
         _handle_error(e, fmt)
+
+
+@page_app.command("inspect")
+def page_inspect(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    intent: str = typer.Option(..., "--intent", help="read|text-edit|append|structure-edit|presentation-edit"),
+    format: str | None = typer.Option(None, "--format", help="Override output format"),
+) -> None:
+    """Inspect a page and recommend a non-authoritative edit workflow."""
+
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.page_inspect import inspect_page
+
+        result = inspect_page(_make_client(ctx.obj), page_id, intent=intent)
+        typer.echo(format_output(result, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +587,21 @@ def page_history(
     try:
         client = _make_client(ctx.obj)
         page = client.get_page_history(page_id, version)
-        typer.echo(format_output(page, fmt))
+        if fmt == OutputFormat.MD:
+            from atlassian_skills.core.format.markdown import format_page_md_document, format_page_md_header
+
+            conversion = confluence_storage_to_md_result(page.body_storage or "", profile="readable")
+            space_key = page.space.key if page.space else ""
+            header = format_page_md_header(page.title, space_key, page.version)
+            typer.echo(format_page_md_document(header, conversion.markdown or ""))
+            _emit_conversion_diagnostics(
+                ctx,
+                conversion.warnings,
+                conversion.losses,
+                conversion.push_safe,
+            )
+        else:
+            typer.echo(format_output(page, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -436,15 +837,25 @@ def user_me(
 # ===========================================================================
 
 
-def _resolve_body(body_file: str | None, body_format: str) -> str:
+def _resolve_body(body_file: str | None, body_format: str) -> WriteConversionResult:
     """Read body from file/stdin and convert md to storage if needed."""
     if body_file is None:
         typer.echo("Error: --body-file is required for this command", err=True)
         raise typer.Exit(ExitCode.VALIDATION)
     raw = read_body(body_file=body_file)
     if body_format == "md":
-        return md_to_confluence_storage(raw)
-    return raw
+        from atlassian_skills.confluence.push_md import _assert_push_safe_source
+
+        _assert_push_safe_source(raw)
+        result = md_to_confluence_storage_result(raw)
+        if not result.push_safe or result.losses:
+            raise ValidationError(
+                "The Markdown body cannot be converted without losing content.",
+                hint="Resolve the reported conversion losses before publishing.",
+                context=_conversion_diagnostics(result.warnings, result.losses, result.push_safe),
+            )
+        return result
+    return WriteConversionResult(body=raw)
 
 
 # ---------------------------------------------------------------------------
@@ -460,6 +871,11 @@ def page_create(
     parent_id: str | None = typer.Option(None, "--parent-id", help="Parent page ID"),
     body_file: str | None = typer.Option(None, "--body-file", "-f", help="Body file path (- for stdin)"),
     body_format: str = typer.Option("storage", "--body-format", help="Body format: storage or md"),
+    accept_conversion: str | None = typer.Option(
+        None,
+        "--accept-conversion",
+        help="Exact source conversion fingerprint returned by preflight",
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
@@ -467,26 +883,94 @@ def page_create(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
-        body = _resolve_body(body_file, body_format)
+        if body_file is None:
+            raise ValidationError("--body-file is required for this command", context={"reason": "body_file_required"})
+        body = read_body(body_file=body_file)
         client = _make_client(ctx.obj)
+        from atlassian_skills.confluence.stateless_write import create_page_stateless
 
-        if dry_run:
-            payload = {
-                "type": "page",
-                "title": title,
-                "space": {"key": space},
-                "body": {"storage": {"value": body, "representation": "storage"}},
-            }
-            if parent_id:
-                ancestors: list[dict[str, str]] = [{"id": parent_id}]
-                payload["ancestors"] = ancestors  # type: ignore[assignment]
-            typer.echo(format_dry_run("POST", f"{client.base_url}/rest/api/content", body=payload, fmt=fmt.value))
-            return
+        next_action = [
+            "atls",
+            "confluence",
+            "page",
+            "create",
+            "--space",
+            space,
+            "--title",
+            title,
+            "--body-file",
+            body_file,
+            "--body-format",
+            body_format,
+        ]
+        if parent_id is not None:
+            next_action.extend(("--parent-id", parent_id))
+        result = create_page_stateless(
+            client,
+            space=space,
+            title=title,
+            parent_id=parent_id,
+            body=body,
+            body_format=body_format,
+            dry_run=dry_run,
+            accept_conversion=accept_conversion,
+            next_action_argv=tuple(next_action),
+        )
+        if fmt == OutputFormat.COMPACT and result["status"] == "created":
+            typer.echo(format_output(WriteResult(action="created", key=str(result["id"]), summary=title), fmt))
+        else:
+            typer.echo(format_output(result, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
 
-        result = client.create_page(space, title, body, ancestor_id=parent_id, body_format="storage")
-        if fmt == OutputFormat.COMPACT:
-            page_id = result.id if hasattr(result, "id") else result.get("id", "") if isinstance(result, dict) else ""
-            typer.echo(format_output(WriteResult(action="created", key=str(page_id), summary=title), fmt))
+
+@page_app.command("copy")
+def page_copy(
+    ctx: typer.Context,
+    source_page_id: str = typer.Argument(..., help="Source page ID (read-only)"),
+    parent_id: str = typer.Option(..., "--parent-id", help="Destination parent page ID"),
+    space: str = typer.Option(..., "--space", "-s", help="Destination space key"),
+    title: str | None = typer.Option(None, "--title", "-t", help="Destination title (default: source title)"),
+    include_attachments: bool = typer.Option(
+        False,
+        "--include-attachments",
+        help="Copy every source attachment; required when attachments exist",
+    ),
+    verify: bool = typer.Option(
+        True,
+        "--verify/--no-verify",
+        help="Download copied attachments and verify storage/attachment hashes",
+    ),
+    reason: str | None = typer.Option(None, "--reason", help="Add a visible comment to the copied page"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Read and preflight without creating content"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Copy one page and its attachments into a verified run-owned page."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        result = copy_confluence_page(
+            _make_client(ctx.obj),
+            source_page_id,
+            destination_parent_id=parent_id,
+            destination_space=space,
+            title=title,
+            include_attachments=include_attachments,
+            verify=verify,
+            reason=reason,
+            dry_run=dry_run,
+        )
+        if fmt == OutputFormat.COMPACT and result["status"] == "copied":
+            typer.echo(
+                format_output(
+                    WriteResult(
+                        action="copied",
+                        key=str(result["target"]["id"]),
+                        summary=str(result["target"]["title"]),
+                    ),
+                    fmt,
+                )
+            )
         else:
             typer.echo(format_output(result, fmt))
     except AtlasError as e:
@@ -506,6 +990,13 @@ def page_update(
     body_file: str | None = typer.Option(None, "--body-file", "-f", help="Body file path (- for stdin)"),
     body_format: str = typer.Option("storage", "--body-format", help="Body format: storage or md"),
     if_version: int | None = typer.Option(None, "--if-version", help="Expected current version (stale check)"),
+    reason: str | None = typer.Option(None, "--reason", help="Confluence version message"),
+    minor_edit: bool = typer.Option(False, "--minor-edit", help="Mark the Confluence version as a minor edit"),
+    accept_migration: str | None = typer.Option(
+        None,
+        "--accept-migration",
+        help="Exact migration fingerprint returned by preflight",
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
@@ -513,49 +1004,135 @@ def page_update(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
-        body = _resolve_body(body_file, body_format)
+        if body_file is None:
+            raise ValidationError("--body-file is required for this command", context={"reason": "body_file_required"})
+        body = read_body(body_file=body_file)
         client = _make_client(ctx.obj)
+        from atlassian_skills.confluence.stateless_write import build_page_update_preflight, publish_page_update
 
-        # Fetch current page to get version and title
-        current = client.get_page(page_id)
-        current_version = current.version.number if isinstance(current.version, PageVersion) else 1
-        current_title = current.title
-
-        # Stale check
-        if if_version is not None and current_version != if_version:
-            typer.echo(
-                f"Error: version mismatch (expected {if_version}, got {current_version})",
-                err=True,
-            )
-            raise typer.Exit(ExitCode.STALE)
-
-        new_version = current_version + 1
-        new_title = title if title is not None else current_title
-
+        preflight = build_page_update_preflight(
+            client,
+            page_id,
+            body,
+            body_format=body_format,
+            title=title,
+            if_version=if_version,
+        )
+        next_action = [
+            "atls",
+            "confluence",
+            "page",
+            "update",
+            page_id,
+            "--body-file",
+            body_file,
+            "--body-format",
+            body_format,
+        ]
+        if title is not None:
+            next_action.extend(("--title", title))
+        if if_version is not None:
+            next_action.extend(("--if-version", str(if_version)))
+        if reason is not None:
+            next_action.extend(("--reason", reason))
+        if minor_edit:
+            next_action.append("--minor-edit")
         if dry_run:
-            payload = {
-                "type": "page",
-                "title": new_title,
-                "body": {"storage": {"value": body, "representation": "storage"}},
-                "version": {"number": new_version},
-            }
-            typer.echo(
-                format_dry_run(
-                    "PUT",
-                    f"{client.base_url}/rest/api/content/{page_id}",
-                    body=payload,
-                    fmt=fmt.value,
-                )
-            )
+            dry_result = {**preflight.to_dict(), "status": "dry_run", "method": "PUT"}
+            if preflight.consent_required:
+                assert preflight.migration_fingerprint is not None
+                dry_result["next_actions"] = [
+                    consent_retry_action(
+                        tuple(next_action),
+                        option="--accept-migration",
+                        fingerprint=preflight.migration_fingerprint,
+                        description_code="REVIEW_MIGRATION_AND_RETRY",
+                    )
+                ]
+            typer.echo(format_output(dry_result, fmt))
             return
-
-        result = client.update_page(page_id, new_title, body, new_version, body_format="storage")
-        if fmt == OutputFormat.COMPACT:
-            typer.echo(format_output(WriteResult(action="updated", key=page_id), fmt))
+        result = publish_page_update(
+            client,
+            preflight,
+            accept_migration=accept_migration,
+            reason=reason,
+            minor_edit=minor_edit,
+            next_action_argv=tuple(next_action),
+        )
+        if fmt == OutputFormat.COMPACT and result["status"] == "updated":
+            output = WriteResult(action="updated", key=page_id)
+            typer.echo(format_output(output, fmt))
         else:
             typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
+
+
+@page_app.command("patch-text")
+def page_patch_text(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    find: str | None = typer.Option(None, "--find", help="Exact decoded plain text to find"),
+    replace: str | None = typer.Option(None, "--replace", help="Replacement plain text"),
+    patch_file: str | None = typer.Option(
+        None,
+        "--patch-file",
+        help="JSON batch patch file with version and exact node selectors",
+    ),
+    if_version: int | None = typer.Option(None, "--if-version", help="Expected current version (stale check)"),
+    reason: str | None = typer.Option(None, "--reason", help="Confluence version message"),
+    minor_edit: bool = typer.Option(False, "--minor-edit", help="Mark the Confluence version as a minor edit"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Validate and report exact text nodes without PUT"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Patch one or more exact storage text nodes with a state-free verified write."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.patch_text import parse_patch_document, patch_text
+
+        if patch_file is not None:
+            if find is not None or replace is not None or if_version is not None:
+                raise ValidationError(
+                    "--patch-file cannot be combined with --find, --replace, or --if-version",
+                    context={"reason": "patch_input_conflict"},
+                )
+            try:
+                payload = json.loads(Path(patch_file).read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as error:
+                raise ValidationError(
+                    "Unable to read a valid UTF-8 JSON patch file",
+                    context={"reason": "patch_file_read_failed", "path": patch_file},
+                ) from error
+            document = parse_patch_document(payload)
+        else:
+            if find is None or replace is None:
+                raise ValidationError(
+                    "--find and --replace are required when --patch-file is omitted",
+                    context={"reason": "patch_input_missing"},
+                )
+            document = None
+            if if_version is None:
+                raise ValidationError(
+                    "patch-text requires --if-version when --patch-file is omitted",
+                    context={"reason": "patch_version_required"},
+                )
+
+        client = _make_client(ctx.obj)
+        result = patch_text(
+            client,
+            page_id,
+            old=find,
+            new=replace,
+            patch_document=document,
+            if_version=if_version,
+            dry_run=dry_run,
+            reason=reason,
+            minor_edit=minor_edit,
+        )
+        typer.echo(format_output(result, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
 
 
 # ---------------------------------------------------------------------------
@@ -634,7 +1211,8 @@ def comment_add(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
-        body = _resolve_body(body_file, body_format)
+        body_conversion = _resolve_body(body_file, body_format)
+        body = body_conversion.body
         client = _make_client(ctx.obj)
 
         if dry_run:
@@ -643,6 +1221,12 @@ def comment_add(
                 "container": {"id": page_id, "type": "page"},
                 "body": {"storage": {"value": body, "representation": "storage"}},
             }
+            _emit_conversion_diagnostics(
+                ctx,
+                body_conversion.warnings,
+                body_conversion.losses,
+                body_conversion.push_safe,
+            )
             typer.echo(
                 format_dry_run(
                     "POST",
@@ -655,9 +1239,10 @@ def comment_add(
 
         result = client.add_comment(page_id, body, body_format="storage")
         if fmt == OutputFormat.COMPACT:
-            typer.echo(format_output(WriteResult(action="commented", key=page_id), fmt))
+            output = WriteResult(action="commented", key=page_id)
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, output, fmt, body_conversion), fmt))
         else:
-            typer.echo(format_output(result, fmt))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, result, fmt, body_conversion), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -680,7 +1265,8 @@ def comment_reply(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
-        body = _resolve_body(body_file, body_format)
+        body_conversion = _resolve_body(body_file, body_format)
+        body = body_conversion.body
         client = _make_client(ctx.obj)
 
         if dry_run:
@@ -689,6 +1275,12 @@ def comment_reply(
                 "ancestors": [{"id": comment_id}],
                 "body": {"storage": {"value": body, "representation": "storage"}},
             }
+            _emit_conversion_diagnostics(
+                ctx,
+                body_conversion.warnings,
+                body_conversion.losses,
+                body_conversion.push_safe,
+            )
             typer.echo(
                 format_dry_run(
                     "POST",
@@ -701,9 +1293,10 @@ def comment_reply(
 
         result = client.reply_to_comment(comment_id, body, body_format="storage")
         if fmt == OutputFormat.COMPACT:
-            typer.echo(format_output(WriteResult(action="replied", key=str(result.get("id", comment_id))), fmt))
+            output = WriteResult(action="replied", key=str(result.get("id", comment_id)))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, output, fmt, body_conversion), fmt))
         else:
-            typer.echo(format_output(result, fmt))
+            typer.echo(format_output(_output_with_write_diagnostics(ctx, result, fmt, body_conversion), fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -813,45 +1406,51 @@ def attachment_upload_batch(
 def page_push_md(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
-    md_file: str = typer.Option(..., "--md-file", "-f", help="Path to markdown file ('-' reads stdin)"),
+    md_file: str = typer.Option(..., "--md-file", "-f", help="Managed Markdown file path; stdin is rejected"),
     passthrough_prefix: list[str] = typer.Option(
         [], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"
     ),  # noqa: B008
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
-    attachment: list[str] = typer.Option([], "--attachment", help="Attachment file paths"),  # noqa: B008
-    asset_dir: str | None = typer.Option(
-        None, "--asset-dir", help="Directory of files to attach (missing directories are treated as empty)"
-    ),
-    attachment_if_exists: str = typer.Option("replace", "--attachment-if-exists", help="skip or replace"),
     if_version: int | None = typer.Option(None, "--if-version", help="Expected current version (stale check)"),
+    reason: str | None = typer.Option(None, "--reason", help="Confluence version message"),
+    minor_edit: bool = typer.Option(False, "--minor-edit", help="Mark the Confluence version as a minor edit"),
+    accept_migration: str | None = typer.Option(
+        None,
+        "--accept-migration",
+        help="Exact migration fingerprint returned by the current preflight",
+    ),
     format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
 ) -> None:
-    """Push local markdown file to a Confluence page."""
+    """Prove and publish a managed Markdown edit, then verify remote read-back."""
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
-        md_path = None if md_file == "-" else Path(md_file)
-        if md_path is not None and not md_path.exists():
-            typer.echo(f"Error: file not found: {md_file}", err=True)
-            raise typer.Exit(1)
+        if md_file == "-":
+            raise ValidationError(
+                "Managed Confluence push requires --md-file PATH; stdin has no portable manifest identity.",
+                context={"reason": "managed_file_required"},
+            )
+        md_path = Path(md_file)
+        if not md_path.exists():
+            raise NotFoundError(
+                f"Managed Markdown file not found: {md_file}",
+                context={"reason": "managed_file_not_found", "path": md_file},
+            )
 
         md_content = read_body(body_file=md_file)
         client = _make_client(ctx.obj)
 
-        # Build attachment list: explicit --attachment + --asset-dir expansion
-        att_paths: list[Path] = [Path(a) for a in attachment]
-        if asset_dir:
-            ad = Path(asset_dir)
-            if not ad.exists():
-                if not ctx.obj.get("quiet"):
-                    typer.echo(f"# skipping missing asset-dir: {asset_dir}", err=True)
-            elif not ad.is_dir():
-                typer.echo(f"Error: not a directory: {asset_dir}", err=True)
-                raise typer.Exit(1)
-            else:
-                att_paths.extend(sorted(p for p in ad.iterdir() if p.is_file() and not p.name.startswith(".")))
-
         from atlassian_skills.confluence.push_md import push_md
+
+        next_action = ["atls", "confluence", "page", "push-md", page_id, "--md-file", md_file]
+        for prefix in passthrough_prefix:
+            next_action.extend(("--passthrough-prefix", prefix))
+        if if_version is not None:
+            next_action.extend(("--if-version", str(if_version)))
+        if reason is not None:
+            next_action.extend(("--reason", reason))
+        if minor_edit:
+            next_action.append("--minor-edit")
 
         result = push_md(
             client,
@@ -859,13 +1458,43 @@ def page_push_md(
             md_content,
             passthrough_prefixes=passthrough_prefix or None,
             dry_run=dry_run,
-            attachments=att_paths or None,
-            attachment_if_exists=attachment_if_exists,
             if_version=if_version,
+            managed_path=md_path,
+            reason=reason,
+            minor_edit=minor_edit,
+            accept_migration=accept_migration,
+            next_action_argv=tuple(next_action),
         )
+        conversion = result.get("conversion")
+        if isinstance(conversion, dict) and fmt != OutputFormat.JSON:
+            _emit_conversion_diagnostics(
+                ctx,
+                tuple(conversion.get("warnings", ())),
+                tuple(conversion.get("losses", ())),
+                bool(conversion.get("push_safe", True)),
+            )
+            result = {key: value for key, value in result.items() if key != "conversion"}
         typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
+
+
+@page_app.command("validate-local")
+def page_validate_local(
+    ctx: typer.Context,
+    local_file: str = typer.Argument(..., help="Managed Markdown file path"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Validate a portable managed Markdown file without contacting Confluence."""
+
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.validate_local import validate_local
+
+        typer.echo(format_output(validate_local(Path(local_file)), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
 
 
 # ---------------------------------------------------------------------------
@@ -877,20 +1506,23 @@ def page_push_md(
 def page_pull_md(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
-    output: str | None = typer.Option(None, "--output", "-o", help="Output file path"),
+    output: str = typer.Option(..., "--output", "-o", help="Required managed Markdown output file"),
     passthrough_prefix: list[str] = typer.Option(
         [], "--passthrough-prefix", help="Passthrough prefixes (supported only on push-md/pull-md/diff-local)"
     ),  # noqa: B008
     resolve_assets: str | None = typer.Option(None, "--resolve-assets", help="Asset resolution mode: sidecar"),
     asset_dir: str | None = typer.Option(None, "--asset-dir", help="Directory for resolved assets"),
+    no_assets: bool = typer.Option(
+        False, "--no-assets", help="Keep remote asset identity without local materialization"
+    ),
     format: str | None = typer.Option(None, "--format", "-f", help="Override output format (compact|json|md|raw)"),
 ) -> None:
-    """Pull a Confluence page as markdown."""
+    """Publish a portable managed Markdown file with an embedded baseline."""
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
         client = _make_client(ctx.obj)
-        output_path = Path(output) if output else None
+        output_path = Path(output)
 
         from atlassian_skills.confluence.pull_md import pull_md
 
@@ -901,15 +1533,30 @@ def page_pull_md(
             passthrough_prefixes=passthrough_prefix or None,
             resolve_assets=resolve_assets,
             asset_dir=Path(asset_dir) if asset_dir else None,
+            site_url=getattr(client, "base_url", None),
+            portable=True,
+            no_assets=no_assets,
         )
-        if output_path:
-            typer.echo(format_output({"status": "written", "path": str(output_path), "version": result.version}, fmt))
-        elif fmt == OutputFormat.JSON:
-            typer.echo(
-                format_output({"markdown": result.markdown, "version": result.version, "title": result.title}, fmt)
+        typer.echo(
+            format_output(
+                {
+                    "status": result.status,
+                    "path": str(output_path),
+                    "version": result.version,
+                    "assets": list(getattr(result, "assets", ())),
+                    "edit_guidance": list(getattr(result, "edit_guidance", ())),
+                    "migration_report": result.migration_report,
+                    "migration_report_sha256": result.migration_report_sha256,
+                    "conversion": {
+                        **_conversion_diagnostics(result.warnings, result.losses, result.push_safe),
+                        "blockers": list(result.blockers),
+                    },
+                },
+                fmt,
             )
-        else:
-            typer.echo(result.markdown)
+        )
+        if fmt != OutputFormat.JSON:
+            _emit_conversion_diagnostics(ctx, result.warnings, result.losses, result.push_safe)
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -927,9 +1574,12 @@ def page_pull_batch(
     passthrough_prefix: list[str] = typer.Option(
         [], "--passthrough-prefix", help="HTML comment prefixes to preserve during Markdown conversion"
     ),  # noqa: B008
+    no_assets: bool = typer.Option(
+        False, "--no-assets", help="Keep remote asset identity without local materialization"
+    ),
     format: str | None = typer.Option(None, "--format", "-f", help="Override output format"),
 ) -> None:
-    """Pull multiple pages and publish all referenced assets in one batch."""
+    """Preflight and publish all managed pages/assets as one durable batch."""
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
@@ -941,6 +1591,9 @@ def page_pull_batch(
             page_ids,
             Path(output_dir),
             passthrough_prefixes=passthrough_prefix or None,
+            site_url=getattr(client, "base_url", None),
+            portable=True,
+            no_assets=no_assets,
         )
         typer.echo(
             format_output(
@@ -951,12 +1604,24 @@ def page_pull_batch(
                         "path": str(result.path),
                         "version": result.version,
                         "assets": result.assets,
+                        "status": result.status,
+                        "migration_report": result.migration_report,
+                        "migration_report_sha256": result.migration_report_sha256,
+                        "conversion": _conversion_diagnostics(
+                            result.warnings,
+                            result.losses,
+                            result.push_safe,
+                        )
+                        | {"blockers": list(result.blockers)},
                     }
                     for result in results
                 ],
                 fmt,
             )
         )
+        if fmt != OutputFormat.JSON:
+            for result in results:
+                _emit_conversion_diagnostics(ctx, result.warnings, result.losses, result.push_safe)
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -987,22 +1652,70 @@ def page_diff_local(
 
         client = _make_client(ctx.obj)
 
+        from atlassian_skills.core.managed_file import read_managed_utf8
+        from atlassian_skills.core.managed_manifest import ManagedManifestError, parse_managed_manifest
+
+        local_markdown = read_managed_utf8(local_path, reason="local_markdown_read_failed")
+        legacy_manifest = False
+        try:
+            parse_managed_manifest(local_markdown)
+        except ManagedManifestError as manifest_error:
+            portable_managed = False
+            legacy_manifest = manifest_error.reason == "legacy_binding_marker"
+        else:
+            portable_managed = True
+        if portable_managed:
+            import difflib
+
+            from atlassian_skills.confluence.migration_preflight import build_managed_preflight
+
+            managed_preflight = build_managed_preflight(
+                client,
+                page_id,
+                local_path,
+                passthrough_prefixes=tuple(passthrough_prefix) if passthrough_prefix else None,
+            )
+            diff = "".join(
+                difflib.unified_diff(
+                    managed_preflight.base_markdown.splitlines(keepends=True),
+                    managed_preflight.edited_markdown.splitlines(keepends=True),
+                    fromfile="base",
+                    tofile="local",
+                )
+            )
+            identical = not managed_preflight.would_update
+            typer.echo(format_output({**managed_preflight.to_dict(), "diff": diff, "identical": identical}, fmt))
+            if not identical:
+                raise typer.Exit(1)
+            return
+
+        if legacy_manifest:
+            raise ValidationError(
+                "Legacy managed Markdown must be re-pulled into the portable v2 format",
+                context={
+                    "reason": "legacy_manifest_repull_required",
+                    "path": str(local_path),
+                    "page_id": page_id,
+                },
+            )
+
         from atlassian_skills.confluence.diff_local import diff_local
 
-        exit_code, diff_output = diff_local(
-            client, page_id, local_path, passthrough_prefixes=passthrough_prefix or None
-        )
-        if exit_code == 0:
+        result = diff_local(client, page_id, local_path, passthrough_prefixes=passthrough_prefix or None)
+        conversion = _conversion_diagnostics(result.warnings, result.losses, result.push_safe)
+        if result.exit_code == 0:
             if fmt == OutputFormat.JSON:
-                typer.echo(json.dumps({"identical": True}))
+                typer.echo(json.dumps({"identical": True, "conversion": conversion}))
             else:
                 typer.echo("Identical (no differences)")
         else:
             if fmt == OutputFormat.JSON:
-                typer.echo(json.dumps({"identical": False, "diff": diff_output}))
+                typer.echo(json.dumps({"identical": False, "diff": result.diff_output, "conversion": conversion}))
             else:
-                typer.echo(diff_output)
-        raise typer.Exit(exit_code)
+                typer.echo(result.diff_output)
+        if fmt != OutputFormat.JSON:
+            _emit_conversion_diagnostics(ctx, result.warnings, result.losses, result.push_safe)
+        raise typer.Exit(result.exit_code)
     except AtlasError as e:
         _handle_error(e, fmt)
 

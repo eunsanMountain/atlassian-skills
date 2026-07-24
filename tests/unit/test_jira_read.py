@@ -8,6 +8,7 @@ import httpx
 import pytest
 import respx
 
+from atlassian_skills.core.attachment_io import AttachmentWriter, AttachmentWriterKind
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.errors import ValidationError
 from atlassian_skills.jira.client import JiraClient
@@ -557,11 +558,11 @@ def test_download_attachments_empty_issue_returns_empty_list(
         return_value=httpx.Response(200, json={"fields": {"attachment": []}})
     )
 
-    resolve_writer = MagicMock()
+    resolve_writer = MagicMock(return_value=AttachmentWriter(AttachmentWriterKind.NATIVE, tmp_path))
     monkeypatch.setattr("atlassian_skills.jira.client.resolve_attachment_writer", resolve_writer)
 
     assert client.download_attachments("PROJ-3", tmp_path) == []
-    resolve_writer.assert_not_called()
+    resolve_writer.assert_called_once_with(tmp_path)
 
 
 @respx.mock

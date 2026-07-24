@@ -21,6 +21,24 @@ class TestReadBody:
         result = read_body(body_file=str(f))
         assert result == "file content"
 
+    def test_read_body_consumes_utf8_bom_and_preserves_crlf(self, tmp_path: Path) -> None:
+        path = tmp_path / "body.md"
+        path.write_bytes(b"\xef\xbb\xbf# Title\r\n\r\n```text\r\nvalue\r\n```\r\n")
+
+        result = read_body(body_file=str(path))
+
+        assert result == "# Title\r\n\r\n```text\r\nvalue\r\n```\r\n"
+
+    def test_read_body_consumes_inline_bom(self) -> None:
+        assert read_body(body="\ufeff# Title\n") == "# Title\n"
+
+    def test_read_body_non_utf8_file_raises_validation_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "body.md"
+        path.write_bytes(b"\xff\xfe")
+
+        with pytest.raises(ValidationError, match="UTF-8"):
+            read_body(body_file=str(path))
+
     def test_read_body_stdin(self) -> None:
         fake_stdin = io.StringIO("stdin content")
         with patch("atlassian_skills.core.stdin.sys.stdin", fake_stdin):

@@ -20,6 +20,75 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.3.0] - 2026-07-24
+
+### Added
+- Portable Confluence managed Markdown v2 manifests that bind page/site/version/source, Markdown, asset-set,
+  converter/profile, and passthrough hashes without a machine-local authority database.
+- Informed migration preflight for managed push and Markdown page create/update. Lossy writes return a source-bound
+  fingerprint and safe `next_actions[].argv`; the fingerprint is never persisted or automatically approved.
+- Proof ordering for `no_change`, exact remote-prefix EOF append, and full source-bound migration. Exact append converts
+  only the added suffix and preserves all existing remote storage bytes.
+- State-free body and attachment recovery using bounded operation comments, exact upload/PUT intent, fresh remote
+  reconciliation, and explicit `upload_unknown`, `body_put_failed`, `readback_pending`, `reconciled`, and
+  `conflict` states. Successful operations remove their comments.
+- `confluence page inspect`, content-only readable Markdown, exact server-rendered view HTML, and repeatable canonical
+  `--passthrough-prefix` support.
+- Exact-leaf `patch-text` with versioned batch selectors, reason/minor-edit metadata, stale checks, response-loss
+  reconciliation, and distinct absent/duplicate/boundary/unsupported-context diagnostics.
+- Verified client-side `page copy` with source invariants, capability-confined attachment staging, response-loss
+  reconciliation, exact read-back, and cleanup restricted to a proved run-owned destination.
+- File-only `validate-local`, smart attachment synchronization, local asset containment, and body/asset dirty dimensions.
+- Jira R4 converter regression coverage through the required local cfxmark 0.5.0 artifact.
+
+### Changed
+- `pull-md --output` is mandatory and always writes a portable artifact, including when informed migration losses are
+  present. Status is `pulled` or `pulled_with_migrations`.
+- Managed push requires `--md-file PATH`; legacy `--attachment`, `--asset-dir`, and
+  `--attachment-if-exists` push flags are removed. Asset identity comes from manifest records plus a fresh remote
+  inventory.
+- Markdown `page create` and `page update` use the same source-conversion loss report, exact consent, fresh
+  revalidation, response-loss reconciliation, and read-back policy as managed publication.
+- Managed files can be copied or moved. There is no one-checkout-per-page registry. Byte-identical re-pull preserves file
+  identity and mtime.
+- Table backgrounds and other unrepresentable presentation are reported as conversion loss/diagnostics instead of hidden
+  protected edit state.
+- The package requires `cfxmark>=0.5.0,<0.6`. Release locks must resolve the published package; local validation uses a
+  provenance-recorded wheel without committing a local path or fictitious registry version. An exact converter-version
+  change invalidates pending migration fingerprints and requires managed files to be refreshed or revalidated.
+- Deprecated `setup codex|claude|all|paths|status` compatibility shims remain available through 0.3.x.
+
+### Removed
+- Withdrawn-candidate global SQLite publication authority, bindings, per-machine migration approvals, presentation state,
+  protected-region edit bans, and state lifecycle commands.
+- `confluence page migration list|accept|revoke`, `page table-style`, `--allow-stale-managed`, and the `state`
+  command group.
+- Runtime imports of SQLite state/schema/operation-journal modules. `setup uninstall --state` remains only as explicit,
+  header-verified cleanup of a legacy candidate artifact and never opens it as runtime authority.
+
+### Fixed
+- Source-bound ownership rejects unclassified, multiply owned, migration/edit overlap, ambiguous source-map, duplicate
+  identity, collateral storage, and move ambiguity before PUT.
+- Full-migration crash recovery accepts only converter-safe, source-bound Markdown-equivalent server reserialization at
+  the expected version, matching the normal read-back policy without persisting raw storage or full Markdown.
+- Recovery rechecks exact migration consent immediately before any retry that can upload or PUT. A pending operation
+  comment is not consent authority; already-landed results may still be reconciled read-only without another mutation.
+- Managed Markdown publication rechecks the exact migration fingerprint at the mutation boundary, while direct storage
+  updates remain outside the Markdown-conversion consent contract.
+- Human consent errors render bounded per-occurrence impact, before/after, and suggested-workflow details when supplied
+  by cfxmark before showing any retry command.
+- Remote version/hash and local file identity are checked again immediately before the first mutation; PUT results are
+  independently read back.
+- Upload and page-create response loss is adopted only from one exact remote identity, preventing duplicate or orphan
+  operations from becoming silent success.
+- Cross-origin and credential-bearing asset URLs are rejected before credentials can cross an origin boundary.
+- Managed paths and assets reject symlink, ancestor-symlink, hardlink/reparse, destination replacement, and unsafe
+  filename traversal at publication boundaries. Body publication and recovery retain one directory capability so a
+  parent-symlink swap cannot split the journal, remote mutation, and finalization across different files.
+- Readable Markdown diagnostics do not contaminate stdout; `view --format=raw` preserves exact server HTML.
+- CLI inventory classifies every baseline addition/removal/parameter change and retains published 0.2.13 behavior unless
+  the migration contract explicitly changes it.
+
 ## [0.2.13] - 2026-07-13
 
 ### Added
@@ -138,7 +207,8 @@ Co-authored-by: Doyle <873891+chrisdoyle@users.noreply.github.com>
 ## [0.2.7] - 2026-05-28
 
 > ⚠️ **Heads-up for 0.3.0**: `atls setup all/codex/claude/paths/status` still work in
-> 0.2.7 but emit a deprecation warning on stderr. They will be **removed in 0.3.0**.
+> 0.2.7 but emit a deprecation warning on stderr. Their removal was deferred to **0.4.0**
+> so 0.3.x upgrades keep existing automation working.
 > The replacement for all five is `atls setup` (interactive wizard) plus `atls doctor`
 > (diagnostic). Migrate any automation now.
 
@@ -196,7 +266,7 @@ Co-authored-by: Doyle <873891+chrisdoyle@users.noreply.github.com>
 - `atls setup status` — use `atls doctor`.
 
 All five remain functional in 0.2.7 and emit a stderr warning on each call. They will
-be removed in 0.3.0.
+be removed in 0.4.0.
 
 ### Notes
 - **fish shell is detected but not yet supported** by the wizard's token-saving step

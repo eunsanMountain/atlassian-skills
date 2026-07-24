@@ -25,10 +25,19 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      - name: Lock-freshness gate (release-blocking)
+        # MUST be the first project-aware uv command. A non-locked `uv run` (such
+        # as the version check below) silently regenerates a stale lock, so if it
+        # ran first the gate would inspect an auto-fixed lock and pass — defeating
+        # itself. Nothing that can mutate uv.lock runs before this. It only passes
+        # once the required cfxmark is on PyPI and uv.lock is regenerated against it.
+        run: uv lock --check
+
       - name: Verify tag matches pyproject version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION=$(uv run --with tomli python -c "import tomli, pathlib; print(tomli.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          # --locked: a stale lock fails here (exit 2), never gets rewritten.
+          PKG_VERSION=$(uv run --locked --with tomli python -c "import tomli, pathlib; print(tomli.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Tag version ($TAG_VERSION) does not match pyproject.toml version ($PKG_VERSION)"
             exit 1
@@ -37,22 +46,19 @@ jobs:
 
       - name: Run tests
         run: |
-          uv sync --all-extras
+          uv sync --locked --all-extras
           uv run pytest -m "not integration"
 
       - name: Build distribution
         run: uv build
 
+      - name: Verify PyPI version is absent
+        run: python .github/scripts/check_pypi_version_absent.py atlassian-skills "${GITHUB_REF_NAME#v}"
+
       - name: Publish to PyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if uv run --with requests python -c "import requests,sys; r=requests.get(f'https://pypi.org/pypi/atlassian-skills/${VERSION}/json'); sys.exit(0 if r.status_code==200 else 1)"; then
-            echo "::warning::Version ${VERSION} already on PyPI, skipping publish"
-          else
-            uv publish
-          fi
+        run: uv publish
 
       - name: Extract release notes from CHANGELOG
         id: notes

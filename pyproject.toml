@@ -1,6 +1,6 @@
 [project]
 name = "atlassian-skills"
-version = "0.2.13"
+version = "0.3.0"
 description = "Token-efficient CLI + Claude Code Skill for Atlassian Server/DC (Jira, Confluence, Bitbucket, Bamboo)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,7 +37,7 @@ dependencies = [
     "pydantic>=2.5",
     "tomli; python_version < '3.11'",
     "tomli-w",
-    "cfxmark>=0.4",
+    "cfxmark>=0.5.0,<0.6",
     "platformdirs",
     "keyring>=24",
 ]
@@ -60,7 +60,7 @@ dev = [
 ]
 
 [project.scripts]
-atls = "atlassian_skills.cli.main:app"
+atls = "atlassian_skills.cli.main:entrypoint"
 
 [project.urls]
 Repository = "https://github.com/eunsanMountain/atlassian-skills"

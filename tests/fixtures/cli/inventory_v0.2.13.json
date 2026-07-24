@@ -1,0 +1,7956 @@
+{
+  "entries": [
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "auth"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "auth list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": "jira",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "product",
+          "nargs": 1,
+          "opts": [
+            "--product"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "profile",
+          "nargs": 1,
+          "opts": [
+            "--profile",
+            "-p"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "auth login"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "profile",
+          "nargs": 1,
+          "opts": [
+            "--profile",
+            "-p"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "resolve",
+          "nargs": 1,
+          "opts": [
+            "--resolve"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        }
+      ],
+      "path": "auth status"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket branch"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "filter",
+          "nargs": 1,
+          "opts": [
+            "--filter"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 25,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket branch list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket comment"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "inline_path",
+          "nargs": 1,
+          "opts": [
+            "--inline-path"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "inline_to",
+          "nargs": 1,
+          "opts": [
+            "--inline-to"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "inline_type",
+          "nargs": 1,
+          "opts": [
+            "--inline-type"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket comment add"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "version",
+          "nargs": 1,
+          "opts": [
+            "--version"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "bitbucket comment delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "version",
+          "nargs": 1,
+          "opts": [
+            "--version"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "bitbucket comment reopen"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket comment reply"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "version",
+          "nargs": 1,
+          "opts": [
+            "--version"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "bitbucket comment resolve"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "version",
+          "nargs": 1,
+          "opts": [
+            "--version"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "bitbucket comment update"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket file"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "path",
+          "nargs": 1,
+          "opts": [
+            "path"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "ref",
+          "nargs": 1,
+          "opts": [
+            "--ref"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket file get"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket pr"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr activity"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr approve"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr comments"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr commits"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "description",
+          "nargs": 1,
+          "opts": [
+            "--description"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "reviewers",
+          "nargs": 1,
+          "opts": [
+            "--reviewers"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "source",
+          "nargs": 1,
+          "opts": [
+            "--source"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "target",
+          "nargs": 1,
+          "opts": [
+            "--target"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "title",
+          "nargs": 1,
+          "opts": [
+            "--title"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr create"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr decline"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "context_lines",
+          "nargs": 1,
+          "opts": [
+            "--context-lines"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "path",
+          "nargs": 1,
+          "opts": [
+            "--path"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr diff"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr diffstat"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 25,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "state",
+          "nargs": 1,
+          "opts": [
+            "--state"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "strategy",
+          "nargs": 1,
+          "opts": [
+            "--strategy"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr merge"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr needs-work"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 25,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "state",
+          "nargs": 1,
+          "opts": [
+            "--state"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr pending-review"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr reopen"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr statuses"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr unapprove"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "description",
+          "nargs": 1,
+          "opts": [
+            "--description"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "reviewers",
+          "nargs": 1,
+          "opts": [
+            "--reviewers"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "title",
+          "nargs": 1,
+          "opts": [
+            "--title"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket pr update"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket project"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 25,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "--name"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket project list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket repo"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "slug",
+          "nargs": 1,
+          "opts": [
+            "slug"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket repo get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 25,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket repo list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "bitbucket task"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "--comment-id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "text",
+          "nargs": 1,
+          "opts": [
+            "--text"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket task create"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "task_id",
+          "nargs": 1,
+          "opts": [
+            "task_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "bitbucket task delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "task_id",
+          "nargs": 1,
+          "opts": [
+            "task_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "bitbucket task get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket task list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "pr_id",
+          "nargs": 1,
+          "opts": [
+            "pr_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "repo",
+          "nargs": 1,
+          "opts": [
+            "repo"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "state",
+          "nargs": 1,
+          "opts": [
+            "--state"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "task_id",
+          "nargs": 1,
+          "opts": [
+            "task_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "text",
+          "nargs": 1,
+          "opts": [
+            "--text"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "bitbucket task update"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "config"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "config get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "config path"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "value",
+          "nargs": 1,
+          "opts": [
+            "value"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "config set"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "confluence"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "confluence attachment"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "att_id",
+          "nargs": 1,
+          "opts": [
+            "att_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence attachment delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "att_id",
+          "nargs": 1,
+          "opts": [
+            "att_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence attachment download"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": ".",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output_dir",
+          "nargs": 1,
+          "opts": [
+            "--output-dir",
+            "-o"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence attachment download-all"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 50,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence attachment list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment",
+            "-c"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "file",
+          "nargs": 1,
+          "opts": [
+            "file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence attachment upload"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "files",
+          "nargs": -1,
+          "opts": [
+            "files"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "skip",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "if_exists",
+          "nargs": 1,
+          "opts": [
+            "--if-exists"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence attachment upload-batch"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "confluence comment"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "storage",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence comment add"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence comment list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "storage",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence comment reply"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "confluence label"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "labels",
+          "nargs": -1,
+          "opts": [
+            "labels"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence label add"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence label list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "confluence page"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 25,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page children"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "storage",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "parent_id",
+          "nargs": 1,
+          "opts": [
+            "--parent-id"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "space",
+          "nargs": 1,
+          "opts": [
+            "--space",
+            "-s"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "title",
+          "nargs": 1,
+          "opts": [
+            "--title",
+            "-t"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page create"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "from_ver",
+          "nargs": 1,
+          "opts": [
+            "--from"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "to_ver",
+          "nargs": 1,
+          "opts": [
+            "--to"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "confluence page diff"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "local_file",
+          "nargs": 1,
+          "opts": [
+            "local_file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": [],
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "passthrough_prefix",
+          "nargs": 1,
+          "opts": [
+            "--passthrough-prefix"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page diff-local"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_repr",
+          "nargs": 1,
+          "opts": [
+            "--body-repr"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "version",
+          "nargs": 1,
+          "opts": [
+            "version"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "confluence page history"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page images"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "append",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "position",
+          "nargs": 1,
+          "opts": [
+            "--position",
+            "-p"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "target",
+          "nargs": 1,
+          "opts": [
+            "--target"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page move"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output_dir",
+          "nargs": 1,
+          "opts": [
+            "--output-dir"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_ids",
+          "nargs": -1,
+          "opts": [
+            "page_ids"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": [],
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "passthrough_prefix",
+          "nargs": 1,
+          "opts": [
+            "--passthrough-prefix"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page pull-batch"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "asset_dir",
+          "nargs": 1,
+          "opts": [
+            "--asset-dir"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output",
+          "nargs": 1,
+          "opts": [
+            "--output",
+            "-o"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": [],
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "passthrough_prefix",
+          "nargs": 1,
+          "opts": [
+            "--passthrough-prefix"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "resolve_assets",
+          "nargs": 1,
+          "opts": [
+            "--resolve-assets"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page pull-md"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "asset_dir",
+          "nargs": 1,
+          "opts": [
+            "--asset-dir"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": [],
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "attachment",
+          "nargs": 1,
+          "opts": [
+            "--attachment"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "replace",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "attachment_if_exists",
+          "nargs": 1,
+          "opts": [
+            "--attachment-if-exists"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "if_version",
+          "nargs": 1,
+          "opts": [
+            "--if-version"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "md_file",
+          "nargs": 1,
+          "opts": [
+            "--md-file",
+            "-f"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": [],
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "passthrough_prefix",
+          "nargs": 1,
+          "opts": [
+            "--passthrough-prefix"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page push-md"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "cql",
+          "nargs": 1,
+          "opts": [
+            "cql"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 25,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "confluence page search"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "storage",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "if_version",
+          "nargs": 1,
+          "opts": [
+            "--if-version"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "page_id",
+          "nargs": 1,
+          "opts": [
+            "page_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "title",
+          "nargs": 1,
+          "opts": [
+            "--title",
+            "-t"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence page update"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "confluence space"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 200,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "space_key",
+          "nargs": 1,
+          "opts": [
+            "space_key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence space tree"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "confluence user"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence user me"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": "confluence-users",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "group",
+          "nargs": 1,
+          "opts": [
+            "--group",
+            "-g"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 200,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "query",
+          "nargs": 1,
+          "opts": [
+            "query"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "confluence user search"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "no_update_check",
+          "nargs": 1,
+          "opts": [
+            "--no-update-check"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "resolve_credentials",
+          "nargs": 1,
+          "opts": [
+            "--resolve-credentials"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        }
+      ],
+      "path": "doctor"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira attachment"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "att_id",
+          "nargs": 1,
+          "opts": [
+            "att_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira attachment delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": ".",
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "output_dir",
+          "nargs": 1,
+          "opts": [
+            "--output-dir",
+            "-o"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira attachment download"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira attachment list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "file",
+          "nargs": 1,
+          "opts": [
+            "file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira attachment upload"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira board"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "board_id",
+          "nargs": 1,
+          "opts": [
+            "board_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 50,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "jira board issues"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "--name"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "--project"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira board list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira comment"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body",
+          "nargs": 1,
+          "opts": [
+            "--body"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira comment add"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira comment delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body",
+          "nargs": 1,
+          "opts": [
+            "--body"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "comment_id",
+          "nargs": 1,
+          "opts": [
+            "comment_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira comment edit"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira comment list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira dev-info"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira dev-info get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "keys",
+          "nargs": -1,
+          "opts": [
+            "keys"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira dev-info get-many"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira epic"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "epic_field_id",
+          "nargs": 1,
+          "opts": [
+            "--epic-field-id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "epic_key",
+          "nargs": 1,
+          "opts": [
+            "--epic-key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira epic link"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira field"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "field_id",
+          "nargs": 1,
+          "opts": [
+            "field_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "issue_type",
+          "nargs": 1,
+          "opts": [
+            "--issue-type"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "--project"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira field options"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "keyword",
+          "nargs": 1,
+          "opts": [
+            "keyword"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira field search"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira issue"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "fields_json",
+          "nargs": 1,
+          "opts": [
+            "--fields-json"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "--project",
+            "-p"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "summary",
+          "nargs": 1,
+          "opts": [
+            "--summary",
+            "-s"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "type",
+          "nargs": 1,
+          "opts": [
+            "--type",
+            "-t"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue create"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue dates"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_repr",
+          "nargs": 1,
+          "opts": [
+            "--body-repr"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "drop_leading_notice",
+          "nargs": 1,
+          "opts": [
+            "--drop-leading-notice"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "fields",
+          "nargs": 1,
+          "opts": [
+            "--fields"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "heading_promotion",
+          "nargs": 1,
+          "opts": [
+            "--heading-promotion"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "section",
+          "nargs": 1,
+          "opts": [
+            "--section"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue images"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "drop_leading_notice",
+          "nargs": 1,
+          "opts": [
+            "--drop-leading-notice"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "fields",
+          "nargs": 1,
+          "opts": [
+            "--fields"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format",
+            "-f"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "heading_promotion",
+          "nargs": 1,
+          "opts": [
+            "--heading-promotion"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "jql",
+          "nargs": 1,
+          "opts": [
+            "jql"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 50,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "section",
+          "nargs": 1,
+          "opts": [
+            "--section"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue search"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue sla"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "fields_json",
+          "nargs": 1,
+          "opts": [
+            "--fields-json"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "transition_id",
+          "nargs": 1,
+          "opts": [
+            "--transition-id"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "transition_name",
+          "nargs": 1,
+          "opts": [
+            "--transition-name"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue transition"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue transitions"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_file",
+          "nargs": 1,
+          "opts": [
+            "--body-file"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "body_format",
+          "nargs": 1,
+          "opts": [
+            "--body-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "fields_json",
+          "nargs": 1,
+          "opts": [
+            "--fields-json"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "heading_promotion",
+          "nargs": 1,
+          "opts": [
+            "--heading-promotion"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "if_updated",
+          "nargs": 1,
+          "opts": [
+            "--if-updated"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": [],
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "passthrough_prefix",
+          "nargs": 1,
+          "opts": [
+            "--passthrough-prefix"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": true,
+          "name": "set_customfield",
+          "nargs": 1,
+          "opts": [
+            "--set-customfield"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue update"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira issue-batch"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "json_file",
+          "nargs": 1,
+          "opts": [
+            "--json-file"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira issue-batch create"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira link"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "dry_run",
+          "nargs": 1,
+          "opts": [
+            "--dry-run"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "inward",
+          "nargs": 1,
+          "opts": [
+            "--inward"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "outward",
+          "nargs": 1,
+          "opts": [
+            "--outward"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "type",
+          "nargs": 1,
+          "opts": [
+            "--type"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira link create"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "link_id",
+          "nargs": 1,
+          "opts": [
+            "link_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira link delete"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira link list-types"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "relationship",
+          "nargs": 1,
+          "opts": [
+            "--relationship"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "title",
+          "nargs": 1,
+          "opts": [
+            "--title"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "url",
+          "nargs": 1,
+          "opts": [
+            "--url"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira link remote-create"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira link remote-list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira project"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira project components"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 50,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "jira project issues"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira project list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira project versions"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "description",
+          "nargs": 1,
+          "opts": [
+            "--description"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "--name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "project",
+          "nargs": 1,
+          "opts": [
+            "--project",
+            "-p"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "release_date",
+          "nargs": 1,
+          "opts": [
+            "--release-date"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "start_date",
+          "nargs": 1,
+          "opts": [
+            "--start-date"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira project versions-create"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira service-desk"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira service-desk list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "queue_id",
+          "nargs": 1,
+          "opts": [
+            "queue_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "sd_id",
+          "nargs": 1,
+          "opts": [
+            "sd_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "jira service-desk queue-issues"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "sd_id",
+          "nargs": 1,
+          "opts": [
+            "sd_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "jira service-desk queues"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira sprint"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "keys",
+          "nargs": -1,
+          "opts": [
+            "keys"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "sprint_id",
+          "nargs": 1,
+          "opts": [
+            "sprint_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "jira sprint add-issues"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "board_id",
+          "nargs": 1,
+          "opts": [
+            "--board-id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "end",
+          "nargs": 1,
+          "opts": [
+            "--end"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "goal",
+          "nargs": 1,
+          "opts": [
+            "--goal"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "--name"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "start",
+          "nargs": 1,
+          "opts": [
+            "--start"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira sprint create"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": 50,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "limit",
+          "nargs": 1,
+          "opts": [
+            "--limit",
+            "-l"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "sprint_id",
+          "nargs": 1,
+          "opts": [
+            "sprint_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "jira sprint issues"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "board_id",
+          "nargs": 1,
+          "opts": [
+            "board_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "state",
+          "nargs": 1,
+          "opts": [
+            "--state"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira sprint list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "end",
+          "nargs": 1,
+          "opts": [
+            "--end"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "goal",
+          "nargs": 1,
+          "opts": [
+            "--goal"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "name",
+          "nargs": 1,
+          "opts": [
+            "--name"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "sprint_id",
+          "nargs": 1,
+          "opts": [
+            "sprint_id"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "start",
+          "nargs": 1,
+          "opts": [
+            "--start"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "state",
+          "nargs": 1,
+          "opts": [
+            "--state"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira sprint update"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira user"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "username",
+          "nargs": 1,
+          "opts": [
+            "username"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira user get"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira user me"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira watcher"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "username",
+          "nargs": 1,
+          "opts": [
+            "username"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira watcher add"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira watcher list"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "username",
+          "nargs": 1,
+          "opts": [
+            "username"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira watcher remove"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [],
+      "path": "jira worklog"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment",
+          "nargs": 1,
+          "opts": [
+            "--comment"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "comment_format",
+          "nargs": 1,
+          "opts": [
+            "--comment-format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "started",
+          "nargs": 1,
+          "opts": [
+            "--started"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "time_spent_seconds",
+          "nargs": 1,
+          "opts": [
+            "--time-spent-seconds"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "integer"
+        }
+      ],
+      "path": "jira worklog add"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": null,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "format",
+          "nargs": 1,
+          "opts": [
+            "--format"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "text"
+        },
+        {
+          "default": null,
+          "kind": "argument",
+          "multiple": false,
+          "name": "key",
+          "nargs": 1,
+          "opts": [
+            "key"
+          ],
+          "required": true,
+          "secondary_opts": [],
+          "type": "text"
+        }
+      ],
+      "path": "jira worklog list"
+    },
+    {
+      "hidden": false,
+      "kind": "group",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "skills_only",
+          "nargs": 1,
+          "opts": [
+            "--skills-only"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        }
+      ],
+      "path": "setup"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "setup all"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "setup claude"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "setup codex"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "setup paths"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "setup status"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [],
+      "path": "upgrade"
+    },
+    {
+      "hidden": false,
+      "kind": "command",
+      "params": [
+        {
+          "default": false,
+          "hidden": false,
+          "is_flag": true,
+          "kind": "option",
+          "multiple": false,
+          "name": "check",
+          "nargs": 1,
+          "opts": [
+            "--check"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "boolean"
+        },
+        {
+          "default": 2.0,
+          "hidden": false,
+          "is_flag": false,
+          "kind": "option",
+          "multiple": false,
+          "name": "timeout",
+          "nargs": 1,
+          "opts": [
+            "--timeout"
+          ],
+          "required": false,
+          "secondary_opts": [],
+          "type": "float"
+        }
+      ],
+      "path": "version"
+    }
+  ],
+  "root_params": [
+    {
+      "default": null,
+      "hidden": false,
+      "is_flag": false,
+      "kind": "option",
+      "multiple": false,
+      "name": "fields",
+      "nargs": 1,
+      "opts": [
+        "--fields"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "text"
+    },
+    {
+      "default": "compact",
+      "hidden": false,
+      "is_flag": false,
+      "kind": "option",
+      "multiple": false,
+      "name": "format",
+      "nargs": 1,
+      "opts": [
+        "--format",
+        "-f"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "text"
+    },
+    {
+      "default": null,
+      "hidden": false,
+      "is_flag": true,
+      "kind": "option",
+      "multiple": false,
+      "name": "install_completion",
+      "nargs": 1,
+      "opts": [
+        "--install-completion"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "boolean"
+    },
+    {
+      "default": "default",
+      "hidden": false,
+      "is_flag": false,
+      "kind": "option",
+      "multiple": false,
+      "name": "profile",
+      "nargs": 1,
+      "opts": [
+        "--profile",
+        "-p"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "text"
+    },
+    {
+      "default": false,
+      "hidden": false,
+      "is_flag": true,
+      "kind": "option",
+      "multiple": false,
+      "name": "quiet",
+      "nargs": 1,
+      "opts": [
+        "--quiet",
+        "-q"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "boolean"
+    },
+    {
+      "default": null,
+      "hidden": false,
+      "is_flag": true,
+      "kind": "option",
+      "multiple": false,
+      "name": "show_completion",
+      "nargs": 1,
+      "opts": [
+        "--show-completion"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "boolean"
+    },
+    {
+      "default": 30.0,
+      "hidden": false,
+      "is_flag": false,
+      "kind": "option",
+      "multiple": false,
+      "name": "timeout",
+      "nargs": 1,
+      "opts": [
+        "--timeout"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "float"
+    },
+    {
+      "default": 0,
+      "hidden": false,
+      "is_flag": false,
+      "kind": "option",
+      "multiple": false,
+      "name": "verbose",
+      "nargs": 1,
+      "opts": [
+        "--verbose"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "integer"
+    },
+    {
+      "default": false,
+      "hidden": false,
+      "is_flag": true,
+      "kind": "option",
+      "multiple": false,
+      "name": "version",
+      "nargs": 1,
+      "opts": [
+        "--version",
+        "-V"
+      ],
+      "required": false,
+      "secondary_opts": [],
+      "type": "boolean"
+    }
+  ],
+  "schema": "atls-cli-inventory-v1"
+}

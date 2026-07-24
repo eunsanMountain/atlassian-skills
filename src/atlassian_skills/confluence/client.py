@@ -3,7 +3,7 @@ from __future__ import annotations
 import difflib
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from atlassian_skills.confluence.models import (
     Attachment,
@@ -19,11 +19,11 @@ from atlassian_skills.core.attachment_io import (
     AttachmentWriter,
     allocate_attachment_filename,
     resolve_attachment_writer,
-    write_attachment_bytes,
 )
 from atlassian_skills.core.auth import Credential
-from atlassian_skills.core.client import BaseClient
-from atlassian_skills.core.errors import AtlasError
+from atlassian_skills.core.client import MAX_ATTACHMENT_DOWNLOAD_BYTES, BaseClient
+from atlassian_skills.core.errors import AtlasError, ValidationError
+from atlassian_skills.core.pagination import DEFAULT_MAX_PAGINATION_PAGES
 from atlassian_skills.jira.models import User
 
 
@@ -189,10 +189,34 @@ class ConfluenceClient(BaseClient):
         # padded with space/user hits would cut the result short even though
         # more content exists on later pages.
         next_url = first_resp.get("_links", {}).get("next")
+        if next_url is not None and not isinstance(next_url, str):
+            raise ValidationError(
+                "Confluence search returned an invalid next-link token",
+                context={"reason": "pagination_token_invalid"},
+            )
+        seen_next_urls: set[str] = set()
+        page_count = 1
         while next_url and len(pages) < limit:
+            if page_count >= DEFAULT_MAX_PAGINATION_PAGES:
+                raise ValidationError(
+                    "Confluence search exceeded the safe page limit",
+                    context={"reason": "pagination_page_limit", "max_pages": DEFAULT_MAX_PAGINATION_PAGES},
+                )
+            if next_url in seen_next_urls:
+                raise ValidationError(
+                    "Confluence search returned a repeated next link",
+                    context={"reason": "pagination_cycle"},
+                )
+            seen_next_urls.add(next_url)
             next_page = self.get(next_url).json()
+            page_count += 1
             pages.extend(_extract_pages(next_page.get("results", [])))
             next_url = next_page.get("_links", {}).get("next")
+            if next_url is not None and not isinstance(next_url, str):
+                raise ValidationError(
+                    "Confluence search returned an invalid next-link token",
+                    context={"reason": "pagination_token_invalid"},
+                )
         return ConfluenceSearchResult(
             results=pages[:limit],
             total=total_size,
@@ -277,11 +301,12 @@ class ConfluenceClient(BaseClient):
     def list_attachments(
         self,
         page_id: str,
-        limit: int = 50,
+        limit: int | None = None,
     ) -> list[Attachment]:
+        page_size = min(limit, 200) if limit is not None else 200
         items = self.get_paginated_links(
             f"/rest/api/content/{page_id}/child/attachment",
-            params={"limit": limit, "expand": "version,extensions.mediaType,extensions.fileSize"},
+            params={"limit": page_size, "expand": "version,extensions.mediaType,extensions.fileSize"},
             items_key="results",
             limit=limit,
         )
@@ -304,13 +329,20 @@ class ConfluenceClient(BaseClient):
         ``/rest/api/content/{id}/download`` endpoint does not exist on
         Server/DC — see GitHub issue #1.
         """
-        content = self.fetch_attachment_bytes(att_id, download_link)
         out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        batch = AttachmentWriteBatch(writer or resolve_attachment_writer(out.parent))
         try:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            write_attachment_bytes(out, content, writer=writer)
+            batch.bind_directory(out.parent)
+            content = self.fetch_attachment_bytes(att_id, download_link)
+            batch.add(out, content)
+            batch.commit()
         except OSError as exc:
+            batch.abort()
             raise AtlasError(f"Failed to save attachment to {out}") from exc
+        except BaseException:
+            batch.abort()
+            raise
         return out
 
     def fetch_attachment_bytes(self, att_id: str, download_link: str | None = None) -> bytes:
@@ -322,20 +354,18 @@ class ConfluenceClient(BaseClient):
                 from atlassian_skills.core.errors import NotFoundError
 
                 raise NotFoundError(f"No download link found for attachment {att_id}")
-        return self.get(download_link).content
+        return self.get(download_link, max_response_bytes=MAX_ATTACHMENT_DOWNLOAD_BYTES).content
 
     def download_all_attachments(self, page_id: str, output_dir: str | Path) -> list[Path]:
         """Download all attachments for a page to output_dir."""
-        attachments = self.list_attachments(page_id)
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        if not attachments:
-            return []
         writer = resolve_attachment_writer(out_dir)
         batch = AttachmentWriteBatch(writer)
         paths: list[Path] = []
         used_names: set[str] = set()
         try:
+            attachments = self.list_attachments(page_id)
             for att in attachments:
                 safe_name = allocate_attachment_filename(att.title, att.id, used_names)
                 dest = out_dir / safe_name
@@ -416,7 +446,20 @@ class ConfluenceClient(BaseClient):
         }
         if ancestor_id:
             payload["ancestors"] = [{"id": ancestor_id}]
-        return self.post("/rest/api/content", json=payload).json()  # type: ignore[no-any-return]
+        response = self.request("POST", "/rest/api/content", json=payload, retryable=False)
+        try:
+            result = response.json()
+        except ValueError as error:
+            raise ValidationError(
+                "Page create returned malformed JSON",
+                context={"reason": "invalid_page_create_response"},
+            ) from error
+        if not isinstance(result, dict):
+            raise ValidationError(
+                "Page create returned an invalid response",
+                context={"reason": "invalid_page_create_response"},
+            )
+        return result
 
     def update_page(
         self,
@@ -425,13 +468,19 @@ class ConfluenceClient(BaseClient):
         body: str,
         version_number: int,
         body_format: str = "storage",
+        *,
+        reason: str | None = None,
+        minor_edit: bool = False,
     ) -> dict[str, Any]:
         """Update an existing Confluence page (optimistic concurrency via version)."""
+        version: dict[str, Any] = {"number": version_number, "minorEdit": minor_edit}
+        if reason is not None:
+            version["message"] = reason
         payload: dict[str, Any] = {
             "type": "page",
             "title": title,
             "body": {body_format: {"value": body, "representation": body_format}},
-            "version": {"number": version_number},
+            "version": version,
         }
         return self.put(f"/rest/api/content/{page_id}", json=payload).json()  # type: ignore[no-any-return]
 
@@ -525,32 +574,71 @@ class ConfluenceClient(BaseClient):
         page_id: str,
         file_path: str | Path,
         comment: str | None = None,
+        *,
+        filename: str | None = None,
+        source_stream: BinaryIO | None = None,
     ) -> dict[str, Any]:
         """Upload a single attachment to a page."""
-        return self._upload_attachment_raw(page_id, Path(file_path), comment)
+        path = Path(file_path)
+        if source_stream is None and not path.exists():
+            raise FileNotFoundError(path)
+        return self._upload_attachment_raw(page_id, path, comment, filename=filename, source_stream=source_stream)
 
     def _upload_attachment_raw(
         self,
         page_id: str,
         path: Path,
         comment: str | None = None,
+        *,
+        filename: str | None = None,
+        attachment_id: str | None = None,
+        source_stream: BinaryIO | None = None,
     ) -> dict[str, Any]:
         """Low-level attachment upload using httpx multipart."""
-        url = f"{self.base_url}/rest/api/content/{page_id}/child/attachment"
-        mime_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
-        headers = {
-            **self.credential.to_header(),
-            "X-Atlassian-Token": "nocheck",
-        }
-        with open(path, "rb") as f:
-            files = {"file": (path.name, f, mime_type)}
-            data: dict[str, str] | None = {"comment": comment} if comment else None
-            resp = self._client.post(url, files=files, data=data, headers=headers)
-        if not resp.is_success:
-            from atlassian_skills.core.errors import http_error_to_atlas
+        url = f"/rest/api/content/{page_id}/child/attachment"
+        if attachment_id is not None:
+            url = f"{url}/{attachment_id}/data"
+        upload_filename = filename or path.name
+        mime_type = mimetypes.guess_type(upload_filename)[0] or "application/octet-stream"
 
-            raise http_error_to_atlas(resp.status_code, url, "POST", resp.text)
-        return resp.json()  # type: ignore[no-any-return]
+        def upload(stream: BinaryIO) -> Any:
+            files = {"file": (upload_filename, stream, mime_type)}
+            data: dict[str, str] | None = {"comment": comment} if comment else None
+            return self.request(
+                "POST",
+                url,
+                files=files,
+                data=data,
+                headers={"X-Atlassian-Token": "nocheck"},
+                retryable=False,
+            )
+
+        try:
+            if source_stream is None:
+                with path.open("rb") as stream:
+                    response = upload(stream)
+            else:
+                response = upload(source_stream)
+        except OSError as error:
+            raise ValidationError(
+                "Attachment source file could not be read",
+                context={"reason": "attachment_source_io_failed", "path": str(path)},
+            ) from error
+        try:
+            payload = response.json()
+        except ValueError as error:
+            raise ValidationError(
+                "Attachment upload returned malformed JSON",
+                context={"reason": "invalid_attachment_upload_response"},
+            ) from error
+        if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
+            payload = payload[0]
+        if not isinstance(payload, dict):
+            raise ValidationError(
+                "Attachment upload returned an invalid response",
+                context={"reason": "invalid_attachment_upload_response"},
+            )
+        return payload
 
     def upload_attachments_batch(
         self,

@@ -19,6 +19,7 @@ from atlassian_skills.bitbucket.models import (
 from atlassian_skills.core.auth import Credential
 from atlassian_skills.core.client import BaseClient
 from atlassian_skills.core.errors import NotFoundError, ValidationError
+from atlassian_skills.core.pagination import DEFAULT_MAX_PAGINATION_PAGES
 
 
 class BitbucketClient(BaseClient):
@@ -69,8 +70,16 @@ class BitbucketClient(BaseClient):
         params["limit"] = limit
 
         results: list[dict[str, Any]] = []
+        seen_starts = {params.get("start", 0)}
+        page_count = 0
         while True:
+            if page_count >= DEFAULT_MAX_PAGINATION_PAGES:
+                raise ValidationError(
+                    "Bitbucket pagination exceeded the safe page limit",
+                    context={"reason": "pagination_page_limit", "max_pages": DEFAULT_MAX_PAGINATION_PAGES},
+                )
             resp = self.get(f"{self.API}{path}", params=params)
+            page_count += 1
             data = resp.json()
             for raw in data.get("values", []):
                 value = transform(raw) if transform is not None else raw
@@ -83,6 +92,17 @@ class BitbucketClient(BaseClient):
             next_start = data.get("nextPageStart")
             if next_start is None:
                 break
+            if not isinstance(next_start, int) or isinstance(next_start, bool):
+                raise ValidationError(
+                    "Bitbucket pagination returned an invalid start token",
+                    context={"reason": "pagination_token_invalid"},
+                )
+            if next_start in seen_starts:
+                raise ValidationError(
+                    "Bitbucket pagination returned a repeated start token",
+                    context={"reason": "pagination_cycle", "next_start": next_start},
+                )
+            seen_starts.add(next_start)
             params["start"] = next_start
         return results[:limit]
 
@@ -558,8 +578,16 @@ class BitbucketClient(BaseClient):
         """GET /rest/build-status/1.0/commits/{hash} — different API base."""
         items: list[dict[str, Any]] = []
         params: dict[str, Any] = {"limit": limit}
+        seen_starts = {0}
+        page_count = 0
         while True:
+            if page_count >= DEFAULT_MAX_PAGINATION_PAGES:
+                raise ValidationError(
+                    "Bitbucket build-status pagination exceeded the safe page limit",
+                    context={"reason": "pagination_page_limit", "max_pages": DEFAULT_MAX_PAGINATION_PAGES},
+                )
             resp = self.get(f"/rest/build-status/1.0/commits/{commit_hash}", params=params)
+            page_count += 1
             data = resp.json()
             items.extend(data.get("values", []))
             if data.get("isLastPage", True):
@@ -567,6 +595,17 @@ class BitbucketClient(BaseClient):
             next_start = data.get("nextPageStart")
             if next_start is None:
                 break
+            if not isinstance(next_start, int) or isinstance(next_start, bool):
+                raise ValidationError(
+                    "Bitbucket build-status pagination returned an invalid start token",
+                    context={"reason": "pagination_token_invalid"},
+                )
+            if next_start in seen_starts:
+                raise ValidationError(
+                    "Bitbucket build-status pagination returned a repeated start token",
+                    context={"reason": "pagination_cycle", "next_start": next_start},
+                )
+            seen_starts.add(next_start)
             params["start"] = next_start
         return [BuildStatus.model_validate(i) for i in items]
 
