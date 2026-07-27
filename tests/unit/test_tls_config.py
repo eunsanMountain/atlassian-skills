@@ -25,11 +25,22 @@ VALID_PEM = ssl.get_default_verify_paths().cafile
 
 
 class TestBuildSslContext:
-    def test_no_bundle_returns_true(self) -> None:
-        """`True` (not a context) is deliberate: it keeps httpx's trust_env
-        behaviour, which honours SSL_CERT_FILE / SSL_CERT_DIR."""
+    def test_no_bundle_uses_the_system_trust_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The OS trust store already holds the corporate root CA (that is why the
+        browser works on the same machine), so it is the default — the reasoning
+        pip followed when it adopted truststore (GitHub #16)."""
+        import truststore
+
+        monkeypatch.delenv("SSL_CERT_FILE", raising=False)
+        monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+        assert isinstance(build_ssl_context(None), truststore.SSLContext)
+        assert isinstance(build_ssl_context(""), truststore.SSLContext)
+
+    def test_env_cert_file_keeps_trust_env_behaviour(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`True` (not a context) is deliberate here: it keeps httpx's trust_env
+        behaviour, which is what honours SSL_CERT_FILE / SSL_CERT_DIR."""
+        monkeypatch.setenv("SSL_CERT_FILE", "/etc/corp/ca.pem")
         assert build_ssl_context(None) is True
-        assert build_ssl_context("") is True
 
     @pytest.mark.skipif(not VALID_PEM, reason="no system CA bundle to load")
     def test_valid_file_returns_context(self) -> None:
@@ -78,18 +89,33 @@ class TestBuildSslContext:
 
 
 class TestDescribeVerifySource:
-    def test_default_is_certifi(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_default_is_the_system_trust_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("SSL_CERT_FILE", raising=False)
         monkeypatch.delenv("SSL_CERT_DIR", raising=False)
         source, warning = describe_verify_source(None)
-        assert "certifi" in source
+        assert "system trust store" in source
         assert warning is None
 
-    def test_ssl_cert_file_is_reported(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SSL_CERT_FILE", "/etc/corp/ca.pem")
+    @pytest.mark.skipif(not VALID_PEM, reason="no system CA bundle to load")
+    def test_valid_ssl_cert_file_is_reported_clean(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SSL_CERT_FILE", str(VALID_PEM))
         source, warning = describe_verify_source(None)
-        assert "/etc/corp/ca.pem" in source
+        assert str(VALID_PEM) in source
         assert warning is None
+
+    def test_missing_ssl_cert_file_warns(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """0.3.1's answer to this was `Unexpected internal error` on the first
+        request; doctor now names the problem before anything has to fail."""
+        monkeypatch.setenv("SSL_CERT_FILE", str(tmp_path / "absent.pem"))
+        _source, warning = describe_verify_source(None)
+        assert warning is not None and "does not exist" in warning
+
+    def test_unloadable_ssl_cert_file_warns(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        bad = tmp_path / "bad.pem"
+        bad.write_text("not a certificate\n")
+        monkeypatch.setenv("SSL_CERT_FILE", str(bad))
+        _source, warning = describe_verify_source(None)
+        assert warning is not None and "could not be loaded" in warning
 
     def test_ssl_cert_dir_warns_about_hashed_layout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("SSL_CERT_FILE", raising=False)
@@ -110,3 +136,26 @@ class TestDescribeVerifySource:
         source, warning = describe_verify_source(str(tmp_path))
         assert "directory" in source
         assert warning is not None and "c_rehash" in warning
+
+
+class TestClientTrustStoreFailure:
+    def test_client_construction_failure_is_normalized(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A broken SSL_CERT_FILE raises ssl.SSLError while httpx.Client is being
+        *built* — before any request. In 0.3.1 that escaped every AtlasError
+        boundary and every command died as a redacted `Unexpected internal error`
+        (GitHub #16 follow-up)."""
+        import httpx
+
+        from atlassian_skills.core.auth import Credential
+        from atlassian_skills.core.client import BaseClient
+
+        def boom(*args: object, **kwargs: object) -> None:
+            raise ssl.SSLError("unknown error (_ssl.c:4035)")
+
+        monkeypatch.setattr(httpx, "Client", boom)
+        monkeypatch.setenv("SSL_CERT_FILE", "/broken/corp.pem")
+        with pytest.raises(ValidationError) as exc:
+            BaseClient("https://jira.example.com", Credential(method="pat", token="t"))
+        assert (exc.value.context or {}).get("reason") == "invalid_trust_store"
+        assert "SSLError" in exc.value.message
+        assert "SSL_CERT_FILE" in (exc.value.context or {}).get("env", "")

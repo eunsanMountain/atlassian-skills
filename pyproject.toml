@@ -1,6 +1,6 @@
 [project]
 name = "atlassian-skills"
-version = "0.3.1"
+version = "0.3.2"
 description = "Token-efficient CLI + Claude Code Skill for Atlassian Server/DC (Jira, Confluence, Bitbucket, Bamboo)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -40,6 +40,7 @@ dependencies = [
     "cfxmark>=0.5.0,<0.6",
     "platformdirs",
     "keyring>=24",
+    "truststore>=0.10",
 ]
 
 [project.optional-dependencies]

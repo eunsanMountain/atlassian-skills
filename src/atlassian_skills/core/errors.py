@@ -266,8 +266,10 @@ PROXY_HINT = (
 )
 CONNECTION_HINT = (
     "Run `atls doctor --check-auth` to tell a bad token apart from a proxy, a TLS trust "
-    "problem, or an unreachable host. For a private CA, set ca_bundle in the profile or "
-    "SSL_CERT_FILE to a PEM bundle."
+    "problem, or an unreachable host. Since 0.3.2 the OS trust store is used by default; "
+    "if your corporate CA is not in it, set ca_bundle in the profile — it applies to atls "
+    "only, whereas SSL_CERT_FILE is process-global and a file other tools cannot parse "
+    "breaks them too (uv, pip)."
 )
 
 

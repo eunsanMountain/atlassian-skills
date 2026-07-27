@@ -71,6 +71,22 @@ def _origin(url: httpx.URL) -> tuple[str, str, int | None]:
     return url.scheme, url.host, _effective_port(url)
 
 
+def _decoded_headers(headers: httpx.Headers) -> httpx.Headers:
+    """Headers for a rebuilt response whose body has already been content-decoded.
+
+    `iter_bytes()` yields *decoded* bytes, so the rebuilt response must not keep
+    the original `content-encoding` — httpx would run the gzip decoder a second
+    time over already-plain bytes and every compressed API response would die
+    with `zlib.error: incorrect header check` (GitHub #16 follow-up, a 0.3.0
+    regression). `content-length` describes the wire size, not the decoded size,
+    so it is dropped for the same reason.
+    """
+    cleaned = httpx.Headers(headers)
+    cleaned.pop("content-encoding", None)
+    cleaned.pop("content-length", None)
+    return cleaned
+
+
 def _read_bounded_response(response: httpx.Response, max_bytes: int) -> httpx.Response:
     content_length = response.headers.get("content-length")
     if content_length is not None:
@@ -97,7 +113,7 @@ def _read_bounded_response(response: httpx.Response, max_bytes: int) -> httpx.Re
         content.extend(chunk)
     return httpx.Response(
         response.status_code,
-        headers=response.headers,
+        headers=_decoded_headers(response.headers),
         content=bytes(content),
         request=response.request,
         extensions=response.extensions,
@@ -115,7 +131,7 @@ def _read_error_response(response: httpx.Response) -> httpx.Response:
             break
     return httpx.Response(
         response.status_code,
-        headers=response.headers,
+        headers=_decoded_headers(response.headers),
         content=bytes(content),
         request=response.request,
         extensions=response.extensions,
@@ -137,7 +153,24 @@ class BaseClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.verbose = verbose
-        self._client = httpx.Client(timeout=timeout, verify=verify)
+        try:
+            self._client = httpx.Client(timeout=timeout, verify=verify)
+        except OSError as error:  # ssl.SSLError is an OSError: a broken SSL_CERT_FILE/DIR lands here
+            env_sources = [name for name in ("SSL_CERT_FILE", "SSL_CERT_DIR") if os.environ.get(name)]
+            context: dict[str, Any] = {"reason": "invalid_trust_store"}
+            if env_sources:
+                context["env"] = ",".join(env_sources)
+            raise ValidationError(
+                f"TLS trust store could not be loaded ({type(error).__name__}: {safe_header_value(str(error), 200)})",
+                hint=(
+                    "The certificate source could not be read as PEM. Run `atls doctor` to see which "
+                    "trust source is in effect and whether it loads. Explicit configuration wins over "
+                    "the OS trust store, so unset SSL_CERT_FILE/SSL_CERT_DIR to fall back to the system "
+                    "certificates. A broken SSL_CERT_FILE affects every tool that reads it (uv, pip), "
+                    "not just atls."
+                ),
+                context=context,
+            ) from error
 
     # ------------------------------------------------------------------
     # Core request with retry
@@ -206,7 +239,7 @@ class BaseClient:
                     if retryable and streamed.status_code in _RETRY_STATUSES and attempt < self.max_retries:
                         response = httpx.Response(
                             streamed.status_code,
-                            headers=streamed.headers,
+                            headers=_decoded_headers(streamed.headers),
                             content=b"",
                             request=streamed.request,
                             extensions=streamed.extensions,

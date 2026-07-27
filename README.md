@@ -460,28 +460,38 @@ A proxy that intercepts the request usually shows up as a `3xx` or as a `200` wi
 
 ### TLS with a private / self-signed CA
 
-Three options, in order of preference:
+Since 0.3.2, atls verifies TLS against the **OS trust store** by default (via
+[truststore](https://github.com/sethmlarson/truststore), the same mechanism pip uses). If the
+corporate root CA is installed in the operating system — it is, if the browser on the same
+machine trusts your instance — atls needs **no TLS configuration at all**.
+
+When you do need to override (precedence: `ca_bundle` → `SSL_CERT_FILE`/`SSL_CERT_DIR` → OS
+trust store):
 
 ```toml
-# 1. Per-profile, in ~/.config/atlassian-skills/config.toml
+# Preferred: per-profile, applies to atls only — cannot break other tools
 [profiles.default]
 jira_url = "https://jira.corp.example.com"
 ca_bundle = "/etc/ssl/corp/root-ca.pem"     # a PEM file (or an OpenSSL hashed directory)
 ```
 
 ```bash
-# 2. Environment, applies to every profile
+# Environment — CAUTION: process-global. uv, pip, node and anything else that honours
+# SSL_CERT_FILE reads it too, and a file they cannot parse breaks *them* as well
+# (a broken SSL_CERT_FILE stops uv from building its HTTP client at all).
+# The file must be strictly PEM (Base-64). Prefer ca_bundle above.
 export SSL_CERT_FILE=/etc/ssl/corp/root-ca.pem
 ```
 
 ```bash
-# 3. Directory form — requires an OpenSSL *hashed* layout (c_rehash), not a plain
-#    folder of .pem files. A plain folder is accepted silently and adds no trust,
-#    then fails at handshake time. Prefer SSL_CERT_FILE unless you already run c_rehash.
+# Directory form — requires an OpenSSL *hashed* layout (c_rehash), not a plain
+# folder of .pem files. A plain folder is accepted silently and adds no trust,
+# then fails at handshake time. Prefer SSL_CERT_FILE unless you already run c_rehash.
 export SSL_CERT_DIR=/etc/ssl/corp/certs.d
 ```
 
-`atls doctor` prints which of these is actually in effect, and warns about the hashed-layout trap.
+`atls doctor` prints which of these is actually in effect, checks that an `SSL_CERT_FILE`
+actually loads as PEM, and warns about the hashed-layout trap.
 
 **Exporting the CA on Windows.** The certificate has to be PEM (Base-64). `Export-Certificate`
 writes DER (or SST for multiple certs), so either export the single corporate root from
@@ -490,6 +500,9 @@ writes DER (or SST for multiple certs), so either export the single corporate ro
 ```powershell
 certutil -encode corp-root-der.cer corp-root.pem
 ```
+
+Do not create the file with PowerShell redirection (`>` / `Out-File`) — that writes UTF-16,
+which OpenSSL (and uv) cannot parse. `certutil -encode` writes it correctly.
 
 ### Upgrading behind a TLS-inspecting proxy
 

@@ -4,6 +4,7 @@ import httpx
 import typer
 
 from atlassian_skills import __version__
+from atlassian_skills.core.tls import build_ssl_context
 
 PYPI_URL = "https://pypi.org/pypi/atlassian-skills/json"
 DEFAULT_TIMEOUT = 2.0
@@ -28,10 +29,19 @@ def latest_pypi_version(timeout: float = DEFAULT_TIMEOUT) -> str | None:
     can't complete (offline, timeout, HTTP error, malformed response). Never raises — callers
     treat None as "couldn't check"."""
     try:
-        response = httpx.get(PYPI_URL, timeout=timeout, headers={"Accept": "application/json"})
+        response = httpx.get(
+            PYPI_URL,
+            timeout=timeout,
+            headers={"Accept": "application/json"},
+            verify=build_ssl_context(None),
+        )
         response.raise_for_status()
         return str(response.json()["info"]["version"])
-    except (httpx.HTTPError, KeyError, ValueError, TypeError):
+    except Exception:
+        # Not just httpx errors: a broken SSL_CERT_FILE raises ssl.SSLError while
+        # the client is being *built*, and that once took all of `atls doctor`
+        # down as "Unexpected internal error" (GitHub #16 follow-up). This is a
+        # best-effort version probe — nothing it can raise is worth crashing for.
         return None
 
 
