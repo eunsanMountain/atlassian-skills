@@ -20,6 +20,50 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.3.1] - 2026-07-27
+
+Diagnosability and TLS/proxy support for corporate networks. Reported by @credmond in
+[#16](https://github.com/eunsanMountain/atlassian-skills/issues/16),
+[#17](https://github.com/eunsanMountain/atlassian-skills/issues/17),
+[#18](https://github.com/eunsanMountain/atlassian-skills/issues/18) and
+[#19](https://github.com/eunsanMountain/atlassian-skills/issues/19).
+
+### Added
+- `--verbose 1..3` now does something. It was previously accepted and silently ignored. Output goes to stderr only, so
+  `--format=json` on stdout stays parseable. Level 1 logs one line per request, level 2 adds headers and the effective
+  proxy environment, level 3 adds response shape. Credentials are redacted, URLs are stripped of query/fragment/userinfo,
+  and response bodies are never printed at any level.
+- `atls doctor --check-auth` calls each configured product and classifies the outcome: authenticated, 401, 403,
+  redirect to a login page, off-origin redirect (naming the host), TLS verification failure, or an unreachable host.
+  Off by default, so plain `doctor` keeps making no calls to your instance and never prompts for a credential.
+- `atls doctor` reports which trust store will verify TLS (`ca_bundle`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, or the bundled
+  certifi) and warns that directory-based options need an OpenSSL hashed layout.
+- `atls upgrade --system-certs` passes the flag through to `uv tool upgrade` for TLS-inspecting proxies. Opt-in, because
+  older `uv` builds reject it. On failure, every install path now prints the corporate-TLS hint.
+- README gained a *Corporate network (proxy & TLS)* section covering `ca_bundle`, `SSL_CERT_FILE`, `NO_PROXY` notation,
+  and exporting a corporate root CA as PEM on Windows.
+
+### Changed
+- An unexpected 3xx is now diagnosed instead of collapsing to `HTTP 302`. The error names the redirect target, reports
+  `context.reason` (`redirect_without_location`, `too_many_redirects`, `redirect_not_followed`), and hints at proxy
+  configuration. Exit codes are unchanged in every case: a redirect that used to fall through to the generic handler
+  still exits `1`, an off-origin redirect still exits `7` (`unsafe_redirect`), and a login redirect still exits `6`.
+- **JSON envelope change for 3xx only:** `error.code` is now `"REDIRECT"` instead of the generic `"ATLAS_ERROR"`.
+  `exit_code` is unchanged at `1`, so anything branching on exit codes is unaffected — but a consumer matching on the
+  `code` string for redirects will see the new value. No other status changes its `code`.
+- `Location` is now collected for redirects on every method. Following is still restricted to GET/HEAD — a write is
+  never replayed against a new target — but a bounced POST reports where the server tried to send it.
+- Human-readable errors now carry a `Request: <method> <url> -> <status>` line when the failure has HTTP context. This
+  information was only present in the JSON envelope before, which is why diagnosing #19 required switching formats.
+- `ca_bundle` is converted to an `ssl.SSLContext` instead of being passed to httpx as a string. httpx 0.28 deprecated the
+  string form; since the dependency has no upper bound, only users with a `ca_bundle` would have broken when it is removed.
+- A `ca_bundle` that is missing, empty, or not PEM now fails as a validation error (exit 7) with a hint, instead of
+  surfacing a raw `ssl.SSLError` from inside httpx.
+- Redirect and login-redirect errors now carry top-level `http_status` / `http_url` / `http_method`.
+
+### Fixed
+- `atls --profile NAME doctor` reported the `default` profile regardless of `--profile`. The profile name was hardcoded.
+
 ## [0.3.0] - 2026-07-24
 
 ### Added

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import re
+import ssl
 from pathlib import Path
+from typing import Any
 
 import typer
 
-from atlassian_skills.cli.auth import render_auth_status
+from atlassian_skills.cli.auth import _resolve_url, render_auth_status
 from atlassian_skills.cli.setup import (
     _detect_platform,
     _detect_shell,
@@ -25,6 +27,162 @@ from atlassian_skills.cli.setup import (
     _legacy_claude_command_notice,
     _legacy_codex_skill_notice,
 )
+from atlassian_skills.core.errors import (
+    AtlasError,
+    AuthError,
+    ForbiddenError,
+    NetworkError,
+    RedirectError,
+    safe_header_value,
+)
+
+# Probe endpoints, deliberately hit through the *low-level* client. The
+# high-level helpers (`JiraClient.get_myself`, `ConfluenceClient.get_current_user`)
+# call `.json()` and `model_validate` immediately, so an intercepting proxy's HTML
+# would blow up as a parse error with no chance to read the content type — and
+# Bitbucket's `_get_current_user_slug` would hand back the HTML as a user name.
+_AUTH_PROBES: dict[str, tuple[str, dict[str, Any] | None]] = {
+    "jira": ("/rest/api/2/myself", None),
+    "confluence": ("/rest/api/user/current", None),
+    # Bitbucket Server has no "current user" endpoint. This is the user
+    # *directory*, so the body describes whoever happens to sort first, not the
+    # caller — reading a name out of it would report a stranger as the
+    # authenticated user. Identity comes from the X-AUSERNAME response header,
+    # the same source BitbucketClient._get_current_user_slug uses.
+    "bitbucket": ("/rest/api/1.0/users", {"limit": 1}),
+}
+_IDENTITY_FROM_HEADER = frozenset({"bitbucket"})
+_PROBE_TIMEOUT = 10.0
+
+
+def _probe_name(payload: Any) -> str | None:
+    """Pull the caller's name out of a 2xx probe body, or None if it isn't there.
+
+    Only top-level fields are read. Descending into a collection would pick up
+    some other account, which is worse than printing no name at all.
+    """
+    if not isinstance(payload, dict):
+        return None
+    for key in ("displayName", "name", "username"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _classify_probe_error(error: AtlasError) -> str:
+    """Turn an AtlasError from a probe into a corporate-network diagnosis.
+
+    Everything except a 2xx arrives here as an exception: `BaseClient.get` raises
+    instead of returning a non-2xx response, so this is the only classification
+    path for 401/403/3xx/TLS/transport failures.
+    """
+    context = error.context or {}
+    reason = context.get("reason")
+    if reason == "redirected_to_login":
+        return "redirected to a login page — the token is not accepted (or a SSO portal is in front)"
+    if reason == "unsafe_redirect":
+        target = context.get("target_host") or "another host"
+        return f"redirected off-origin to {target} — a proxy is probably intercepting"
+    if isinstance(error, RedirectError):
+        return f"unexpected redirect ({error.message}) — check HTTPS_PROXY/NO_PROXY"
+    if isinstance(error, AuthError):
+        return "401 — token invalid or expired"
+    if isinstance(error, ForbiddenError):
+        return "403 — token is valid but lacks permission"
+    if isinstance(error, NetworkError):
+        if _looks_like_tls_failure(error):
+            return (
+                "TLS verification failed — set ca_bundle in the profile, or point "
+                "SSL_CERT_FILE at your corporate CA bundle (PEM)"
+            )
+        return f"connection failed — {error.message}"
+    return f"{error.code}: {error.message}"
+
+
+_TLS_MESSAGE_MARKERS = ("certificate_verify_failed", "ssl:", "certificate verify failed")
+
+
+def _looks_like_tls_failure(error: AtlasError) -> bool:
+    """Detect a certificate failure from the exception chain, falling back to the message.
+
+    Production raises ``httpx.ConnectError`` from ``httpcore`` from ``ssl.SSLError``,
+    so the chain is authoritative there. Some layers replace ``__cause__`` with their
+    own wrapper, which drops the ssl error from the chain entirely — the OpenSSL text
+    survives in the message, so that is checked too.
+    """
+    node: BaseException | None = error
+    seen: set[int] = set()
+    while node is not None and id(node) not in seen:
+        seen.add(id(node))
+        if isinstance(node, ssl.SSLError):
+            return True
+        node = node.__cause__ or node.__context__
+    lowered = error.message.lower()
+    return any(marker in lowered for marker in _TLS_MESSAGE_MARKERS)
+
+
+def _check_auth(profile_name: str, resolve_credentials: bool) -> None:
+    """Probe each configured product with the resolved credential.
+
+    Opt-in only: `render_auth_status` is documented as safe to run repeatedly with
+    no network and no credential prompt, and `doctor` keeps that property unless
+    the user asks for this.
+    """
+    from atlassian_skills.core.auth import resolve_credential
+    from atlassian_skills.core.client import BaseClient
+    from atlassian_skills.core.config import get_env_token, get_profile, load_config
+    from atlassian_skills.core.tls import build_ssl_context
+
+    profile = get_profile(load_config(), profile_name)
+    urls = {
+        "jira": profile.jira_url,
+        "confluence": profile.confluence_url,
+        "bitbucket": profile.bitbucket_url,
+    }
+    for product, (path, params) in _AUTH_PROBES.items():
+        url, _source = _resolve_url(profile_name, product, urls[product])
+        if not url:
+            continue
+        if not get_env_token(profile_name, product) and not resolve_credentials:
+            typer.echo(f"  {product}: skipped — token not resolved (add --resolve-credentials to probe the provider)")
+            continue
+        try:
+            credential = resolve_credential(profile_name, product, profile)
+        except AtlasError as exc:
+            typer.echo(f"  {product}: credential unavailable — {exc.message}")
+            continue
+        try:
+            with BaseClient(
+                url.rstrip("/"),
+                credential,
+                timeout=_PROBE_TIMEOUT,
+                verify=build_ssl_context(profile.ca_bundle),
+            ) as client:
+                response = client.get(path, params=params)
+        except AtlasError as exc:
+            typer.echo(f"  {product}: {_classify_probe_error(exc)}")
+            continue
+        except Exception as exc:  # doctor must never abort on a probe
+            typer.echo(f"  {product}: probe failed ({type(exc).__name__})")
+            continue
+        content_type = response.headers.get("content-type", "")
+        if "json" not in content_type.lower():
+            typer.echo(
+                f"  {product}: 200 but content-type is {content_type or 'unset'} — "
+                "a proxy or SSO portal is answering instead of Atlassian"
+            )
+            continue
+        try:
+            payload = response.json()
+        except ValueError:
+            typer.echo(f"  {product}: 200 with an unparseable JSON body — not an Atlassian API response")
+            continue
+        if product in _IDENTITY_FROM_HEADER:
+            name = safe_header_value(response.headers.get("X-AUSERNAME")) or None
+        else:
+            name = _probe_name(payload)
+        typer.echo(f"  ✓ {product}: authenticated{f' as {name}' if name else ''}")
 
 
 def _print_update_status(skip: bool = False) -> None:
@@ -91,10 +249,16 @@ def _print_routing_block_version(label: str, path: Path) -> None:
 
 
 def doctor(
+    ctx: typer.Context,
     resolve_credentials: bool = typer.Option(
         False,
         "--resolve-credentials",
         help="Probe keyring/command providers when reporting auth (may prompt or run a shell command).",
+    ),
+    check_auth: bool = typer.Option(
+        False,
+        "--check-auth",
+        help="Actually call each configured product with the resolved token and classify the result.",
     ),
     no_update_check: bool = typer.Option(
         False,
@@ -103,6 +267,7 @@ def doctor(
     ),
 ) -> None:
     """Diagnose atls installation: version freshness, platform, paths, skill status, auth resolution."""
+    ctx.ensure_object(dict)
     _print_update_status(no_update_check)
     typer.echo("")
 
@@ -170,5 +335,22 @@ def doctor(
     _print_routing_block_version("Copilot instructions", _get_copilot_instructions_path())
     typer.echo("")
 
+    # `--profile` lives on the root callback; doctor used to hardcode "default"
+    # here, so `atls --profile corp doctor` reported the wrong profile entirely.
+    profile_name = str(ctx.obj.get("profile") or "default")
+
     typer.echo("Auth:")
-    render_auth_status("default", resolve=resolve_credentials)
+    render_auth_status(profile_name, resolve=resolve_credentials)
+
+    from atlassian_skills.core.config import get_profile
+    from atlassian_skills.core.tls import describe_verify_source
+
+    verify_source, verify_warning = describe_verify_source(get_profile(load_config(), profile_name).ca_bundle)
+    typer.echo(f"  TLS verify:     {verify_source}")
+    if verify_warning:
+        typer.echo(f"    ⚠ {verify_warning}")
+
+    if check_auth:
+        typer.echo("")
+        typer.echo(f"Auth probe (profile: {profile_name}):")
+        _check_auth(profile_name, resolve_credentials)

@@ -42,7 +42,15 @@ def _echo_process_output(result: subprocess.CompletedProcess[str]) -> None:
         typer.echo(result.stderr.rstrip(), err=True)
 
 
-def _run_checked(command: list[str], *, step_name: str) -> None:
+_TLS_HINT = (
+    "If you are on a corporate network with a TLS-inspecting proxy, the download itself can fail "
+    "certificate verification. Retry with `atls upgrade --system-certs` (uv), or point "
+    "SSL_CERT_FILE at your corporate CA bundle (PEM). For pip installs, `pip --cert <bundle>` "
+    "is the equivalent."
+)
+
+
+def _run_checked(command: list[str], *, step_name: str, tls_hint: bool = False) -> None:
     result = subprocess.run(
         command,
         text=True,
@@ -54,6 +62,8 @@ def _run_checked(command: list[str], *, step_name: str) -> None:
     _echo_process_output(result)
     if result.returncode != 0:
         typer.echo(f"{step_name} failed with exit code {result.returncode}.", err=True)
+        if tls_hint:
+            typer.echo(f"Hint: {_TLS_HINT}", err=True)
         raise typer.Exit(result.returncode or 1)
 
 
@@ -78,19 +88,32 @@ def _resolve_atls_executable() -> str:
     raise typer.Exit(1)
 
 
-def upgrade() -> None:
+def upgrade(
+    system_certs: bool = typer.Option(
+        False,
+        "--system-certs",
+        help="Pass --system-certs to uv so the download trusts the OS certificate store (corporate TLS proxies).",
+    ),
+) -> None:
     """Upgrade the atls package (auto-detects uv/pipx/pip), then refresh assistant setup assets."""
     method = _detect_install_method()
 
     if method == "uv":
         uv = _require_executable("uv")
+        # --system-certs is opt-in on purpose: appending it unconditionally would
+        # break every user whose uv predates the flag, to fix a minority's TLS.
+        command = [uv, "tool", "upgrade", PACKAGE_NAME]
+        if system_certs:
+            command.append("--system-certs")
         typer.echo(f"Upgrading `{PACKAGE_NAME}` with `uv tool upgrade` (detected uv install)...")
-        _run_checked([uv, "tool", "upgrade", PACKAGE_NAME], step_name="uv tool upgrade")
+        _run_checked(command, step_name="uv tool upgrade", tls_hint=True)
     elif method == "pipx":
+        if system_certs:
+            typer.echo("Note: --system-certs only applies to uv installs; set SSL_CERT_FILE for pipx/pip instead.")
         pipx = shutil.which("pipx")
         if pipx:
             typer.echo(f"Upgrading `{PACKAGE_NAME}` with `pipx upgrade` (detected pipx install)...")
-            _run_checked([pipx, "upgrade", PACKAGE_NAME], step_name="pipx upgrade")
+            _run_checked([pipx, "upgrade", PACKAGE_NAME], step_name="pipx upgrade", tls_hint=True)
         else:
             typer.echo(
                 "Detected a pipx install but `pipx` is not on PATH — falling back to "
@@ -99,6 +122,7 @@ def upgrade() -> None:
             _run_checked(
                 [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE_NAME],
                 step_name="pip install --upgrade",
+                tls_hint=True,
             )
     else:
         typer.echo(f"Upgrading `{PACKAGE_NAME}` with `pip install --upgrade` (detected pip install)...")
@@ -109,6 +133,7 @@ def upgrade() -> None:
         _run_checked(
             [sys.executable, "-m", "pip", "install", "--upgrade", PACKAGE_NAME],
             step_name="pip install --upgrade",
+            tls_hint=True,
         )
 
     atls = _resolve_atls_executable()

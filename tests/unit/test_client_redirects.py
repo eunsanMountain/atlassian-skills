@@ -140,3 +140,107 @@ def test_redirect_without_location_is_an_error() -> None:
     with pytest.raises(AtlasError) as exc:
         make_client().get("/download/attachments/1/a.png")
     assert getattr(exc.value, "http_status", None) == 302
+
+
+# ---------------------------------------------------------------------------
+# 3xx diagnosis (GitHub #19)
+#
+# Every path below used to fall through to the generic mapper and surface as a
+# bare "HTTP 302" with the Location header thrown away. Exit codes are asserted
+# explicitly because agents branch on them: the two new generic cases must stay
+# at 1, and the pre-existing login / cross-origin cases must stay at 6 and 7.
+# ---------------------------------------------------------------------------
+
+from atlassian_skills.core.errors import ExitCode, RedirectError  # noqa: E402
+
+
+@respx.mock
+def test_redirect_without_location_is_diagnosed() -> None:
+    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(return_value=httpx.Response(302))
+    with pytest.raises(RedirectError) as exc:
+        make_client().get("/rest/api/2/myself")
+    assert (exc.value.context or {}).get("reason") == "redirect_without_location"
+    assert exc.value.exit_code == ExitCode.GENERIC
+
+
+@respx.mock
+def test_too_many_redirects_is_diagnosed() -> None:
+    # Same-origin loop: allowed by the origin guard, stopped by the hop budget.
+    respx.get(f"{BASE_URL}/loop").mock(return_value=httpx.Response(302, headers={"location": f"{BASE_URL}/loop"}))
+    with pytest.raises(RedirectError) as exc:
+        make_client().get("/loop")
+    context = exc.value.context or {}
+    assert context.get("reason") == "too_many_redirects"
+    assert context.get("redirects") == 6
+    assert exc.value.exit_code == ExitCode.GENERIC
+
+
+@respx.mock
+def test_post_redirect_is_reported_but_not_followed() -> None:
+    """A proxy bouncing a write used to be completely opaque.
+
+    The Location is collected for diagnosis, but following it is still refused —
+    replaying a request body against a new target is not safe.
+    """
+    target = respx.post(f"{BASE_URL}/rest/api/2/issue").mock(
+        return_value=httpx.Response(302, headers={"location": f"{BASE_URL}/proxy-auth"})
+    )
+    followed = respx.get(f"{BASE_URL}/proxy-auth").mock(return_value=httpx.Response(200))
+    with pytest.raises(RedirectError) as exc:
+        make_client().post("/rest/api/2/issue", json={"fields": {}})
+    context = exc.value.context or {}
+    assert context.get("reason") == "redirect_not_followed"
+    assert context.get("location") == f"{BASE_URL}/proxy-auth"
+    assert exc.value.exit_code == ExitCode.GENERIC
+    assert target.call_count == 1
+    assert followed.call_count == 0
+
+
+@respx.mock
+def test_redirect_error_message_names_the_target() -> None:
+    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
+        return_value=httpx.Response(302, headers={"location": f"{BASE_URL}/rest/api/2/myself"})
+    )
+    with pytest.raises(RedirectError) as exc:
+        make_client().get("/rest/api/2/myself")
+    assert "redirect to" in exc.value.message
+    assert exc.value.hint is not None and "NO_PROXY" in exc.value.hint
+
+
+@respx.mock
+def test_redirect_location_in_context_is_scrubbed() -> None:
+    respx.get(f"{BASE_URL}/loop").mock(
+        return_value=httpx.Response(302, headers={"location": f"{BASE_URL}/loop?session=secret-token"})
+    )
+    with pytest.raises(RedirectError) as exc:
+        make_client().get("/loop")
+    assert "secret-token" not in str(exc.value.context)
+    assert "secret-token" not in exc.value.message
+
+
+@respx.mock
+def test_login_redirect_keeps_auth_exit_code_and_gains_metadata() -> None:
+    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
+        return_value=httpx.Response(302, headers={"location": f"{BASE_URL}/login.action"})
+    )
+    with pytest.raises(AuthError) as exc:
+        make_client().get("/rest/api/2/myself")
+    assert exc.value.exit_code == ExitCode.AUTH
+    # Needed by the `Request:` line — the error carried no http_* fields before.
+    assert exc.value.http_status == 302
+    assert exc.value.http_method == "GET"
+    assert exc.value.http_url is not None
+
+
+@respx.mock
+def test_cross_origin_keeps_validation_exit_code_and_names_the_host() -> None:
+    respx.get(f"{BASE_URL}/rest/api/2/myself").mock(
+        return_value=httpx.Response(302, headers={"location": "https://proxy.corp.example.net/auth"})
+    )
+    with pytest.raises(ValidationError) as exc:
+        make_client().get("/rest/api/2/myself")
+    context = exc.value.context or {}
+    assert context.get("reason") == "unsafe_redirect"
+    assert context.get("target_host") == "proxy.corp.example.net"
+    assert exc.value.exit_code == ExitCode.VALIDATION
+    assert exc.value.http_url is not None

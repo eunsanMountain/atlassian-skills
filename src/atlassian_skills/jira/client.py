@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,15 @@ from atlassian_skills.jira.models import (
 
 
 class JiraClient(BaseClient):
-    def __init__(self, base_url: str, credential: Credential, timeout: float = 30.0, verify: str | bool = True) -> None:
-        super().__init__(base_url, credential, timeout, verify=verify)
+    def __init__(
+        self,
+        base_url: str,
+        credential: Credential,
+        timeout: float = 30.0,
+        verify: ssl.SSLContext | bool = True,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(base_url, credential, timeout, verify=verify, verbose=verbose)
 
     # ------------------------------------------------------------------
     # User

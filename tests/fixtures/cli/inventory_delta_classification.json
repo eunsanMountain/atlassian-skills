@@ -150,6 +150,30 @@
       "classification": "added",
       "plan_ref": "4.4 (atls uninstall --state), 10.4",
       "reason": "Removes atls-installed skill files and routing blocks; --state performs legacy local-state cleanup without opening a SQLite runtime."
+    },
+    "doctor": {
+      "classification": "changed",
+      "plan_ref": "0.3.1 corp-network, T4 / GitHub #18",
+      "reason": "Gains an opt-in flag; every pre-existing parameter and default is untouched.",
+      "params": {
+        "check_auth": {
+          "classification": "added",
+          "plan_ref": "0.3.1 corp-network, T4 / GitHub #18",
+          "reason": "Opt-in live probe of each configured product. Off by default so `doctor` keeps its no-network, no-credential-prompt contract."
+        }
+      }
+    },
+    "upgrade": {
+      "classification": "changed",
+      "plan_ref": "0.3.1 corp-network, T6 / GitHub #16",
+      "reason": "Gains an opt-in flag; every pre-existing parameter and default is untouched.",
+      "params": {
+        "system_certs": {
+          "classification": "added",
+          "plan_ref": "0.3.1 corp-network, T6 / GitHub #16",
+          "reason": "Opt-in pass-through of `uv tool upgrade --system-certs` for TLS-inspecting corporate proxies. Never appended automatically — older uv builds reject the flag."
+        }
+      }
     }
   },
   "candidate_only": {

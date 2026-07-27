@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import re
+import ssl
 import sys
 import time
 from typing import Any
@@ -9,7 +11,17 @@ from typing import Any
 import httpx
 
 from atlassian_skills.core.auth import Credential
-from atlassian_skills.core.errors import AuthError, NetworkError, ValidationError, http_error_to_atlas
+from atlassian_skills.core.errors import (
+    CONNECTION_HINT,
+    PROXY_HINT,
+    AuthError,
+    NetworkError,
+    RedirectInfo,
+    ValidationError,
+    http_error_to_atlas,
+    safe_display_url,
+    safe_header_value,
+)
 from atlassian_skills.core.pagination import collect_all, paginate_links, paginate_offset
 
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
@@ -28,6 +40,25 @@ _LOGIN_PATH_RE = re.compile(r"/(?:do)?login(?:\.action|\.jsp)?(?:$|[/?])", re.IG
 MAX_ATTACHMENT_DOWNLOAD_BYTES = 100 * 1024 * 1024
 MAX_API_RESPONSE_BYTES = 100 * 1024 * 1024
 MAX_ERROR_RESPONSE_BYTES = 64 * 1024
+
+# --verbose rendering limits. The stderr this produces lands in agent
+# transcripts and in bug reports users paste, so nothing here may echo a
+# credential or a response body.
+_MASKED_HEADERS = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-atlassian-token",
+    }
+)
+MAX_VERBOSE_HEADER_LEN = 256
+MAX_VERBOSE_KEY_LEN = 64
+MAX_VERBOSE_JSON_KEYS = 30
+# Guard on the *actual* body size, never on Content-Length: a chunked response
+# has no such header and a lying one would let a 100MB body through.
+MAX_VERBOSE_JSON_BYTES = 256 * 1024
 
 
 def _effective_port(url: httpx.URL) -> int | None:
@@ -98,17 +129,23 @@ class BaseClient:
         credential: Credential,
         timeout: float = 30.0,
         max_retries: int = 3,
-        verify: str | bool = True,
+        verify: ssl.SSLContext | bool = True,
+        verbose: int = 0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.credential = credential
         self.timeout = timeout
         self.max_retries = max_retries
+        self.verbose = verbose
         self._client = httpx.Client(timeout=timeout, verify=verify)
 
     # ------------------------------------------------------------------
     # Core request with retry
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _elapsed_ms(started: float) -> int:
+        return int((time.monotonic() - started) * 1000)
 
     def request(
         self,
@@ -151,6 +188,10 @@ class BaseClient:
         max_total_retry_seconds = 90.0
 
         while True:
+            started = time.monotonic()
+            if self.verbose >= 2:
+                _log_headers(">", merged_headers)
+                _log_proxy_env()
             try:
                 response_limit = max_response_bytes or MAX_API_RESPONSE_BYTES
                 with self._client.stream(
@@ -175,17 +216,33 @@ class BaseClient:
                     else:
                         response = _read_error_response(streamed)
             except httpx.TimeoutException as exc:
+                if self.verbose:
+                    _vlog(f"{method} {safe_display_url(url)} -> timeout ({self._elapsed_ms(started)}ms)")
                 raise NetworkError(
                     f"Request timed out: {method} {url}",
+                    hint=CONNECTION_HINT,
                     http_url=url,
                     http_method=method,
                 ) from exc
             except httpx.RequestError as exc:
+                if self.verbose:
+                    _vlog(
+                        f"{method} {safe_display_url(url)} -> transport error "
+                        f"{type(exc).__name__} ({self._elapsed_ms(started)}ms)"
+                    )
                 raise NetworkError(
                     f"Connection error: {exc}",
+                    hint=CONNECTION_HINT,
                     http_url=url,
                     http_method=method,
                 ) from exc
+
+            if self.verbose:
+                _vlog(f"{method} {safe_display_url(url)} -> {response.status_code} ({self._elapsed_ms(started)}ms)")
+                if self.verbose >= 2:
+                    _log_headers("<", response.headers)
+                if self.verbose >= 3:
+                    _vlog(f"  body {_body_summary(response)}")
 
             if retryable and response.status_code in _RETRY_STATUSES and attempt < self.max_retries:
                 elapsed = time.monotonic() - total_start
@@ -206,43 +263,68 @@ class BaseClient:
             if response.is_success:
                 return response
 
-            # Guarded redirect following (safe methods only)
-            if response.status_code in _REDIRECT_STATUSES and method.upper() in ("GET", "HEAD"):
+            # Guarded redirect handling. Following stays restricted to safe
+            # methods, but the Location is *collected* for every 3xx: a POST that
+            # a corporate proxy bounces used to surface as a bare "HTTP 302" with
+            # no clue where it was sent (GitHub #19).
+            redirect_info: RedirectInfo | None = None
+            if response.status_code in _REDIRECT_STATUSES:
                 location = response.headers.get("location")
-                redirects += 1
-                if location and redirects <= _MAX_REDIRECTS:
-                    try:
-                        target = httpx.URL(url).join(location)
-                    except (httpx.InvalidURL, ValueError) as error:
-                        raise ValidationError(
-                            "Redirect target URL is malformed",
-                            context={"reason": "invalid_redirect_url"},
-                        ) from error
-                    base = httpx.URL(self.base_url)
-                    if target.username or target.password or _origin(target) != _origin(base):
-                        raise ValidationError(
-                            "Redirect target must stay on the configured Atlassian origin",
-                            context={
-                                "reason": "unsafe_redirect",
-                                "http_status": response.status_code,
-                            },
-                        )
-                    if _LOGIN_PATH_RE.search(target.path):
-                        raise AuthError(
-                            "Server redirected to a login page; the session or token is not accepted",
-                            context={"reason": "redirected_to_login"},
-                        )
-                    # The Location URL carries its own query; do not re-apply params.
-                    url = str(target)
-                    params = None
-                    continue
+                if method.upper() in ("GET", "HEAD"):
+                    redirects += 1
+                    if location and redirects <= _MAX_REDIRECTS:
+                        try:
+                            target = httpx.URL(url).join(location)
+                        except (httpx.InvalidURL, ValueError) as error:
+                            raise ValidationError(
+                                "Redirect target URL is malformed",
+                                http_status=response.status_code,
+                                http_url=url,
+                                http_method=method,
+                                context={"reason": "invalid_redirect_url"},
+                            ) from error
+                        base = httpx.URL(self.base_url)
+                        if target.username or target.password or _origin(target) != _origin(base):
+                            raise ValidationError(
+                                "Redirect target must stay on the configured Atlassian origin",
+                                hint=PROXY_HINT,
+                                http_status=response.status_code,
+                                http_url=url,
+                                http_method=method,
+                                context={
+                                    "reason": "unsafe_redirect",
+                                    "http_status": response.status_code,
+                                    "target_host": safe_header_value(target.host),
+                                },
+                            )
+                        if _LOGIN_PATH_RE.search(target.path):
+                            raise AuthError(
+                                "Server redirected to a login page; the session or token is not accepted",
+                                http_status=response.status_code,
+                                http_url=url,
+                                http_method=method,
+                                context={"reason": "redirected_to_login"},
+                            )
+                        # The Location URL carries its own query; do not re-apply params.
+                        url = str(target)
+                        params = None
+                        continue
+                    redirect_info = RedirectInfo(
+                        reason="too_many_redirects" if location else "redirect_without_location",
+                        location=location,
+                        redirects=redirects,
+                    )
+                else:
+                    # Never follow a redirect for a mutating method — replaying the
+                    # body against a new target is not safe. Report it instead.
+                    redirect_info = RedirectInfo(reason="redirect_not_followed", location=location)
 
             # Non-retryable error
             body: str | None = None
             with contextlib.suppress(Exception):
                 body = response.text
 
-            raise http_error_to_atlas(response.status_code, url, method, body)
+            raise http_error_to_atlas(response.status_code, url, method, body, redirect=redirect_info)
 
         # Retry budget exhausted — report the actual HTTP error
         body_text: str | None = None
@@ -336,6 +418,68 @@ class BaseClient:
 # ------------------------------------------------------------------
 # Internal helpers
 # ------------------------------------------------------------------
+
+
+def _vlog(message: str) -> None:
+    """Emit a verbose line on stderr.
+
+    stderr only: stdout is the machine-readable surface (`--format=json`) and the
+    snapshot tests pin it, so verbose output must never reach it.
+    """
+    print(f"[atls] {message}", file=sys.stderr)
+
+
+def _render_header(name: str, value: str) -> str:
+    lowered = name.lower()
+    if lowered in _MASKED_HEADERS:
+        return f"{name}: <redacted len={len(value)}>"
+    if lowered == "location":
+        # Hiding Location would defeat the point of verbose here — a proxy bounce
+        # is invisible without it. Scrub the credential-bearing parts instead.
+        return f"{name}: {safe_display_url(value)}"
+    return f"{name}: {safe_header_value(value, MAX_VERBOSE_HEADER_LEN)}"
+
+
+def _log_headers(marker: str, headers: Any) -> None:
+    for name, value in headers.items():
+        _vlog(f"  {marker} {_render_header(str(name), str(value))}")
+
+
+def _log_proxy_env() -> None:
+    def _read(*names: str) -> str:
+        for name in names:
+            value = os.environ.get(name)
+            if value:
+                # A proxy URL can embed credentials (http://user:pass@proxy).
+                return safe_display_url(value)
+        return "(unset)"
+
+    _vlog(f"  env HTTPS_PROXY={_read('HTTPS_PROXY', 'https_proxy')} NO_PROXY={_read('NO_PROXY', 'no_proxy')}")
+
+
+def _body_summary(response: httpx.Response) -> str:
+    """Describe a response body without ever echoing it.
+
+    Bodies carry page content, SSO HTML with embedded tokens, and personal data;
+    only shape metadata is safe to print.
+    """
+    content_type = safe_header_value(response.headers.get("content-type"), 100) or "(none)"
+    size = len(response.content)
+    summary = f"content-type={content_type} bytes={size}"
+    if size > MAX_VERBOSE_JSON_BYTES:
+        return f"{summary} (keys omitted: over {MAX_VERBOSE_JSON_BYTES // 1024}KB)"
+    if "json" not in content_type.lower():
+        return summary
+    try:
+        parsed = response.json()
+    except Exception:
+        return f"{summary} (unparseable json)"
+    if not isinstance(parsed, dict):
+        return f"{summary} json={type(parsed).__name__}"
+    names = [safe_header_value(str(key), MAX_VERBOSE_KEY_LEN) for key in list(parsed)[:MAX_VERBOSE_JSON_KEYS]]
+    remaining = len(parsed) - len(names)
+    rendered = ", ".join(names) + (f", ... (+{remaining} more)" if remaining > 0 else "")
+    return f"{summary} keys=[{rendered}]"
 
 
 def _retry_wait(response: httpx.Response, default_delay: float) -> float:

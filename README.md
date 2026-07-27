@@ -429,6 +429,79 @@ With `--format=json`, structured result and error envelopes are written to stdou
 - `version [--check]` — show installed version; `--check` exits 1 if outdated vs PyPI
 - `setup codex|claude|all|paths|status` **(deprecated compatibility shims in 0.3.x; removal planned for 0.4.0)** — replaced by `setup` (wizard) and `doctor`
 
+## Corporate network (proxy & TLS)
+
+If atls fails before it ever reaches your instance, start here:
+
+```bash
+atls doctor --check-auth          # classifies 401 / 403 / proxy interception / TLS / DNS
+atls --verbose 2 jira user me     # per-request log on stderr (tokens are redacted)
+```
+
+`--verbose` writes to **stderr** only, so `--format=json` on stdout stays parseable. Levels are
+`1` (one line per request), `2` (+ headers, proxy env), `3` (+ response shape — never the body).
+
+### Proxy
+
+atls uses the standard environment variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`) through httpx.
+
+**`NO_PROXY` does not accept `*` wildcards.** Each entry is matched as a suffix, so:
+
+| `NO_PROXY` value | matches `jira.corp.example.com`? |
+|---|---|
+| `*.corp.example.com` | **no** — the `*` is taken literally |
+| `.corp.example.com` | yes (subdomains) |
+| `corp.example.com` | yes (the domain and its subdomains) |
+
+Listing every host individually is not necessary — drop the `*` and use the leading-dot form.
+
+A proxy that intercepts the request usually shows up as a `3xx` or as a `200` with
+`content-type: text/html`; both are reported explicitly by `atls doctor --check-auth`.
+
+### TLS with a private / self-signed CA
+
+Three options, in order of preference:
+
+```toml
+# 1. Per-profile, in ~/.config/atlassian-skills/config.toml
+[profiles.default]
+jira_url = "https://jira.corp.example.com"
+ca_bundle = "/etc/ssl/corp/root-ca.pem"     # a PEM file (or an OpenSSL hashed directory)
+```
+
+```bash
+# 2. Environment, applies to every profile
+export SSL_CERT_FILE=/etc/ssl/corp/root-ca.pem
+```
+
+```bash
+# 3. Directory form — requires an OpenSSL *hashed* layout (c_rehash), not a plain
+#    folder of .pem files. A plain folder is accepted silently and adds no trust,
+#    then fails at handshake time. Prefer SSL_CERT_FILE unless you already run c_rehash.
+export SSL_CERT_DIR=/etc/ssl/corp/certs.d
+```
+
+`atls doctor` prints which of these is actually in effect, and warns about the hashed-layout trap.
+
+**Exporting the CA on Windows.** The certificate has to be PEM (Base-64). `Export-Certificate`
+writes DER (or SST for multiple certs), so either export the single corporate root from
+`certmgr.msc` as *Base-64 encoded X.509 (.CER)*, or convert an existing DER file:
+
+```powershell
+certutil -encode corp-root-der.cer corp-root.pem
+```
+
+### Upgrading behind a TLS-inspecting proxy
+
+The download itself can fail certificate verification, which is separate from atls's own TLS config:
+
+```bash
+atls upgrade --system-certs        # uv installs: trusts the OS certificate store
+SSL_CERT_FILE=/etc/ssl/corp/root-ca.pem atls upgrade     # any installer
+```
+
+`--system-certs` is opt-in rather than automatic, because older `uv` builds reject the flag.
+
 ## Write Safety
 
 - Use `--dry-run` where the command exposes it.
