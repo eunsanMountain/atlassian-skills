@@ -52,6 +52,20 @@ jobs:
       - name: Build distribution
         run: uv build
 
+      - name: Wheel smoke (release-blocking)
+        # The pytest step above runs against the source tree; nothing installs the
+        # built wheel and runs it. A packaging defect therefore passes every other
+        # gate and only shows up after publication — missing package data (the
+        # bundled SKILL.md is read from the source tree by the tests), a broken
+        # `atls` console entry point, or a runtime dependency declared only as a
+        # dev extra. This installs the actual artifact into a throwaway venv and
+        # exercises it against a local 302 fixture.
+        #
+        # --skip-build reuses the dist/ produced above. It also keeps the script
+        # from writing a .sha256 next to the wheel: `uv publish` defaults to
+        # `dist/*`, so that file would end up in the upload set.
+        run: bash scripts/wheel_smoke.sh --skip-build "${GITHUB_REF_NAME#v}"
+
       - name: Verify PyPI version is absent
         run: python .github/scripts/check_pypi_version_absent.py atlassian-skills "${GITHUB_REF_NAME#v}"
 

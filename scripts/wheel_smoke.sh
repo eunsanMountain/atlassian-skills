@@ -8,17 +8,42 @@
 # a throwaway local server on an ephemeral port plays the part of a proxy that
 # answers 302 with no Location.
 #
-# Usage: bash scripts/wheel_smoke.sh [version]
+# Usage: bash scripts/wheel_smoke.sh [--skip-build] [version]
+#
+#   --skip-build   Reuse an existing dist/ instead of running `uv lock --check`
+#                  and `uv build`. Used by release.yml, which has already done both.
 set -euo pipefail
 
-VERSION="${1:-$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)}"
+SKIP_BUILD=0
+VERSION=""
+for arg in "$@"; do
+  case "$arg" in
+    --skip-build) SKIP_BUILD=1 ;;
+    -*) echo "FAIL: unknown option $arg"; exit 2 ;;
+    *) VERSION="$arg" ;;
+  esac
+done
+VERSION="${VERSION:-$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)}"
 
-uv lock --check
-uv build >/dev/null
+if [ "$SKIP_BUILD" -eq 1 ]; then
+  echo "Reusing existing dist/ (--skip-build)"
+else
+  uv lock --check
+  uv build >/dev/null
+fi
 
 WHL="dist/atlassian_skills-${VERSION}-py3-none-any.whl"
 test -f "$WHL" || { echo "FAIL: $WHL not found"; exit 1; }
-sha256sum "$WHL" | tee "dist/atlassian_skills-${VERSION}.whl.sha256"
+
+# The checksum is always printed, but only written to a file when this script
+# built dist/ itself. `uv publish` defaults to uploading `dist/*`, so leaving a
+# .sha256 beside the wheel during a release would put a non-distribution file
+# into the upload set.
+if [ "$SKIP_BUILD" -eq 1 ]; then
+  sha256sum "$WHL"
+else
+  sha256sum "$WHL" | tee "dist/atlassian_skills-${VERSION}.whl.sha256"
+fi
 
 SMOKE="$(mktemp -d)"
 FIXTURE_PID=""
