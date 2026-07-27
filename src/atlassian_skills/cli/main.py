@@ -144,7 +144,9 @@ def entrypoint() -> None:
         raise SystemExit(normalized.exit_code) from None
     except Exception as error:
         internal = InternalError(
-            "Unexpected internal error",
+            # The type name is the one clue that survives redaction — without it a
+            # user (or their agent) has literally nothing to report or search for.
+            f"Unexpected internal error ({type(error).__name__})",
             hint="Retry with a minimal command and report the failure type if it persists.",
             context={"failure": type(error).__name__},
         )

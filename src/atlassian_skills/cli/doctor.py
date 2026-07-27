@@ -91,9 +91,15 @@ def _classify_probe_error(error: AtlasError) -> str:
     if isinstance(error, ForbiddenError):
         return "403 — token is valid but lacks permission"
     if isinstance(error, NetworkError):
-        if _looks_like_tls_failure(error):
+        ssl_error = _find_ssl_error(error)
+        if ssl_error is not None or _looks_like_tls_failure(error):
+            # Keep the OpenSSL text: "certificate verify failed: self-signed
+            # certificate in certificate chain" tells the user *which* trust
+            # problem they have; "TLS verification failed" alone tells them
+            # nothing they can act on (GitHub #16 follow-up).
+            detail = safe_header_value(str(ssl_error) if ssl_error is not None else error.message, 200)
             return (
-                "TLS verification failed — set ca_bundle in the profile, or point "
+                f"TLS verification failed ({detail}) — set ca_bundle in the profile, or point "
                 "SSL_CERT_FILE at your corporate CA bundle (PEM)"
             )
         return f"connection failed — {error.message}"
@@ -103,35 +109,48 @@ def _classify_probe_error(error: AtlasError) -> str:
 _TLS_MESSAGE_MARKERS = ("certificate_verify_failed", "ssl:", "certificate verify failed")
 
 
-def _looks_like_tls_failure(error: AtlasError) -> bool:
-    """Detect a certificate failure from the exception chain, falling back to the message.
+def _find_ssl_error(error: BaseException) -> ssl.SSLError | None:
+    """Walk the exception chain and return the underlying ``ssl.SSLError``, if any.
 
     Production raises ``httpx.ConnectError`` from ``httpcore`` from ``ssl.SSLError``,
-    so the chain is authoritative there. Some layers replace ``__cause__`` with their
-    own wrapper, which drops the ssl error from the chain entirely — the OpenSSL text
-    survives in the message, so that is checked too.
+    so the chain is authoritative there.
     """
     node: BaseException | None = error
     seen: set[int] = set()
     while node is not None and id(node) not in seen:
         seen.add(id(node))
         if isinstance(node, ssl.SSLError):
-            return True
+            return node
         node = node.__cause__ or node.__context__
+    return None
+
+
+def _looks_like_tls_failure(error: AtlasError) -> bool:
+    """Chain walk first; message markers as fallback.
+
+    Some layers replace ``__cause__`` with their own wrapper, which drops the ssl
+    error from the chain entirely — the OpenSSL text survives in the message, so
+    that is checked too.
+    """
+    if _find_ssl_error(error) is not None:
+        return True
     lowered = error.message.lower()
     return any(marker in lowered for marker in _TLS_MESSAGE_MARKERS)
 
 
-def _check_auth(profile_name: str, resolve_credentials: bool) -> None:
+def _check_auth(profile_name: str) -> None:
     """Probe each configured product with the resolved credential.
 
-    Opt-in only: `render_auth_status` is documented as safe to run repeatedly with
-    no network and no credential prompt, and `doctor` keeps that property unless
-    the user asks for this.
+    `--check-auth` itself is the opt-in: the user has asked atls to call their
+    instance, so the credential is resolved from whatever the profile is
+    configured with — env, keyring, or command — without a second flag. (0.3.1
+    additionally required `--resolve-credentials`, which made every keyring user
+    type two flags for one action — GitHub #16 follow-up.) Plain `doctor` still
+    resolves nothing and calls nothing.
     """
     from atlassian_skills.core.auth import resolve_credential
     from atlassian_skills.core.client import BaseClient
-    from atlassian_skills.core.config import get_env_token, get_profile, load_config
+    from atlassian_skills.core.config import get_profile, load_config
     from atlassian_skills.core.tls import build_ssl_context
 
     profile = get_profile(load_config(), profile_name)
@@ -143,9 +162,6 @@ def _check_auth(profile_name: str, resolve_credentials: bool) -> None:
     for product, (path, params) in _AUTH_PROBES.items():
         url, _source = _resolve_url(profile_name, product, urls[product])
         if not url:
-            continue
-        if not get_env_token(profile_name, product) and not resolve_credentials:
-            typer.echo(f"  {product}: skipped — token not resolved (add --resolve-credentials to probe the provider)")
             continue
         try:
             credential = resolve_credential(profile_name, product, profile)
@@ -164,7 +180,7 @@ def _check_auth(profile_name: str, resolve_credentials: bool) -> None:
             typer.echo(f"  {product}: {_classify_probe_error(exc)}")
             continue
         except Exception as exc:  # doctor must never abort on a probe
-            typer.echo(f"  {product}: probe failed ({type(exc).__name__})")
+            typer.echo(f"  {product}: probe failed ({type(exc).__name__}: {safe_header_value(str(exc), 200)})")
             continue
         content_type = response.headers.get("content-type", "")
         if "json" not in content_type.lower():
@@ -258,7 +274,10 @@ def doctor(
     check_auth: bool = typer.Option(
         False,
         "--check-auth",
-        help="Actually call each configured product with the resolved token and classify the result.",
+        help=(
+            "Call each configured product with the profile's credential and classify the result. "
+            "Resolves the credential from env, keyring, or command as configured (may prompt)."
+        ),
     ),
     no_update_check: bool = typer.Option(
         False,
@@ -353,4 +372,4 @@ def doctor(
     if check_auth:
         typer.echo("")
         typer.echo(f"Auth probe (profile: {profile_name}):")
-        _check_auth(profile_name, resolve_credentials)
+        _check_auth(profile_name)

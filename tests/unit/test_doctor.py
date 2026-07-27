@@ -285,6 +285,9 @@ class TestDoctorCheckAuth:
         result = CliRunner().invoke(app, ["doctor", "--check-auth"])
         assert result.exit_code == 0, result.output
         assert "TLS verification failed" in result.output
+        # The OpenSSL detail must survive: "TLS verification failed" alone gives
+        # the user nothing to act on (GitHub #16 follow-up).
+        assert "self-signed certificate" in result.output
         assert "SSL_CERT_FILE" in result.output
 
     @respx.mock
@@ -301,9 +304,13 @@ class TestDoctorCheckAuth:
         assert "jira:" not in result.output.split("Auth probe")[-1]
 
     @respx.mock
-    def test_provider_backed_token_is_not_probed_without_opt_in(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """`--check-auth` must not silently run a keyring lookup or a shell command;
-        that stays behind `--resolve-credentials`."""
+    def test_missing_credential_reports_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No token anywhere → the probe explains what is missing and makes no call.
+
+        0.3.1 instead demanded `--resolve-credentials` on top of `--check-auth`,
+        which made every keyring user type two flags for one action (GitHub #16
+        follow-up). `--check-auth` itself is the opt-in now.
+        """
         monkeypatch.setenv("ATLS_DEFAULT_JIRA_URL", JIRA_URL)
         monkeypatch.delenv("ATLS_DEFAULT_JIRA_TOKEN", raising=False)
         monkeypatch.delenv("JIRA_PERSONAL_TOKEN", raising=False)
@@ -311,7 +318,24 @@ class TestDoctorCheckAuth:
         result = CliRunner().invoke(app, ["doctor", "--check-auth"])
         assert result.exit_code == 0, result.output
         assert route.call_count == 0
-        assert "--resolve-credentials" in result.output
+        assert "credential unavailable" in result.output
+
+    @respx.mock
+    def test_provider_backed_credential_is_resolved_without_extra_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from atlassian_skills.core.auth import Credential
+
+        monkeypatch.setenv("ATLS_DEFAULT_JIRA_URL", JIRA_URL)
+        monkeypatch.delenv("ATLS_DEFAULT_JIRA_TOKEN", raising=False)
+        monkeypatch.setattr(
+            "atlassian_skills.core.auth.resolve_credential",
+            lambda *args, **kwargs: Credential(method="pat", token="keyring-token"),
+        )
+        respx.get(f"{JIRA_URL}/rest/api/2/myself").mock(
+            return_value=httpx.Response(200, json={"displayName": "Jane Roe"})
+        )
+        result = CliRunner().invoke(app, ["doctor", "--check-auth"])
+        assert result.exit_code == 0, result.output
+        assert "authenticated as Jane Roe" in result.output
 
 
 def test_tls_detection_walks_the_real_exception_chain() -> None:

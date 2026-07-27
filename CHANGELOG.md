@@ -20,6 +20,41 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.3.2] - 2026-07-27
+
+Follow-ups to 0.3.1, reported by @credmond in
+[#16](https://github.com/eunsanMountain/atlassian-skills/issues/16). Two were real
+regressions; thank you for the fast and precise report.
+
+### Fixed
+- **Compressed API responses failed on every command** with `Connection error: Error -3 while
+  decompressing data: incorrect header check`. A 0.3.0 regression: the streaming rewrite rebuilds
+  each response from already-decoded bytes but kept the original `content-encoding` header, so
+  httpx ran the gzip decoder a second time. Any instance that compresses responses (Jira does,
+  whenever the client allows it) was unusable.
+- **A broken `SSL_CERT_FILE` took every command down** as a redacted `Unexpected internal error` —
+  including all of `atls doctor`, the tool meant to diagnose exactly this. `ssl.SSLError` escaping
+  from httpx client construction and from the PyPI update check is now caught: the update check
+  degrades to "couldn't reach PyPI", requests fail as a validation error that names the trust
+  source, and `doctor` verifies that the file actually loads as PEM before anything has to fail.
+- `doctor --check-auth` no longer also requires `--resolve-credentials`. `--check-auth` itself is
+  the opt-in: the credential is resolved from env, keyring, or command as the profile is
+  configured. Plain `doctor` still resolves nothing and makes no calls.
+
+### Added
+- **System trust store by default**, via [truststore](https://github.com/sethmlarson/truststore) —
+  the mechanism pip uses. With the corporate root CA installed in the OS (the normal corporate
+  setup), atls now needs no TLS configuration at all. Precedence: `ca_bundle` →
+  `SSL_CERT_FILE`/`SSL_CERT_DIR` → OS trust store (certifi where truststore is unavailable).
+- TLS failures now carry the underlying OpenSSL detail (`certificate verify failed: self-signed
+  certificate in certificate chain` instead of a bare "TLS verification failed"), and the
+  entrypoint's `Unexpected internal error` now names the exception type.
+
+### Changed
+- README now recommends `ca_bundle` (scoped to atls) over `SSL_CERT_FILE`, which is process-global:
+  uv, pip, and node read it too, and a file they cannot parse breaks them as well — a broken
+  `SSL_CERT_FILE` stops uv from building its HTTP client entirely.
+
 ## [0.3.1] - 2026-07-27
 
 Diagnosability and TLS/proxy support for corporate networks. Reported by @credmond in

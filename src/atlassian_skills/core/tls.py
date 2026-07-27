@@ -7,21 +7,40 @@ from pathlib import Path
 from atlassian_skills.core.errors import ValidationError
 
 
+def _system_trust_context() -> ssl.SSLContext | bool:
+    """OS trust store via truststore, or ``True`` (certifi) when unavailable."""
+    try:
+        import truststore
+
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except Exception:
+        # truststore is a base dependency, but an unsupported platform or a
+        # broken system store must degrade to certifi, not take the CLI down.
+        return True
+
+
 def build_ssl_context(ca_bundle: str | None) -> ssl.SSLContext | bool:
     """Return the value to hand httpx's ``verify=``.
 
-    httpx 0.28 deprecated ``verify=<str>`` ("Use verify=ssl.create_default_context(...)"),
-    so a configured CA bundle is turned into a real ``SSLContext`` here rather
-    than passed through as a path. The old form still works today but warns, and
-    `httpx>=0.27` has no upper bound in pyproject — the day httpx drops it, only
-    corporate users with a `ca_bundle` would break.
+    Precedence: ``ca_bundle`` (explicit, atls-only) → ``SSL_CERT_FILE`` /
+    ``SSL_CERT_DIR`` (process-wide env, honoured through httpx's ``trust_env``)
+    → the OS trust store via ``truststore``.
 
-    ``True`` is returned when nothing is configured, which preserves httpx's
-    ``trust_env`` behaviour: it honours ``SSL_CERT_FILE`` / ``SSL_CERT_DIR`` and
-    otherwise falls back to certifi.
+    The truststore default is what corporate networks actually need: a
+    TLS-inspecting proxy's root CA is already in the OS store (that is why the
+    browser works), so most users need no configuration at all — the same
+    reasoning that made pip adopt truststore by default (GitHub #16).
+
+    httpx 0.28 deprecated ``verify=<str>``, so a configured CA bundle is turned
+    into a real ``SSLContext`` here rather than passed through as a path.
     """
     if not ca_bundle:
-        return True
+        if os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR"):
+            # True keeps httpx's trust_env behaviour, which reads these vars.
+            # `atls doctor` checks that the file actually loads (a broken one
+            # would otherwise fail on every request).
+            return True
+        return _system_trust_context()
     path = Path(ca_bundle).expanduser()
     try:
         if path.is_dir():
@@ -41,6 +60,28 @@ def build_ssl_context(ca_bundle: str | None) -> ssl.SSLContext | bool:
         ) from error
 
 
+def _cert_file_warning(cert_file: str) -> str | None:
+    """Check that an ``SSL_CERT_FILE`` actually loads, before a request has to fail on it."""
+    path = Path(cert_file)
+    if not path.is_file():
+        return (
+            "The file does not exist — every TLS request will fail, in atls and in every "
+            "other tool that reads SSL_CERT_FILE (uv, pip). Unset SSL_CERT_FILE to fall "
+            "back to the OS trust store (the default since 0.3.2)."
+        )
+    try:
+        ssl.create_default_context(cafile=str(path))
+    except OSError as error:
+        return (
+            f"The file could not be loaded as PEM ({type(error).__name__}: {str(error)[:200]}). "
+            "atls and every other tool that reads SSL_CERT_FILE (uv, pip) will reject it. "
+            "If it is DER, convert with `certutil -encode`; if it was written by PowerShell "
+            "redirection it may be UTF-16 — re-save as ASCII/UTF-8. Or unset SSL_CERT_FILE "
+            "to fall back to the OS trust store (the default since 0.3.2)."
+        )
+    return None
+
+
 def describe_verify_source(ca_bundle: str | None) -> tuple[str, str | None]:
     """Return ``(description, warning)`` for whatever will verify TLS.
 
@@ -58,7 +99,7 @@ def describe_verify_source(ca_bundle: str | None) -> tuple[str, str | None]:
         return f"ca_bundle file ({path})", None
     cert_file = os.environ.get("SSL_CERT_FILE")
     if cert_file:
-        return f"SSL_CERT_FILE ({cert_file})", None
+        return f"SSL_CERT_FILE ({cert_file})", _cert_file_warning(cert_file)
     cert_dir = os.environ.get("SSL_CERT_DIR")
     if cert_dir:
         return (
@@ -66,4 +107,8 @@ def describe_verify_source(ca_bundle: str | None) -> tuple[str, str | None]:
             "SSL_CERT_DIR needs an OpenSSL hashed layout (c_rehash), not a plain directory of PEM files. "
             "Prefer SSL_CERT_FILE with a single bundle.",
         )
-    return "certifi (bundled default)", None
+    try:
+        import truststore  # noqa: F401
+    except ImportError:
+        return "certifi (bundled default)", None
+    return "system trust store (OS certificates, via truststore)", None

@@ -70,14 +70,23 @@ PY="$SMOKE/venv/bin/python"
 
 # 3) Fixture: 302 with no Location, on an ephemeral port the server picks itself.
 "$PY" - "$SMOKE/port" <<'PYEOF' &
+import gzip
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
+        # 302 with no Location *and* a gzipped body: exercises the 3xx diagnosis
+        # (GitHub #19) and the rebuilt-response content decoding in one shot —
+        # the latter is the 0.3.0 regression that broke every compressed API
+        # response ("Error -3 while decompressing data").
+        body = gzip.compress(b'{"intercepted": true}')
         self.send_response(302)
+        self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
+        self.wfile.write(body)
 
     def log_message(self, *args):
         pass

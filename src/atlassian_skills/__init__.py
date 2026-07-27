@@ -1,3 +1,3 @@
 """atlassian-skills: Token-efficient CLI for Atlassian Server/DC."""
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"

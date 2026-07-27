@@ -79,3 +79,21 @@ class TestVersionCommand:
 
         assert result.exit_code == 0
         assert "update check failed" in result.output
+
+
+def test_latest_pypi_version_never_raises(monkeypatch) -> None:
+    """A broken SSL_CERT_FILE raises ssl.SSLError while the client is being built.
+
+    The docstring always promised "never raises"; 0.3.1 only caught httpx errors,
+    so this exact case took all of `atls doctor` down as `Unexpected internal
+    error` (GitHub #16 follow-up).
+    """
+    import ssl
+
+    from atlassian_skills.cli.version import latest_pypi_version
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise ssl.SSLError("unknown error (_ssl.c:4035)")
+
+    monkeypatch.setattr("atlassian_skills.cli.version.httpx.get", boom)
+    assert latest_pypi_version() is None
