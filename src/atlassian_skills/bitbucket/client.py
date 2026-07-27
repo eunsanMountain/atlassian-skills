@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ssl
 from collections.abc import Callable
 from typing import Any
 
@@ -36,9 +37,10 @@ class BitbucketClient(BaseClient):
         base_url: str,
         credential: Credential,
         timeout: float = 30.0,
-        verify: str | bool = True,
+        verify: ssl.SSLContext | bool = True,
+        verbose: int = 0,
     ) -> None:
-        super().__init__(base_url, credential, timeout, verify=verify)
+        super().__init__(base_url, credential, timeout, verify=verify, verbose=verbose)
         self._current_user_slug: str | None = None
 
     # ------------------------------------------------------------------

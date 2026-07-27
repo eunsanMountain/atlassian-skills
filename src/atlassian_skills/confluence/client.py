@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import mimetypes
+import ssl
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -28,8 +29,15 @@ from atlassian_skills.jira.models import User
 
 
 class ConfluenceClient(BaseClient):
-    def __init__(self, base_url: str, credential: Credential, timeout: float = 30.0, verify: str | bool = True) -> None:
-        super().__init__(base_url, credential, timeout, verify=verify)
+    def __init__(
+        self,
+        base_url: str,
+        credential: Credential,
+        timeout: float = 30.0,
+        verify: ssl.SSLContext | bool = True,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(base_url, credential, timeout, verify=verify, verbose=verbose)
 
     # ------------------------------------------------------------------
     # Page read

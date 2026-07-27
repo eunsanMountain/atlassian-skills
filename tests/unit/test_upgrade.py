@@ -270,3 +270,55 @@ class TestUpgradePipx:
             "atlassian-skills",
         ]
         assert "pipx` is not on PATH" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Corporate TLS (GitHub #16): the upgrade download fails verification too
+# ---------------------------------------------------------------------------
+
+
+class TestUpgradeSystemCerts:
+    def test_flag_is_not_passed_unless_asked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Appending --system-certs unconditionally would break every user whose uv
+        predates the flag, in order to fix a minority's TLS."""
+        recorded: list[list[str]] = []
+
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            recorded.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._detect_install_method", lambda: "uv")
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._require_executable", lambda name: "/usr/bin/uv")
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._resolve_atls_executable", lambda: "/usr/bin/atls")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        CliRunner().invoke(app, ["upgrade"])
+        assert recorded[0] == ["/usr/bin/uv", "tool", "upgrade", "atlassian-skills"]
+
+    def test_flag_is_passed_when_asked(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        recorded: list[list[str]] = []
+
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            recorded.append(command)
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._detect_install_method", lambda: "uv")
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._require_executable", lambda name: "/usr/bin/uv")
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._resolve_atls_executable", lambda: "/usr/bin/atls")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        CliRunner().invoke(app, ["upgrade", "--system-certs"])
+        assert recorded[0] == ["/usr/bin/uv", "tool", "upgrade", "atlassian-skills", "--system-certs"]
+
+    def test_failure_surfaces_the_corporate_tls_hint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(command, 1, "", "SSL: CERTIFICATE_VERIFY_FAILED")
+
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._detect_install_method", lambda: "uv")
+        monkeypatch.setattr("atlassian_skills.cli.upgrade._require_executable", lambda name: "/usr/bin/uv")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        result = CliRunner().invoke(app, ["upgrade"])
+        assert result.exit_code != 0
+        assert "--system-certs" in result.output
+        assert "SSL_CERT_FILE" in result.output

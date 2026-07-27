@@ -10,10 +10,11 @@ from atlassian_skills.bitbucket.client import BitbucketClient
 from atlassian_skills.core.auth import resolve_credential
 from atlassian_skills.core.config import get_profile, load_config
 from atlassian_skills.core.dryrun import format_dry_run
-from atlassian_skills.core.errors import AtlasError
+from atlassian_skills.core.errors import AtlasError, request_context_line
 from atlassian_skills.core.format import OutputFormat, format_output
 from atlassian_skills.core.models import WriteResult
 from atlassian_skills.core.stdin import read_body
+from atlassian_skills.core.tls import build_ssl_context
 
 bitbucket_app = typer.Typer(help="Bitbucket commands", no_args_is_help=True)
 
@@ -54,8 +55,13 @@ def _make_client(ctx_obj: dict[str, Any]) -> BitbucketClient:
         )
         raise typer.Exit(1)
     credential = resolve_credential(profile_name, "bitbucket", profile)
-    verify: str | bool = profile.ca_bundle if profile.ca_bundle else True
-    return BitbucketClient(url.rstrip("/"), credential, timeout=timeout, verify=verify)
+    return BitbucketClient(
+        url.rstrip("/"),
+        credential,
+        timeout=timeout,
+        verify=build_ssl_context(profile.ca_bundle),
+        verbose=int(ctx_obj.get("verbose", 0)),
+    )
 
 
 def _fmt(ctx_obj: dict[str, Any]) -> OutputFormat:
@@ -79,6 +85,9 @@ def _handle_error(err: AtlasError, fmt: OutputFormat) -> None:
         typer.echo(json.dumps(err.to_dict()))
     else:
         typer.echo(f"Error: {err.message}", err=True)
+        request_line = request_context_line(err)
+        if request_line:
+            typer.echo(request_line, err=True)
         if err.hint:
             typer.echo(f"Hint:  {err.hint}", err=True)
     raise typer.Exit(err.exit_code)

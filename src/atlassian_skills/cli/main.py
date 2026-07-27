@@ -9,7 +9,7 @@ import cfxmark
 import typer
 
 from atlassian_skills import __version__
-from atlassian_skills.core.errors import AtlasError, InternalError, ValidationError
+from atlassian_skills.core.errors import AtlasError, InternalError, ValidationError, request_context_line
 from atlassian_skills.core.format import OutputFormat
 
 
@@ -120,6 +120,9 @@ def _emit_entrypoint_error(error: AtlasError) -> None:
         sys.stdout.write(json.dumps(error.to_dict()) + "\n")
         return
     sys.stderr.write(f"Error: {error.message}\n")
+    request_line = request_context_line(error)
+    if request_line:
+        sys.stderr.write(f"{request_line}\n")
     if error.hint:
         sys.stderr.write(f"Hint:  {error.hint}\n")
 
