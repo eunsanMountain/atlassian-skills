@@ -20,6 +20,67 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [0.3.3] - 2026-07-28
+
+Diagnosability for failed in-place edits, plus the cfxmark repairs that make a
+class of ordinary page editable again.
+
+**Requires cfxmark 0.5.1.** The manifest binds the converter that produced it, so
+every existing managed Markdown file fails with `managed_converter_mismatch`
+until `page pull-md` is run again, and pending consent fingerprints are
+invalidated. That is the designed effect of a converter change — the error now
+says so and tells you what to run.
+
+### Fixed
+- **A failed in-place proof now says what it could not decide, and what still
+  works.** Plain output prints the message and a hint, and these errors carried
+  no hint, so `Markdown update has no complete source-bound ownership proof` was
+  the entire diagnosis. `--format=json` added a `fatal_class` with no
+  explanation. A table-identity clash, an unattributable storage change, and a
+  tied edit alignment were indistinguishable, and the only way forward was to
+  bisect the document. Every ownership failure now carries a hint, and the JSON
+  envelope carries `fatal_class_description` plus a per-diagnostic
+  `description`. The five classes an edit actually dies on —
+  `table-presentation-ambiguous`, `unclassified-storage-change`,
+  `multiple-change-owners`, `semantic-mapping-ambiguous`,
+  `semantic-source-map-incomplete` — were all unmapped and now name the question
+  the proof could not answer.
+- **`managed_converter_mismatch` says how to resolve it.** A converter upgrade
+  invalidates every managed file at once, and the error was `not current` with
+  no remedy. It now points at `page pull-md`.
+- **`page inspect` no longer green-lights a page an in-place edit cannot touch.**
+  `styled_cells` counts background colour only, so a page styled entirely by
+  Markdown table alignment reported `styled_cells: 0`, `consent_required: false`,
+  `recommended_workflow: pull-md` — a clean bill of health for exactly the pages
+  where a table edit failed. `features` gains `aligned_cells` and
+  `duplicate_table_shapes`, the two inputs to that ambiguity, and
+  `styled_cells` keeps its meaning.
+
+### Added
+- `page inspect --intent` of `text-edit`, `structure-edit`, or
+  `presentation-edit` now returns `edit_guidance`, the same in-place prediction
+  `pull-md` already ran. Pull answers "can this be edited in place?" by doing one
+  no-edit proof, but an operator deciding *whether to pull* only had inspect, and
+  the skill points at inspect for exactly that decision. `read` and `append` do
+  not pay for it: the prediction is proportional to page size, `read` writes
+  nothing, and `append` has its own exact-append path.
+
+### Changed
+- **Requires `cfxmark>=0.5.1`.** That release repairs a table identity that made
+  pages with two same-shape tables uneditable when one used column alignment,
+  stops adjacent emphasis from injecting literal asterisks, applies the real
+  CommonMark flanking rule so `**bold**` followed by a word character is no
+  longer escaped into raw HTML (which affected nearly every bold span in
+  Korean), and closes a namespace hole in storage comparison. See the cfxmark
+  0.5.1 changelog.
+- Documentation now states which edit shapes are provable. Only one holds by
+  construction: leave existing blocks alone and add at the end of the document.
+  Anything that deletes or moves a block drops to `full_migration`, where the
+  outcome is document-dependent — the migration guide explains why, and why it is
+  not about links, images, or block counts.
+
+---
+
 ## [0.3.2] - 2026-07-27
 
 Follow-ups to 0.3.1, reported by @credmond in

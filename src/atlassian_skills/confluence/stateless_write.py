@@ -12,6 +12,7 @@ import cfxmark
 from cfxmark.ast import Image
 
 from atlassian_skills.confluence.migration_preflight import (
+    OWNERSHIP_PROOF_HINT,
     _canonical_json,
     _consent_required,
     _migration_report_payload,
@@ -339,17 +340,20 @@ def _build_markdown_update(
         raise ValidationError(
             "Markdown update has no complete source-bound ownership proof",
             context=ownership_error_context(error.summary, reason="ownership_proof_invalid"),
+            hint=OWNERSHIP_PROOF_HINT,
         ) from error
     except (cfxmark.CfxmarkError, TypeError, ValueError) as error:
         raise ValidationError(
             "Markdown update has no complete source-bound ownership proof",
             context={"reason": "ownership_proof_invalid", **conversion_failure_context(error)},
+            hint=OWNERSHIP_PROOF_HINT,
         ) from error
     ownership = _ownership_payload(candidate)
     if any(ownership[key] for key in ("unclassified", "multiple_owners", "overlap", "fatal_diagnostic_codes")):
         raise ValidationError(
             "Markdown update ownership is incomplete or ambiguous",
             context=ownership_error_context(ownership, reason="ownership_proof_fatal"),
+            hint=OWNERSHIP_PROOF_HINT,
         )
     diagnostics = tuple(candidate.diagnostics)
     if not candidate.push_safe and not diagnostics:

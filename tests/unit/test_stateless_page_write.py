@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 import cfxmark
 import pytest
 
+from atlassian_skills.confluence.migration_preflight import describe_migration_code
 from atlassian_skills.confluence.models import Page, PageVersion, Space
 from atlassian_skills.confluence.stateless_write import (
     build_page_update_preflight,
@@ -296,6 +298,53 @@ def test_markdown_update_html_comment_is_consentable_not_unclassified() -> None:
     assert exc_info.value.context["reason"] == "migration_consent_required"
 
 
+_ATTRIBUTED_STORAGE = '<p><strong class="x">A</strong></p><p>After</p>'
+
+
+def test_dropped_element_attribute_is_gated_by_consent_and_writes_nothing() -> None:
+    """A payload cfxmark cannot carry must reach the user before it is dropped.
+
+    cfxmark normalizes an element attribute away and still reports the candidate
+    as push-safe -- push-safe there means "the ownership proof holds", not
+    "publish unattended". What keeps that from being a silent loss lives here:
+    the removal arrives as a named migration occurrence, that makes the preflight
+    consent-required, and publishing without the matching fingerprint stops
+    before the PUT rather than after it.
+
+    Uses a lone attributed wrapper on purpose. Adjacent wrappers reach the same
+    path, but only on converters that merge them, and this contract must not
+    depend on which converter is installed.
+    """
+    client = FakeClient(_ATTRIBUTED_STORAGE)
+    markdown = cfxmark.to_md_artifact(
+        _ATTRIBUTED_STORAGE, options=cfxmark.ConversionOptions(profile="editable")
+    ).markdown
+
+    preflight = build_page_update_preflight(
+        client, "123", markdown.replace("After", "Edited"), body_format="md", if_version=7
+    )
+
+    assert preflight.consent_required is True
+    codes = [occurrence["code"] for occurrence in preflight.migration_report["occurrences"]]
+    assert "element-attribute-omitted" in codes
+    # The attribute really is gone from what would be written: the guarantee is
+    # disclosure, not preservation.
+    assert 'class="x"' not in preflight.candidate_storage
+
+    with pytest.raises(MigrationConsentRequiredError) as exc_info:
+        publish_page_update(
+            client,
+            preflight,
+            accept_migration=None,
+            reason=None,
+            minor_edit=False,
+            next_action_argv=("atls", "confluence", "page", "update", "123"),
+        )
+
+    assert exc_info.value.context["reason"] == "migration_consent_required"
+    assert client.update_calls == []
+
+
 def test_markdown_update_source_loss_requires_exact_source_bound_fingerprint() -> None:
     client = FakeClient()
     preflight = build_page_update_preflight(
@@ -348,6 +397,69 @@ def test_markdown_update_unknown_remote_replacement_fails_closed() -> None:
         build_page_update_preflight(client, "123", "replacement\n", body_format="md", if_version=7)
 
     assert exc_info.value.context["reason"] == "ownership_proof_invalid"
+
+
+# Two byte-identical tables. An edit cannot be attributed to one of them, so the
+# in-place proof is fatal — by design, and permanently: there is genuinely nothing
+# to tell them apart.
+#
+# The fixture has to be fatal *by design*, not fatal because the converter cannot
+# match a table it should be able to match. An earlier version of this test used
+# two same-shape tables with different content, which cfxmark stopped treating as
+# ambiguous once a table-identity defect was fixed upstream. That made this test
+# fail for a reason unrelated to what it asserts, and only against a converter this
+# repo does not pin — so it passed here and broke downstream.
+_AMBIGUOUS_TABLE_MARKDOWN = (
+    "# T\n\n"
+    "| a | b |\n| --- | ---: |\n| SENTINEL-CELL | 1 |\n\n"
+    "## s\n\n"
+    "| a | b |\n| --- | ---: |\n| SENTINEL-CELL | 1 |\n"
+)
+
+
+def test_ownership_fatal_names_the_failure_and_the_way_out() -> None:
+    """A failed in-place proof must say *which* question it could not answer.
+
+    ``reason`` alone collapses a table-identity clash, an unattributable storage
+    change, and a tied edit alignment into one string. Plain output prints only
+    message + hint, so without both of these an operator has nothing to act on
+    and resorts to bisecting the document.
+    """
+    client = FakeClient(cfxmark.to_cfx_artifact(_AMBIGUOUS_TABLE_MARKDOWN).xhtml)
+
+    with pytest.raises(ValidationError) as exc_info:
+        build_page_update_preflight(client, "123", _AMBIGUOUS_TABLE_MARKDOWN, body_format="md", if_version=7)
+
+    error = exc_info.value
+    context = error.context
+    assert context["reason"] == "ownership_proof_invalid"
+    assert context["fatal_class"] == "table-presentation-ambiguous"
+    # The curated description is what makes the class actionable in JSON.
+    assert "could not be matched to exactly one table" in context["fatal_class_description"]
+    assert context["supported_alternatives"] == ["append_markdown_blocks", "page_patch_text"]
+    assert all(item["description"] for item in context["diagnostics"])
+    # Plain (non-JSON) output writes message + hint only, so the hint is the only
+    # place a bare-terminal operator learns there is more to see.
+    assert error.hint and "--format=json" in error.hint
+
+    # Value-free boundary: naming the class must not carry page content across.
+    assert "SENTINEL-CELL" not in json.dumps(error.to_dict(), ensure_ascii=False)
+
+
+def test_every_fatal_proof_class_has_a_description() -> None:
+    """The codes an in-place edit actually dies on must all be described.
+
+    Regression: only ``table-topology-changed`` was mapped, so the three classes
+    real users hit rendered as bare codes.
+    """
+    for code in (
+        "table-presentation-ambiguous",
+        "unclassified-storage-change",
+        "multiple-change-owners",
+        "semantic-mapping-ambiguous",
+        "semantic-source-map-incomplete",
+    ):
+        assert describe_migration_code(code), f"{code} has no curated description"
 
 
 def test_page_update_second_read_blocks_remote_drift() -> None:

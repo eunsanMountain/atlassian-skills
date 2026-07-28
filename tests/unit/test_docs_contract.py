@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
@@ -59,6 +60,20 @@ def test_bundled_skill_has_only_state_free_markdown_workflow() -> None:
         assert token in text
 
 
+def _cfxmark_requirement() -> str:
+    """The cfxmark requirement exactly as pyproject declares it.
+
+    Read rather than duplicated: the point of this assertion is that the docs and
+    the package agree, and a second copy of the range can only ever drift from the
+    first. It also stops a deliberate floor bump from failing here for no reason.
+    """
+
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    match = re.search(r'"(cfxmark[^"]*)"', text)
+    assert match, "pyproject.toml declares no cfxmark requirement"
+    return match.group(1)
+
+
 def test_readme_and_migration_guide_match_public_cli_surface() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     guide = (ROOT / "docs" / "confluence-markdown-0.3-migration.md").read_text(encoding="utf-8")
@@ -80,7 +95,7 @@ def test_readme_and_migration_guide_match_public_cli_surface() -> None:
         "page push-md PAGE_ID",
         "--accept-migration",
         "--accept-conversion",
-        "cfxmark>=0.5.0,<0.6",
+        _cfxmark_requirement(),
         "outside Markdown-conversion",
     ):
         assert required in current

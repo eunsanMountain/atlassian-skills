@@ -75,6 +75,46 @@ Push binds the requested page and configured site to the manifest, fetches fresh
 
 Full migration uses cfxmark's source-bound proof. Every final storage leaf must have exactly one real Markdown edit-operation or migration-occurrence owner. Unclassified, multiply owned, overlap, incomplete source mapping, duplicate identity, or move ambiguity is fatal before PUT.
 
+### Which edit shapes are provable
+
+The proof is what decides whether an edit lands, and it is not a function of how large or how careful the edit is. Only one shape is provable by construction:
+
+> **Leave existing blocks untouched and add at the end of the document.** That is the exact-append path, and it preserves the old remote storage byte-for-byte.
+
+Anything that deletes or moves an existing block drops to `full_migration`, where the outcome is document-dependent. A minimal example: delete one paragraph and add one paragraph.
+
+| Where the new block goes | Result |
+|---|---|
+| In the deleted block's position | provable |
+| At the end of the document | can fail: `semantic-mapping-ambiguous` |
+| At the start of the document | can fail: `semantic-mapping-ambiguous` |
+| No deletion, appended at EOF | provable (exact append) |
+
+The failure is a tie: the alignment can read the change as *delete-then-insert* or as *update-then-move* at equal cost, and those two readings splice different remote storage. Reading 1 drops the old node — with any macro, user mention, or inline-comment anchor it carried; reading 2 keeps the node and patches its text. Because both are equally cheap, the publish refuses rather than guess.
+
+This is not about links, images, or block counts. The same three-position table holds for plain text, code spans, and links alike, and a document can grow in total block count and still fail. It is also **not universal** — the same intervention that fails on a small, repetitive document often succeeds on a large one with varied content, because varied content constrains the alignment to a single reading.
+
+So there is no authoring rule beyond the one above. For anything else, run `push-md --dry-run` and branch on `error.context.fatal_class`; `page inspect --intent=structure-edit` predicts the same verdict before you pull.
+
+### Reading a failed proof
+
+A fatal proof reports a stable, value-free `fatal_class` plus an atls-authored description of what could not be decided:
+
+```json
+{"error": {"context": {
+  "reason": "ownership_proof_invalid",
+  "fatal_class": "table-presentation-ambiguous",
+  "fatal_class_description": "A table's stored cell presentation could not be matched to exactly one table in the edited Markdown; publishing could move that presentation onto the wrong table",
+  "supported_alternatives": ["append_markdown_blocks", "page_patch_text"]
+}}}
+```
+
+Plain (non-JSON) output prints the message and a hint only, so re-run with `--format=json` to see the class. A failed in-place proof never blocks the append and `patch-text` paths.
+
+### Converter upgrades invalidate managed files
+
+A managed file records the converter that produced it (`converter=cfxmark/X.Y.Z` in the manifest). Upgrading cfxmark therefore fails every existing managed file with `managed_converter_mismatch` until it is re-pulled. Plan converter upgrades so that a batch of managed files is created once, after the upgrade, rather than re-pulled after each one.
+
 ## Informed migration consent
 
 A dry-run may report `migration_consent_required` with:
@@ -121,7 +161,7 @@ current migration fingerprint again; an operation marker is not stored consent. 
 previously approved write already landed, atls may finalize the local journal without another remote mutation.
 
 `page update --body-format=storage` transports explicit caller-provided storage and is outside Markdown-conversion
-consent. It remains subject to stale-version and read-back checks. atls requires `cfxmark>=0.5.0,<0.6`; because the exact
+consent. It remains subject to stale-version and read-back checks. atls requires `cfxmark>=0.5.1,<0.6`; because the exact
 converter version is fingerprint input, an upgrade invalidates pending consent and requires managed-file revalidation.
 
 Managed files and local assets reject symlink, ancestor-symlink, hardlink/reparse, and destination-identity swaps at their mutation boundaries.

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import cfxmark
 import pytest
 
 from atlassian_skills.confluence.migration_preflight import build_managed_preflight
@@ -137,14 +138,16 @@ def test_remote_version_or_storage_drift_is_stale_before_candidate(tmp_path: Pat
 
 
 def test_old_converter_manifest_requires_refresh_before_remote_read(tmp_path: Path) -> None:
-    """A 0.5.2 managed artifact cannot silently cross the 0.5.0 identity boundary."""
+    """A managed artifact from another converter cannot silently cross the identity boundary."""
 
     client = FakeClient()
     path = tmp_path / "legacy-converter.md"
     _pull(client, path)
     current = path.read_text(encoding="utf-8")
-    legacy = current.replace("converter=cfxmark/0.5.0", "converter=cfxmark/0.5.2", 1)
-    assert legacy != current
+    # Rewrite whatever converter the pull stamped, so this keeps testing the
+    # boundary rather than a version literal that goes stale every release.
+    legacy = current.replace(f"converter=cfxmark/{cfxmark.__version__}", "converter=cfxmark/0.0.0", 1)
+    assert legacy != current, "the pulled manifest did not carry the installed converter"
     path.write_text(legacy, encoding="utf-8")
     client.get_calls = 0
 
@@ -154,6 +157,9 @@ def test_old_converter_manifest_requires_refresh_before_remote_read(tmp_path: Pa
     assert error.value.context == {"reason": "managed_converter_mismatch"}
     assert client.get_calls == 0
     assert client.puts == 0
+    # A converter upgrade invalidates every managed file at once, so the error has to
+    # carry the way out — plain output prints message + hint and nothing else.
+    assert error.value.hint and "pull-md" in error.value.hint
 
 
 def test_supplied_passthrough_must_exactly_match_manifest(tmp_path: Path) -> None:

@@ -14,7 +14,7 @@ description: |
 
 # atls — Atlassian CLI dispatcher
 
-<!-- installed-by: atls 0.3.2 -->
+<!-- installed-by: atls 0.3.3 -->
 
 Load this skill before any `atls` command. Use `--help` for uncommon operations and `atls version --check` when a command is missing.
 
@@ -27,18 +27,17 @@ Load this skill before any `atls` command. Use `--help` for uncommon operations 
 
 ## Choose the Confluence workflow
 
-- Read/summarize: `atls confluence page get ID --body-repr=md`. This is content-only and never publish input. Stop here for a read-only task.
-- If edit intent is ambiguous, re-read with `page get ID --body-repr=md --format=json` so the version and body stay together.
+- Read/summarize: `atls confluence page get ID --body-repr=md`. Content-only, never publish input; stop here for a read-only task.
+- If edit intent is ambiguous, re-read with `--format=json` so version and body stay together.
 - One exact text leaf: dry-run `page patch-text ID --find OLD --replace NEW --if-version N --format=json`, then repeat only when exactly one occurrence is patchable.
 - Exact supported blocks appended at EOF: `pull-md` and use the exact-append proof path; do not convert the existing remote storage body.
-- Structure/table/link/code/macro/image edit: use `page inspect ID --intent=structure-edit --format=json` when presentation or migration impact affects the decision, explain that impact, then `pull-md` only if the user continues.
+- Structure/table/link/code/macro/image edit: `page inspect ID --intent=structure-edit --format=json` first; its `edit_guidance` predicts the proof, and `in_place_blocked` means only append or `patch-text` lands. Then `pull-md` if the user continues.
 - Existing managed file: validate/diff/proof-push it without an unnecessary get or repull. Fresh remote revalidation still happens inside push.
 - Exact rendered HTML: `page get ID --body-repr=view --format=raw`.
-- Locally authored Markdown: `page create` or `page update --body-format md`. These use source-conversion preflight and are not a bypass for loss consent.
-- Caller-authored storage: `page update --body-format storage` is outside Markdown conversion consent. Use it only when the user explicitly supplied or approved those exact storage bytes; stale/read-back guards still apply.
-- Validation copy: only into a verified run-owned parent with a unique caller-supplied title. Dry-run `page copy` first and keep `--verify` enabled.
+- Locally authored Markdown: `page create` or `page update --body-format md`. Both run source-conversion preflight; neither bypasses loss consent.
+- Caller-authored storage: `page update --body-format storage` is outside Markdown conversion consent. Use it only for storage bytes the user supplied or approved; stale/read-back guards still apply.
+- Validation copy: only into a verified run-owned parent with a unique caller-supplied title. Dry-run `page copy` first, keep `--verify`.
 
-`inspect` is a decision aid for structural or presentation-sensitive changes, not a mandatory call before every read or exact patch.
 
 Managed `push-md` and stateless `page update --body-format md` emit different raw JSON/`status`; branch on outcome, not field equality. `diff-local` is a local Markdown diff, not a storage-candidate proof.
 
@@ -61,9 +60,9 @@ A failed patch is not a reason to switch to a lossy full-page migration. Never s
 - Run `page validate-local FILE --format=json`. It is offline and reports `remote_freshness=not_checked`; it does not authorize a write.
 - Then run `page push-md ID --md-file FILE --if-version N --dry-run --format=json`.
 
-Push proof order is `no_change`, `exact_remote_prefix_append`, then `full_migration`. Exact append is valid only when existing Markdown is unchanged and supported root blocks are added at exact EOF; it preserves the complete old remote storage prefix byte-for-byte.
+Push proof order is `no_change`, `exact_remote_prefix_append`, then `full_migration`. Exact append is valid only when existing Markdown is unchanged and supported root blocks are added at exact EOF; it preserves the old remote storage prefix byte-for-byte. Deleting or moving blocks drops to `full_migration`, which can fail closed where append succeeds — dry-run first.
 
-Ambiguous source maps, duplicate identity, move ambiguity, unclassified/multiply-owned/overlap storage changes, page/site mismatch, or stale remote evidence fail before PUT. The final invocation repeats remote and local revalidation immediately before mutation and verifies a fresh read-back.
+Ambiguous source maps, duplicate identity, unclassified/multiply-owned/overlap storage changes, page/site mismatch, or stale remote evidence fail before PUT; `error.context.fatal_class` names which. The final invocation repeats remote and local revalidation immediately before mutation and verifies a fresh read-back.
 
 ## Informed consent
 

@@ -189,9 +189,14 @@ def _validate_recovery_authority(
             context={"reason": "managed_authority_mismatch"},
         )
     if manifest.converter != f"cfxmark/{cfxmark.__version__}" or manifest.profile != "markdown-first":
+        # Local import: migration_preflight is only reachable lazily from here
+        # (see the same pattern for to_error_context below).
+        from atlassian_skills.confluence.migration_preflight import MANAGED_CONVERTER_HINT
+
         raise ValidationError(
             "Managed operation converter/profile is not current",
             context={"reason": "managed_converter_mismatch"},
+            hint=MANAGED_CONVERTER_HINT,
         )
     if (
         operation.authority != managed_operation_authority(manifest)

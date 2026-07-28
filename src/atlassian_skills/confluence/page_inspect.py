@@ -14,6 +14,10 @@ from atlassian_skills.confluence.migration_preflight import (
 from atlassian_skills.core.errors import ValidationError
 
 INTENTS = frozenset({"read", "text-edit", "append", "structure-edit", "presentation-edit"})
+# Intents that imply replacing existing content in place, and therefore depend on the
+# in-place proof holding. `read` writes nothing and `append` has its own exact-append
+# path, so neither pays for the prediction.
+_IN_PLACE_INTENTS = frozenset({"text-edit", "structure-edit", "presentation-edit"})
 
 
 def _page_version(page: Any) -> int:
@@ -87,6 +91,21 @@ def inspect_page(client: Any, page_id: str, *, intent: str) -> dict[str, Any]:
         for item in artifact.remote_subtrees
     )
     styled_cells = sum(cell.background is not None for cell in artifact.presentation.cells)
+    # `styled_cells` counts background colour only. Alignment lives in the same
+    # presentation channel but leaves `background` unset, so a page whose tables are
+    # entirely alignment-styled used to report `styled_cells: 0` — a green light for
+    # exactly the pages an in-place table edit can fail on. Count it separately
+    # rather than folding it in, so the existing field keeps its meaning.
+    aligned_cells = sum(
+        cell.background is None and cell.source_style is not None for cell in artifact.presentation.cells
+    )
+    # Table presentation is re-attached by table identity. Two tables of the same
+    # shape are what makes that identity ambiguous, so surface the count an operator
+    # would otherwise have to derive by hand.
+    shapes: dict[str, int] = {}
+    for table in artifact.presentation.tables:
+        shapes[table.topology_hash] = shapes.get(table.topology_hash, 0) + 1
+    duplicate_table_shapes = sum(count for count in shapes.values() if count > 1)
     attachments = client.list_attachments(page_id)
     recommended, preferred_proof, alternatives = _recommendation(intent)
     result: dict[str, Any] = {
@@ -98,6 +117,8 @@ def inspect_page(client: Any, page_id: str, *, intent: str) -> dict[str, Any]:
         "features": {
             "tables": tables,
             "styled_cells": styled_cells,
+            "aligned_cells": aligned_cells,
+            "duplicate_table_shapes": duplicate_table_shapes,
             "macros": macros,
             "attachments": len(attachments),
         },
@@ -116,4 +137,22 @@ def inspect_page(client: Any, page_id: str, *, intent: str) -> dict[str, Any]:
     }
     if preferred_proof is not None:
         result["preferred_proof"] = preferred_proof
+    if intent in _IN_PLACE_INTENTS:
+        # `recommended_workflow` says which tool to reach for; it does not say whether
+        # this page can actually be edited in place. Pull already answers that by
+        # running one no-edit proof, but an operator deciding *before* pulling only
+        # has inspect. Run the same prediction here so the two agree.
+        #
+        # Scoped to in-place intents on purpose: the proof is O(page size) and is
+        # irrelevant to `read` (no write) and `append` (its own exact-append path).
+        from atlassian_skills.confluence.managed_pull import (
+            _predict_in_place_editability,
+            in_place_edit_guidance,
+        )
+
+        # No passthrough prefixes: the artifact above was built with the same plain
+        # editable options, so the prediction must run against the same conversion.
+        predicted = in_place_edit_guidance(*_predict_in_place_editability(artifact, storage, ()))
+        if predicted is not None:
+            result["edit_guidance"] = [predicted]
     return result

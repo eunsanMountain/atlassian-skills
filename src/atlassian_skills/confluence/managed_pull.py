@@ -132,6 +132,41 @@ def _detached_portable_asset_dir(output_path: Path, *, page_id: str, site: str) 
     return output_path.with_name(f".atls-detached-{identity}.assets")
 
 
+def in_place_edit_guidance(prediction: str, codes: tuple[str, ...]) -> dict[str, Any] | None:
+    """Value-free guidance for a pre-computed in-place edit prediction, or ``None``.
+
+    Shared with ``page inspect``: the prediction is what decides whether an
+    in-place Markdown edit is worth starting at all, so the two surfaces that
+    answer that question must not drift apart in wording or in the codes they
+    name. ``None`` means the prediction carries no in-place-specific advice and
+    the caller falls back to its own default.
+    """
+
+    if prediction == "blocked":
+        return {
+            "kind": "in_place_blocked",
+            "action": "append_or_patch_text",
+            "message": (
+                "An in-place Markdown edit of this page cannot be proven safe by the "
+                "current converter and publishing would fail closed. Appending new "
+                "blocks at EOF (exact-append) and page patch-text remain available."
+            ),
+            "codes": list(codes),
+        }
+    if prediction == "consent":
+        return {
+            "kind": "in_place_with_consent",
+            "action": "edit_then_dry_run",
+            "message": (
+                "Edits are provable, but publishing re-renders remote-only details "
+                "this Markdown cannot carry; push-md --dry-run will list them for "
+                "explicit consent."
+            ),
+            "codes": list(codes),
+        }
+    return None
+
+
 def _predict_in_place_editability(
     artifact: Any,
     storage: str,
@@ -423,33 +458,9 @@ def prepare_portable_pull(
     from atlassian_skills.confluence.migration_preflight import _migration_report_payload, _report_hash
 
     migration_report = _migration_report_payload(artifact.migration_report, display=True)
-    prediction, prediction_codes = edit_preflight
-    if prediction == "blocked":
-        guidance: tuple[dict[str, Any], ...] = (
-            {
-                "kind": "in_place_blocked",
-                "action": "append_or_patch_text",
-                "message": (
-                    "An in-place Markdown edit of this page cannot be proven safe by the "
-                    "current converter and publishing would fail closed. Appending new "
-                    "blocks at EOF (exact-append) and page patch-text remain available."
-                ),
-                "codes": list(prediction_codes),
-            },
-        )
-    elif prediction == "consent":
-        guidance = (
-            {
-                "kind": "in_place_with_consent",
-                "action": "edit_then_dry_run",
-                "message": (
-                    "Edits are provable, but publishing re-renders remote-only details "
-                    "this Markdown cannot carry; push-md --dry-run will list them for "
-                    "explicit consent."
-                ),
-                "codes": list(prediction_codes),
-            },
-        )
+    predicted = in_place_edit_guidance(*edit_preflight)
+    if predicted is not None:
+        guidance: tuple[dict[str, Any], ...] = (predicted,)
     elif needs_migration:
         guidance = (
             {

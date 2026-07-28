@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, BinaryIO
 
+import cfxmark
 import pytest
 
 from atlassian_skills.confluence.managed_operation import parse_managed_operation
@@ -439,10 +440,18 @@ def test_recovery_rejects_tampered_proof_bundle_before_remote_read(tmp_path: Pat
     assert client.remote_mutations == 0
 
 
+# The manifest a pull writes, resolved at import time because parametrize is
+# evaluated then. Derived, not pinned: a converter release must not need a
+# test edit to keep this contract meaningful.
+CURRENT_CONVERTER = f"converter=cfxmark/{cfxmark.__version__}"
+
+
 @pytest.mark.parametrize(
     ("old", "new", "expected_reason"),
     [
-        ("converter=cfxmark/0.5.0", "converter=cfxmark/0.5.2", "managed_converter_mismatch"),
+        # `old` must be whatever the pull actually wrote, or the replacement is a
+        # no-op and the test passes for the wrong reason. `new` only has to differ.
+        (CURRENT_CONVERTER, "converter=cfxmark/0.0.0", "managed_converter_mismatch"),
         ("profile=markdown-first", "profile=other-profile", "managed_converter_mismatch"),
         ("passthrough=-", "passthrough=safe-prefix", "operation_authority_mismatch"),
     ],

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import cfxmark
 import pytest
 
 from atlassian_skills.confluence.pull_md import pull_md
@@ -102,7 +103,9 @@ def test_portable_pull_uses_cfxmark_managed_projection_without_sqlite(tmp_path: 
     managed = output.read_text(encoding="utf-8")
     parsed = parse_managed_document(managed)
     assert parsed.manifest.page == "123456"
-    assert parsed.manifest.converter == "cfxmark/0.5.0"
+    # The pull stamps the installed converter; pinning the literal turns every
+    # cfxmark release into a test edit and hides real drift behind a known failure.
+    assert parsed.manifest.converter == f"cfxmark/{cfxmark.__version__}"
     assert parsed.manifest.profile == "markdown-first"
     assert "<!-- cfxmark:notice " in parsed.content
     assert result.status == "pulled_with_migrations"

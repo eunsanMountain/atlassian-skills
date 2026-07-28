@@ -510,7 +510,46 @@ MIGRATION_CODE_DESCRIPTIONS: dict[str, str] = {
         "A nested numbered list starting at a non-1 number cannot be represented in Markdown; "
         "rewrite it as a flat list in Confluence and re-pull"
     ),
+    # Fatal proof classes. These are the codes an in-place edit actually dies on, so
+    # they need to say *which* question the proof could not answer -- "the proof did
+    # not hold" alone sends an operator hunting through the document. Each names the
+    # ambiguity and the edit shape that avoids it.
+    "table-presentation-ambiguous": (
+        "A table's stored cell presentation could not be matched to exactly one table in the "
+        "edited Markdown; publishing could move that presentation onto the wrong table"
+    ),
+    "unclassified-storage-change": (
+        "A change in the stored page could not be attributed to any edit in the Markdown, so the "
+        "publish cannot prove which stored content it would replace"
+    ),
+    "multiple-change-owners": (
+        "A change in the stored page could be explained by more than one Markdown edit; the "
+        "publish cannot tell which one it belongs to"
+    ),
+    "semantic-mapping-ambiguous": (
+        "The edit has more than one equally likely reading (for example delete-then-insert versus "
+        "move); adding blocks at the end of the document instead avoids the ambiguity"
+    ),
+    "semantic-source-map-incomplete": (
+        "Part of the stored page could not be mapped to the Markdown, so an in-place edit cannot "
+        "be proven; append-only edits and single-leaf patches still work"
+    ),
 }
+
+# Value-free next step for a failed in-place proof. The JSON envelope already carries
+# `fatal_class` and `supported_alternatives`, but plain output prints only the message
+# (cli/main.py `_emit_entrypoint_error`), so without this an operator sees one sentence
+# with no way to narrow it. Static text -- no page, code, or leaf value crosses here.
+OWNERSHIP_PROOF_HINT = (
+    "Re-run with --format=json for error.context.fatal_class and supported_alternatives. "
+    "Appending blocks at the end of the document, or page patch-text for one exact string, "
+    "does not need this proof."
+)
+
+# A managed file records the converter that produced it; a cfxmark upgrade therefore
+# invalidates every managed file until it is re-pulled. Without this the operator gets
+# "not current" and no way to act on it.
+MANAGED_CONVERTER_HINT = "Re-pull the page with `page pull-md` to adopt the current converter."
 
 
 def describe_migration_code(code: str | None) -> str | None:
@@ -544,13 +583,24 @@ def ownership_error_context(source: Any, *, reason: str) -> dict[str, Any]:
         return {
             "reason": reason,
             "fatal_class": source.fatal_class,
+            # The curated description turns a bare code into the question the proof
+            # could not answer. Static atls-authored text keyed by a stable code —
+            # never cfxmark's message/display_label, which can carry page content.
+            "fatal_class_description": describe_migration_code(source.fatal_class),
             "counts": {
                 "unclassified": source.unclassified_count,
                 "multiple_owners": source.multiple_owners_count,
                 "overlap": source.overlap_count,
             },
             "identities": [_leaf_identity_context(identity) for identity in source.top_identities],
-            "diagnostics": [{"code": item.code, "resolution": item.resolution} for item in source.diagnostics],
+            "diagnostics": [
+                {
+                    "code": item.code,
+                    "resolution": item.resolution,
+                    "description": describe_migration_code(item.code),
+                }
+                for item in source.diagnostics
+            ],
             # Static, value-free next-step: a failed in-place proof is not a dead
             # end — the append and single-leaf patch paths stay available.
             "supported_alternatives": ["append_markdown_blocks", "page_patch_text"],
@@ -569,12 +619,15 @@ def ownership_error_context(source: Any, *, reason: str) -> dict[str, Any]:
             seen.add(marker)
             identities.append(projected)
     codes = source.get("fatal_diagnostic_codes") or []
+    fatal_class = codes[0] if codes else "fatal"
     return {
         "reason": reason,
-        "fatal_class": codes[0] if codes else "fatal",
+        "fatal_class": fatal_class,
+        "fatal_class_description": describe_migration_code(fatal_class),
         "counts": {key: len(source.get(key) or []) for key in ("unclassified", "multiple_owners", "overlap")},
         "identities": identities[:10],
         "diagnostic_codes": sorted(codes),
+        "supported_alternatives": ["append_markdown_blocks", "page_patch_text"],
     }
 
 
@@ -830,6 +883,7 @@ def build_managed_preflight(
         raise ValidationError(
             "Managed Markdown converter/profile is not current",
             context={"reason": "managed_converter_mismatch"},
+            hint=MANAGED_CONVERTER_HINT,
         )
     if passthrough_prefixes is not None:
         supplied = parse_passthrough(serialize_passthrough(passthrough_prefixes))
@@ -1046,6 +1100,7 @@ def build_managed_preflight(
         raise ValidationError(
             "Managed candidate ownership proof is not publishable",
             context=ownership_error_context(error.summary, reason="ownership_proof_invalid"),
+            hint=OWNERSHIP_PROOF_HINT,
         ) from error
     except (cfxmark.CfxmarkError, TypeError, ValueError) as error:
         raise ValidationError(
@@ -1057,6 +1112,7 @@ def build_managed_preflight(
         raise ValidationError(
             "Managed candidate ownership proof is incomplete or ambiguous",
             context=ownership_error_context(ownership, reason="ownership_proof_fatal"),
+            hint=OWNERSHIP_PROOF_HINT,
         )
     candidate_report = candidate.source_migration_report or report
     accepted_ids = frozenset(ownership["accepted_migration_occurrence_ids"])
