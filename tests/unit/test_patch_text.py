@@ -467,7 +467,7 @@ def test_single_eligible_leaf_still_patches() -> None:
 def test_bundled_skill_routes_each_patch_failure_without_escalating_to_migration() -> None:
     """The skill must not answer a patch failure by proposing a lossy rewrite.
 
-    An agent that reads "patch failed" and jumps to pull-md turns a two-character
+    An agent that reads "patch failed" and jumps to md pull turns a two-character
     correction into a whole-page migration, which is exactly the loss the
     diagnostics exist to avoid.
     """

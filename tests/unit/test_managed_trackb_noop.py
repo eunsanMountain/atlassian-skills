@@ -20,9 +20,9 @@ from types import SimpleNamespace
 import pytest
 
 from atlassian_skills.confluence.migration_preflight import build_managed_preflight
-from atlassian_skills.confluence.pull_md import pull_md
 from atlassian_skills.confluence.push_md import push_md
 from atlassian_skills.core.errors import MigrationConsentRequiredError, ValidationError
+from tests.unit.managed_seam import pull_managed_suspending_the_write_policy
 from tests.unit.test_state_free_body_write import BodyClient
 
 # nol_start2_paragraph_shape: a non-1 nested ordered list, Markdown-unrepresentable.
@@ -51,7 +51,7 @@ class ReadOnlyClient:
 def test_trackb_unedited_repush_is_no_change_without_put_or_consent(tmp_path: Path) -> None:
     client = ReadOnlyClient(_TRACK_B)
     path = tmp_path / "page.md"
-    pull_md(client, "123", output_path=path, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", path, no_assets=True)
 
     # The no-op decision must be reachable without a clean to_cfx(M1): build the
     # preflight (which would otherwise crash at conversion) and require no_change.
@@ -70,7 +70,7 @@ def test_trackb_edit_outside_publishes_and_byte_preserves_subtree(tmp_path: Path
     client = BodyClient()
     client.storage = _TRACK_B
     path = tmp_path / "page.md"
-    pull_md(client, "123", output_path=path, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", path, no_assets=True)
     client.gets = 0
     # Append a new section AFTER the Track-B list — a source-splice-preservable edit.
     path.write_text(path.read_text(encoding="utf-8") + "\n## Added\n\nSafe paragraph.\n", encoding="utf-8")
@@ -91,7 +91,7 @@ def test_trackb_edit_outside_publishes_and_byte_preserves_subtree(tmp_path: Path
 def test_trackb_edit_inside_fails_closed_without_consent(tmp_path: Path) -> None:
     client = ReadOnlyClient(_TRACK_B)
     path = tmp_path / "page.md"
-    pull_md(client, "123", output_path=path, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", path, no_assets=True)
     # Edit INSIDE the unrepresentable ordered-list item.
     path.write_text(path.read_text(encoding="utf-8").replace("2. b", "2. changed"), encoding="utf-8")
 

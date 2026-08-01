@@ -22,11 +22,20 @@ from atlassian_skills.confluence.asset_sync import (
     rewrite_attachment_artifact,
     snapshot_remote_attachments,
 )
+from atlassian_skills.confluence.compatibility import (
+    candidate_loss,
+    canonicalization_sites,
+    compatibility_digest,
+    compatibility_payload,
+)
 from atlassian_skills.confluence.managed_operation import (
     ManagedAssetOperation,
     ManagedOperation,
     attachment_inventory_sha256,
 )
+from atlassian_skills.confluence.preservation import ragged_protected_table_paths
+from atlassian_skills.confluence.proof_mootness import Mootness, assess_proof_mootness
+from atlassian_skills.confluence.sidecar import read_authority
 from atlassian_skills.core.errors import StaleError, ValidationError
 from atlassian_skills.core.file_identity import inspect_file_identity
 from atlassian_skills.core.managed_file import read_managed_utf8, resolve_managed_asset_path
@@ -105,12 +114,38 @@ class ManagedPreflight:
     edited_markdown: str
     document: ManagedDocument
     candidate: cfxmark.CfxArtifact | None
+    #: The file this preflight is about, carried so the next steps it returns are
+    #: commands rather than commands with a hole where the path goes.
+    managed_path: str | None = None
+    #: Fresh answers computed inside this preflight. These are not pull-time
+    #: forecasts: they are bound to `source_storage`, the same remote bytes the
+    #: candidate and proof used.
+    compatibility: dict[str, Any] | None = None
+    candidate_loss_payload: dict[str, Any] | None = None
 
     @property
     def would_update(self) -> bool:
         return self.body_dirty or self.asset_dirty
 
+    @property
+    def presentation_occurrences(self) -> int:
+        """How many places this publish hands the platform its own canonical form.
+
+        Read from the same `candidate_loss` the dry-run reports, so the number on
+        the receipt is the number the caller was shown before agreeing to anything.
+        Recomputing it separately for the receipt is how the two drift.
+        """
+
+        loss = self.candidate_loss_payload or candidate_loss(self.source_storage, self.candidate_storage)
+        return int(loss["affected_occurrences"])
+
     def to_dict(self) -> dict[str, Any]:
+        compatibility = self.compatibility or compatibility_payload(
+            self.page_id,
+            self.source_storage,
+            document_path=self.managed_path,
+        )
+        loss = self.candidate_loss_payload or candidate_loss(self.source_storage, self.candidate_storage)
         return {
             "status": self.status,
             "proof_mode": self.proof_mode,
@@ -135,6 +170,30 @@ class ManagedPreflight:
             "asset_plan_sha256": self.asset_plan_sha256,
             "ownership": self.ownership,
             "deferred_migrations": list(self.deferred_migrations),
+            # Computed against the fresh remote body fetched by this preflight,
+            # never carried from pull time. Reusing it while serialising this
+            # immutable result avoids asking the same expensive question twice.
+            "compatibility": compatibility,
+            # The forecast above says what this page would cost to regenerate from
+            # scratch. This says what the document about to be written actually
+            # drops, which is the number an approval should be bound to.
+            "candidate_loss": loss,
+            # The publish decision, named apart from the workflow one and lifted
+            # where it cannot be missed. `compatibility.workflow_decision_required`
+            # asks which representation should manage this page; this asks whether
+            # *this candidate* needs the author to agree to something. They were
+            # one field called `requires_user_approval` in two payloads read
+            # minutes apart.
+            #
+            # The gate's own value, not a second expression computed from
+            # `candidate_loss`. That recomputation counted named losses and
+            # presentation changes and silently missed the third trigger, a migration
+            # occurrence -- so an emoticon page reported `false` here while
+            # `consent_required` held `true` and the push refused. SKILL.md tells an
+            # agent to branch on this field and no other, so the two disagreeing is a
+            # public contract contradicting itself. Anything that decides consent has
+            # to decide it once.
+            "publish_consent_required": self.consent_required,
         }
 
 
@@ -168,12 +227,21 @@ def _page_version(page: Any) -> int:
     return int(getattr(version, "number", version) or 1)
 
 
-def _migration_occurrence_payload(occurrence: Any, *, display: bool) -> dict[str, Any]:
+def _migration_occurrence_payload(
+    occurrence: Any, *, display: bool, consent_required: bool = True, change_kind: str = "content"
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "occurrence_id": occurrence.occurrence_id,
         "code": occurrence.code,
         "effect": str(occurrence.effect),
         "category": occurrence.category,
+        # Marked rather than removed. The report is the factual record of what the
+        # publish changes, and dropping an entry from it to avoid a prompt would
+        # hide a change from the person the record exists for. Marking says both
+        # things at once: this node changes, and you are not being asked about it.
+        "consent_required": consent_required,
+        # `presentation` or `content`. Both need approval; they do not need the same sentence.
+        "change_kind": change_kind,
         "location_identity": [
             {key: value for key, value in asdict(component).items() if value is not None}
             for component in occurrence.location_identity
@@ -202,9 +270,18 @@ def _migration_report_payload(
     *,
     display: bool,
     occurrence_ids: frozenset[str] | None = None,
+    canonicalized_sites: frozenset[tuple[str, ...]] = frozenset(),
 ) -> dict[str, Any]:
     occurrences = [
-        _migration_occurrence_payload(item, display=display)
+        _migration_occurrence_payload(
+            item,
+            display=display,
+            # Every reported occurrence needs consent now. What the classification still buys
+            # is `change_kind`: a caller can tell "your readers will see different spacing"
+            # from "a sentence is going away" and say so when asking.
+            consent_required=True,
+            change_kind=("presentation" if _is_canonicalization(item, canonicalized_sites) else "content"),
+        )
         for item in report.occurrences
         if occurrence_ids is None or item.occurrence_id in occurrence_ids
     ]
@@ -218,13 +295,53 @@ def _migration_report_payload(
     return {"schema": report.schema, "occurrences": occurrences}
 
 
-def _report_hash(report: Any, *, occurrence_ids: frozenset[str] | None = None) -> str:
+def _report_hash(
+    report: Any,
+    *,
+    occurrence_ids: frozenset[str] | None = None,
+    canonicalized_sites: frozenset[tuple[str, ...]] = frozenset(),
+) -> str:
+    # The marker is inside the hash on purpose. Consent is bound to the report the
+    # caller was shown, and "you were not asked about this one" is part of what they
+    # were shown.
     return _sha256_bytes(
-        _canonical_json(_migration_report_payload(report, display=False, occurrence_ids=occurrence_ids))
+        _canonical_json(
+            _migration_report_payload(
+                report,
+                display=False,
+                occurrence_ids=occurrence_ids,
+                canonicalized_sites=canonicalized_sites,
+            )
+        )
     )
 
 
-def _consent_required(report: Any, *, occurrence_ids: frozenset[str] | None = None) -> bool:
+#: Report codes whose occurrence is not a loss when it lands on a node cfxmark's
+#: registry classifies as `platform_editor_canonicalization`.
+#:
+#: Two conditions, not one. The code alone is too coarse -- the same
+#: `empty-paragraph-dropped` is a real loss in a list item, and it is 18 of the 19
+#: occurrences on the 24 adoptable pages of the live corpus, so excusing the code outright would
+#: quietly stop asking about almost every one of them. The path alone is too coarse
+#: the other way: a different code arriving at the same node later would inherit an
+#: excuse that was never about it.
+_CANONICALIZED_CODES: frozenset[str] = frozenset({"empty-paragraph-dropped"})
+
+
+def _occurrence_path(occurrence: Any) -> tuple[str, ...]:
+    return tuple(
+        str(part.name)
+        for part in getattr(occurrence, "location_identity", ())
+        if str(getattr(part, "kind", "")) == "path"
+    )
+
+
+def _consent_required(
+    report: Any,
+    *,
+    occurrence_ids: frozenset[str] | None = None,
+    canonicalized_sites: frozenset[tuple[str, ...]] = frozenset(),
+) -> bool:
     for occurrence in report.occurrences:
         if occurrence_ids is not None and occurrence.occurrence_id not in occurrence_ids:
             continue
@@ -234,6 +351,31 @@ def _consent_required(report: Any, *, occurrence_ids: frozenset[str] | None = No
         if effect == "normalized" and occurrence.code not in _CANONICAL_EQUIVALENT_CODES:
             return True
     return False
+
+
+def _is_canonicalization(occurrence: Any, canonicalized_sites: frozenset[tuple[str, ...]]) -> bool:
+    """Whether this reported change is the platform's own canonical form arriving.
+
+    **This no longer waives consent, and that is a reversal.** It did, on the grounds that
+    Confluence's editor replaces `<p/>` on a no-edit save, so the form is not one an author
+    can keep. R4-pre rejected the inference and was right: a browser save converging is not
+    evidence that *our* REST publish may converge it, and a REST no-op measurably does not.
+    Measured on the real paths -- the append proof splices the untouched bytes and changes
+    nothing, while `full_migration` rewrites every untouched `<p/>` on the page from an edit
+    made somewhere else. That is us changing what the author's readers see.
+
+    So the classification is kept and the waiver is not. It still tells a caller this is a
+    presentation change rather than a content loss, which is what `consent_required: false`
+    used to say by omission and now says by name.
+
+    The shape is cfxmark's to define and is asked for rather than reproduced here:
+    `canonicalization_sites` reads the stored page through the same scope predicate
+    the compatibility verdict uses. A second implementation of "between ordinary
+    body blocks" living in this file is how the two stop agreeing, and the direction
+    it would drift is towards excusing more.
+    """
+
+    return occurrence.code in _CANONICALIZED_CODES and _occurrence_path(occurrence) in canonicalized_sites
 
 
 def _asset_plan(
@@ -433,7 +575,21 @@ _CONVERSION_FAILURE_CODES = {
 # summaries, fingerprints, and asset names are dropped by omission (deny by
 # default), so a new unsafe cfxmark field can never silently leak.
 _SAFE_OCCURRENCE_KEYS = frozenset(
-    {"occurrence_id", "code", "effect", "category", "severity", "location", "location_identity", "resolutions"}
+    {
+        "occurrence_id",
+        "code",
+        "effect",
+        "category",
+        "severity",
+        "location",
+        "location_identity",
+        "resolutions",
+        # Two fields carrying no page content, and the ones a consent envelope is least able
+        # to do without: what is being asked about, and whether it is the author's words or
+        # their readers' spacing.
+        "consent_required",
+        "change_kind",
+    }
 )
 
 # Asset-plan item keys safe to serialize in an error/consent envelope. Deny by
@@ -477,6 +633,20 @@ def conversion_failure_context(error: BaseException) -> dict[str, str]:
     reason_code = getattr(error, "reason_code", None)
     if isinstance(reason_code, str) and reason_code in cfxmark.PUBLIC_CONVERSION_REASON_CODES:
         context["conversion_reason_code"] = reason_code
+        # The code alone is not actionable, and this branch used to stop here.
+        # Measured on a real document: a live publish refused with
+        # `ownership_proof_invalid/semantic-mapping-ambiguous` and its caller had
+        # nothing to print but those two words -- the sentence explaining what the
+        # proof could not decide, and the two edit shapes that avoid it, existed
+        # in this module and never reached the envelope.
+        #
+        # Static atls-authored text keyed by a stable code, exactly as the summary
+        # branch does. Never cfxmark's message or display_label, which can carry
+        # page content.
+        description = describe_migration_code(reason_code)
+        if description:
+            context["conversion_reason_description"] = description
+        context["supported_alternatives"] = list(SUPPORTED_ALTERNATIVES)  # type: ignore[assignment]
     return context
 
 
@@ -536,6 +706,11 @@ MIGRATION_CODE_DESCRIPTIONS: dict[str, str] = {
     ),
 }
 
+#: The two edit shapes that do not need a source-bound ownership proof. Named
+#: once because it is now answered on three refusal paths, and a list that says
+#: what a caller can still do is worth being the same list every time.
+SUPPORTED_ALTERNATIVES = ["append_markdown_blocks", "page_patch_text"]
+
 # Value-free next step for a failed in-place proof. The JSON envelope already carries
 # `fatal_class` and `supported_alternatives`, but plain output prints only the message
 # (cli/main.py `_emit_entrypoint_error`), so without this an operator sees one sentence
@@ -593,6 +768,20 @@ def ownership_error_context(source: Any, *, reason: str) -> dict[str, Any]:
                 "overlap": source.overlap_count,
             },
             "identities": [_leaf_identity_context(identity) for identity in source.top_identities],
+            # The same value-free shapes, uncapped, for a diagnosis running in process.
+            #
+            # R5-2: `top_identities` is a curated sample and the harness was grouping root
+            # causes from it -- one live page has 33 unclassified leaves and this list carries ten, so
+            # a "shared shape" only meant "shared among the first ten". Value-free by the same
+            # projection as `identities`; `to_error_context` drops it before anything reaches a
+            # CLI envelope, so the redaction a user sees is unchanged.
+            #
+            # The first attempt read `source.unclassified`, which `OwnershipProofSummary` does
+            # not have -- so this was silently always empty and the harness kept sampling while
+            # the code claimed it did not. `getattr` is what hid it; the field is required now,
+            # and the test below pins that a summary without it is a failure rather than a
+            # quietly shorter list.
+            "all_identities": [_leaf_identity_context(identity) for identity in source.all_identities],
             "diagnostics": [
                 {
                     "code": item.code,
@@ -603,7 +792,7 @@ def ownership_error_context(source: Any, *, reason: str) -> dict[str, Any]:
             ],
             # Static, value-free next-step: a failed in-place proof is not a dead
             # end — the append and single-leaf patch paths stay available.
-            "supported_alternatives": ["append_markdown_blocks", "page_patch_text"],
+            "supported_alternatives": list(SUPPORTED_ALTERNATIVES),
         }
     identities: list[dict[str, Any]] = []
     seen: set[bytes] = set()
@@ -627,7 +816,7 @@ def ownership_error_context(source: Any, *, reason: str) -> dict[str, Any]:
         "counts": {key: len(source.get(key) or []) for key in ("unclassified", "multiple_owners", "overlap")},
         "identities": identities[:10],
         "diagnostic_codes": sorted(codes),
-        "supported_alternatives": ["append_markdown_blocks", "page_patch_text"],
+        "supported_alternatives": list(SUPPORTED_ALTERNATIVES),
     }
 
 
@@ -676,6 +865,9 @@ def _redact_ownership(ownership: Any) -> Any:
     if not isinstance(ownership, dict):
         return ownership
     result = dict(ownership)
+    # In-process only. The uncapped list exists so a harness can group root causes without
+    # sampling; the envelope keeps the curated `identities`.
+    result.pop("all_identities", None)
     for key in ("unclassified", "multiple_owners", "overlap"):
         items = result.get(key)
         if isinstance(items, list):
@@ -700,6 +892,7 @@ def to_error_context(context: dict[str, Any]) -> dict[str, Any]:
     """
 
     result = dict(context)
+    result.pop("all_identities", None)
     for key in ("migration_report", "source_conversion_report"):
         if key in result:
             result[key] = _redact_report(result[key])
@@ -828,6 +1021,82 @@ def _append_candidate(
     return candidate_storage, append_sha256, _sha256_text(fragment)
 
 
+def _merge_outlook(
+    local_path: Path,
+    page_id: str,
+    source_storage: str,
+    document: ManagedDocument,
+) -> dict[str, Any]:
+    """Whether the local edit and the remote change can be combined, as reported detail.
+
+    Answers the question, never acts on it. A stale push that quietly merged and
+    published would be doing something the caller did not ask for, on a page they
+    have not seen since it moved.
+
+    Every outcome is named, including the ones where the answer is "cannot tell".
+    A silent omission here reads as "no merge possible", and a caller would redo
+    an edit by hand that we could have combined in one step.
+    """
+
+    from atlassian_skills.confluence.merge import merge3
+    from atlassian_skills.confluence.sidecar import SidecarUnusable, read_sidecar
+
+    # Reported alongside every outcome that a merge could resolve. Saying "these
+    # combine" and leaving the caller to invent the command is the dead end this
+    # set out to remove, one step further along.
+    prepare = {
+        "label": "lay out base, local and remote so the merge can be done and checked",
+        "argv": [
+            "confluence",
+            "page",
+            "md",
+            "prepare-merge",
+            page_id,
+            "--md-file",
+            str(local_path),
+            "--format=json",
+        ],
+        "requires_user_approval": False,
+    }
+
+    try:
+        sidecar = read_sidecar(local_path, page_id=page_id)
+    except SidecarUnusable as unusable:
+        # Not an error: pulls made before sidecars existed have none, and the
+        # push itself is unaffected. Only the merge is unavailable, and saying
+        # which is the difference between a limitation and a mystery.
+        return {"merge_available": False, "merge_unavailable_reason": unusable.reason}
+
+    try:
+        remote_markdown = cfxmark.to_md_artifact(
+            source_storage,
+            options=cfxmark.ConversionOptions(
+                profile="editable",
+                passthrough_html_comment_prefixes=document.manifest.passthrough,
+            ),
+        ).markdown
+    except Exception as error:  # noqa: BLE001 - an unconvertible remote is a report, not a crash
+        return {"merge_available": False, "merge_unavailable_reason": f"remote_unconvertible:{type(error).__name__}"}
+
+    # The header notice is a banner atls and cfxmark own, not something an author
+    # wrote, and only two of the three sides carry it. Left in, it reads as an
+    # edit the remote made to every document and turns every merge into a
+    # conflict about a sentence nobody typed.
+    strip = cfxmark.strip_header_notice
+    result = merge3(strip(sidecar.base_markdown), strip(document.content), strip(remote_markdown))
+    if result.clean:
+        return {"merge_available": True, "merge_conflicts": 0, "next_actions": [prepare]}
+    # A conflict still goes to prepare-merge. The three files and the conflict
+    # locations are exactly what resolving one needs, and the line merger calls
+    # things conflicts that a reader settles in a moment.
+    return {
+        "merge_available": False,
+        "merge_unavailable_reason": "conflict",
+        "merge_conflicts": len(result.conflicts),
+        "next_actions": [prepare],
+    }
+
+
 def build_managed_preflight(
     client: Any,
     page_id: str,
@@ -878,6 +1147,19 @@ def build_managed_preflight(
             "Managed Markdown targets a different page or site",
             context={"reason": "managed_authority_mismatch"},
         )
+    # A page whose losses could not be classified is edited as storage, and while
+    # it is, this file is a reading copy. Publishing it would write back a
+    # Markdown rendering of a document Markdown was found unable to hold -- which
+    # is the loss this whole path exists to refuse, arriving by the other door.
+    if read_authority(managed_path) == "xhtml":
+        raise ValidationError(
+            "This page is published as storage, so the Markdown copy is read-only.",
+            hint=(
+                "Edit the storage document and publish with 'atls confluence page push-xhtml', or "
+                "hand authority back with 'atls confluence page set-authority --to=markdown'."
+            ),
+            context={"reason": "xhtml_is_authoritative", "page_id": page_id, "path": str(managed_path)},
+        )
     expected_converter = f"cfxmark/{cfxmark.__version__}"
     if manifest.converter != expected_converter or manifest.profile != "markdown-first":
         raise ValidationError(
@@ -898,12 +1180,21 @@ def build_managed_preflight(
     remote_version = _page_version(page)
     remote_storage_sha256 = _remote_storage_hash(source_storage)
     if (remote_version, remote_storage_sha256) != (manifest.remote_version, manifest.remote_storage):
+        # Correct, and on its own a dead end. Measured across 55 live pages, every
+        # managed push against a page someone else had touched landed here, with
+        # nothing to do but pull again and redo the edit by hand -- which is what
+        # sends people back to the browser. Most of those are not conflicts at
+        # all: a typo fixed three sections from the paragraph being edited.
+        #
+        # So the refusal now says whether the two edits can be combined. It still
+        # refuses; it just stops being the end of the road.
         raise StaleError(
             "Managed Markdown baseline is stale",
             context={
                 "reason": "remote_stale",
                 "expected_version": manifest.remote_version,
                 "server_version": remote_version,
+                **_merge_outlook(managed_path, page_id, source_storage, document),
             },
         )
 
@@ -996,6 +1287,7 @@ def build_managed_preflight(
             edited_markdown=edited_markdown,
             document=document,
             candidate=None,
+            managed_path=str(managed_path),
         )
 
     if edited_markdown == base_markdown and asset_dirty:
@@ -1029,6 +1321,7 @@ def build_managed_preflight(
             edited_markdown=edited_markdown,
             document=document,
             candidate=None,
+            managed_path=str(managed_path),
         )
 
     if not asset_dirty:
@@ -1076,13 +1369,36 @@ def build_managed_preflight(
                 edited_markdown=edited_markdown,
                 document=document,
                 candidate=None,
+                managed_path=str(managed_path),
             )
 
     proof_filename_map = {
         item.src: item.remote_name for item in asset_plan if item.src and item.action not in {"create", "unreferenced"}
     }
     proof_edited_markdown = bind_managed_attachment_markdown(edited_markdown, proof_filename_map)
-    migration_base = replace(proof_base_artifact, protected_regions=(), remote_subtrees=())
+    compatibility = compatibility_payload(
+        page_id,
+        source_storage,
+        document_path=str(managed_path),
+        base_artifact=proof_base_artifact,
+    )
+    if compatibility["preservation_capability"] == "ragged-table-island-v1":
+        protected_paths = ragged_protected_table_paths(proof_base_artifact)
+        migration_base = replace(
+            proof_base_artifact,
+            protected_regions=tuple(
+                region
+                for region in proof_base_artifact.protected_regions
+                if tuple(region.remote_node_path) in protected_paths
+            ),
+            remote_subtrees=tuple(
+                subtree
+                for subtree in proof_base_artifact.remote_subtrees
+                if tuple(subtree.remote_node_path) in protected_paths
+            ),
+        )
+    else:
+        migration_base = replace(proof_base_artifact, protected_regions=(), remote_subtrees=())
     candidate = cfxmark.to_cfx_artifact(
         proof_edited_markdown,
         presentation=migration_base.presentation,
@@ -1090,6 +1406,23 @@ def build_managed_preflight(
         splice_source=source_storage,
         options=options,
     )
+    if candidate.protected_region_changes:
+        raise ValidationError(
+            "The edit changes a remote-backed structure that this Markdown file may only preserve.",
+            hint="Leave the protected table unchanged and edit prose outside it.",
+            context={
+                "reason": "protected_region_edited",
+                "diagnostic_code": "protected-region-edited",
+                "count": len(candidate.protected_region_changes),
+            },
+        )
+    # Measured on the candidate rather than assumed from the classification, and
+    # computed before the proof runs so both refusals below can consult one
+    # answer. A page that holds nothing Markdown cannot express, whose candidate
+    # is byte-identical to a plain render of the edited Markdown, has nothing
+    # bound to the remote for an attribution to get wrong.
+    mootness: Mootness | None = None
+    proof_waived = False
     try:
         cfxmark.validate_managed_cfx_artifact(
             candidate,
@@ -1097,28 +1430,123 @@ def build_managed_preflight(
             options=options,
         )
     except cfxmark.OwnershipProofError as error:
-        raise ValidationError(
-            "Managed candidate ownership proof is not publishable",
-            context=ownership_error_context(error.summary, reason="ownership_proof_invalid"),
-            hint=OWNERSHIP_PROOF_HINT,
-        ) from error
+        mootness = assess_proof_mootness(
+            source_storage,
+            candidate.xhtml,
+            proof_edited_markdown,
+            options=options,
+        )
+        if not mootness.moot:
+            raise ValidationError(
+                "Managed candidate ownership proof is not publishable",
+                # Carried onto the refusal, not just onto success. The proof
+                # refuses exactly the pages whose diagnosis matters most, and
+                # dropping the assessment here leaves the caller with a failure
+                # and no account of what the page actually holds.
+                context={
+                    **ownership_error_context(error.summary, reason="ownership_proof_invalid"),
+                    # The value-free projection, not the full payload: error
+                    # contexts are displayed and logged, and this project denies
+                    # leaf values crossing that boundary by default. A finding
+                    # code is a name we chose and a count is an integer; neither
+                    # says what the page says.
+                    "compatibility": compatibility_digest(page_id, source_storage),
+                    "proof_mootness": mootness.reason,
+                    "next_actions": [
+                        {
+                            "label": "compare the local edit with its base and the current page",
+                            "argv": [
+                                "confluence",
+                                "page",
+                                "md",
+                                "compare",
+                                page_id,
+                                "--md-file",
+                                str(managed_path),
+                                "--view=diff",
+                                "--format=json",
+                            ],
+                            "requires_user_approval": False,
+                        },
+                        {
+                            "label": "lay out base, local and remote copies for reconciliation",
+                            "argv": [
+                                "confluence",
+                                "page",
+                                "md",
+                                "prepare-reconcile",
+                                page_id,
+                                "--md-file",
+                                str(managed_path),
+                                "--output-dir",
+                                f"{managed_path}.reconcile",
+                                "--format=json",
+                            ],
+                            "requires_user_approval": False,
+                        },
+                    ],
+                },
+                hint=OWNERSHIP_PROOF_HINT,
+            ) from error
+        proof_waived = True
     except (cfxmark.CfxmarkError, TypeError, ValueError) as error:
+        # Not covered by mootness on purpose. A converter that failed outright
+        # produced no candidate to check, so there is nothing to have verified.
         raise ValidationError(
             "Managed candidate ownership proof is not publishable",
             context={"reason": "ownership_proof_invalid", **conversion_failure_context(error)},
         ) from error
     ownership = _ownership_payload(candidate)
     if any(ownership[key] for key in ("unclassified", "multiple_owners", "overlap", "fatal_diagnostic_codes")):
-        raise ValidationError(
-            "Managed candidate ownership proof is incomplete or ambiguous",
-            context=ownership_error_context(ownership, reason="ownership_proof_fatal"),
-            hint=OWNERSHIP_PROOF_HINT,
+        if mootness is None:
+            mootness = assess_proof_mootness(
+                source_storage,
+                candidate.xhtml,
+                proof_edited_markdown,
+                options=options,
+            )
+        if not mootness.moot:
+            raise ValidationError(
+                "Managed candidate ownership proof is incomplete or ambiguous",
+                context={
+                    **ownership_error_context(ownership, reason="ownership_proof_fatal"),
+                    "proof_mootness": mootness.reason,
+                },
+                hint=OWNERSHIP_PROOF_HINT,
+            )
+        proof_waived = True
+    if mootness is None:
+        classification = str(compatibility["classification"])
+        mootness = (
+            Mootness(False, "page_is_not_markdown_lossless", classification)
+            if classification != cfxmark.MARKDOWN_LOSSLESS
+            else assess_proof_mootness(
+                source_storage,
+                candidate.xhtml,
+                proof_edited_markdown,
+                options=options,
+            )
         )
+    # Reported whether or not it fired, so a run over a corpus can count how
+    # often attribution actually decided anything. A flag that only appears when
+    # it is true reads as absent rather than as false.
+    ownership = {**ownership, "proof_waived": proof_waived, "proof_mootness": mootness.to_dict()}
+
     candidate_report = candidate.source_migration_report or report
     accepted_ids = frozenset(ownership["accepted_migration_occurrence_ids"])
-    report_payload = _migration_report_payload(candidate_report, display=True, occurrence_ids=accepted_ids)
-    report_sha256 = _report_hash(candidate_report, occurrence_ids=accepted_ids)
-    consent_required = _consent_required(candidate_report, occurrence_ids=accepted_ids)
+    # Asked of cfxmark's registry rather than decided here, so "between ordinary body
+    # blocks" has exactly one definition. Read from the source storage, because the
+    # question is what the stored page holds -- what the candidate did to it is the
+    # thing being classified, not the thing that licenses the classification.
+    canonicalized_sites = canonicalization_sites(source_storage)
+    report_payload = _migration_report_payload(
+        candidate_report, display=True, occurrence_ids=accepted_ids, canonicalized_sites=canonicalized_sites
+    )
+    report_sha256 = _report_hash(candidate_report, occurrence_ids=accepted_ids, canonicalized_sites=canonicalized_sites)
+    consent_required = _consent_required(
+        candidate_report, occurrence_ids=accepted_ids, canonicalized_sites=canonicalized_sites
+    )
+    loss_payload = candidate_loss(source_storage, candidate.xhtml)
     candidate_storage_sha256 = (
         candidate.candidate_storage_sha256
         if candidate.candidate_storage_sha256.startswith("sha256:")
@@ -1140,7 +1568,7 @@ def build_managed_preflight(
     }
     migration_fingerprint = _sha256_bytes(_canonical_json(fingerprint_payload), prefix="mig_sha256")
     return ManagedPreflight(
-        proof_mode="full_migration",
+        proof_mode="regeneration_verified" if proof_waived else "full_migration",
         status="migration_consent_required" if consent_required else "ready_to_publish",
         page_id=page_id,
         site=site,
@@ -1173,6 +1601,9 @@ def build_managed_preflight(
         edited_markdown=edited_markdown,
         document=document,
         candidate=candidate,
+        managed_path=str(managed_path),
+        compatibility=compatibility,
+        candidate_loss_payload=loss_payload,
     )
 
 

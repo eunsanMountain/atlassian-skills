@@ -1157,3 +1157,79 @@ def test_cli_patch_text_absent_text_is_not_reported_as_ambiguous() -> None:
     # match_count of 0, telling the caller to disambiguate nothing.
     assert context["match_count"] == 0
     assert [action["id"] for action in context["next_actions"]] == ["retry_inner_plain_text"]
+
+
+# ---------------------------------------------------------------------------
+# Read projection: does the reader learn the Markdown is not all of the page
+# ---------------------------------------------------------------------------
+#
+# The unit tests decide the verdict. These pin that it survives the command --
+# a correct verdict that never reaches stdout or stderr changes nothing about
+# what an agent does next, which is the only reason the check was written.
+
+
+_LOSSY_STORAGE = (
+    "<p>visible intro</p>"
+    "<table><tbody><tr><td>outer cell</td><td>"
+    '<ac:structured-macro ac:name="expand"><ac:rich-text-body><p>중요 경고</p>'
+    "</ac:rich-text-body></ac:structured-macro></td></tr></tbody></table>"
+)
+
+
+def _page_with(storage: str) -> dict:
+    page = json.loads(json.dumps(_RAW_PAGE))
+    page["body"]["storage"]["value"] = storage
+    return page
+
+
+@respx.mock
+def test_page_get_md_json_says_the_projection_is_incomplete() -> None:
+    """The machine-readable half. A caller reading the JSON gets the verdict, the
+    element that went missing and where it was."""
+
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_page_with(_LOSSY_STORAGE))
+    )
+    result = runner.invoke(app, ["--format", "json", "confluence", "page", "get", "12345678", "--body-repr", "md"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["content_complete"] is False
+    assert payload["attention_required"] is True
+    assert payload["attention_reason"] == "content_incomplete"
+    assert [item["code"] for item in payload["omissions"]] == ["element_body_omitted"]
+    # And the way out, ready to run rather than described.
+    argvs = [action["argv"] for action in payload["next_actions"]]
+    assert ["confluence", "page", "get", "12345678", "--body-repr=storage", "--format=raw"] in argvs
+
+
+@respx.mock
+def test_page_get_md_warns_on_stderr_without_json() -> None:
+    """The half a person sees. `--body-repr=md` prints the Markdown on stdout and
+    nothing else, so the warning has to go to stderr or it corrupts the output
+    it is warning about."""
+
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_page_with(_LOSSY_STORAGE))
+    )
+    result = runner.invoke(app, ["confluence", "page", "get", "12345678", "--body-repr", "md"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert "content_incomplete" in result.stderr
+    assert "do not summarize this page from this output alone" in result.stderr
+    # One command, not a menu. `view` is the page as a person sees it, which is
+    # what a summary is about; the JSON carries `storage` as well for a caller
+    # that needs the exact markup.
+    assert "next: atls confluence page get 12345678 --body-repr=view" in result.stderr
+    assert "중요 경고" not in result.stdout
+
+
+@respx.mock
+def test_a_faithful_page_gets_no_warning_at_all() -> None:
+    """The reason the warning is worth reading when it does appear."""
+
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_page_with("<p>alpha bravo charlie</p>"))
+    )
+    result = runner.invoke(app, ["confluence", "page", "get", "12345678", "--body-repr", "md"], catch_exceptions=False)
+    assert result.exit_code == 0, result.output
+    assert "content_incomplete" not in result.stderr
+    assert "structure_incomplete" not in result.stderr

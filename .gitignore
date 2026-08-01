@@ -57,3 +57,12 @@ references/
 
 # Integration test fixtures with real company data
 /tests/fixtures/private/
+
+# Internal release evidence: captured pytest transcripts, per-unit progress records and
+# the blocker ledger for the managed-reconciliation work. This repository is public, and
+# these carry the organisation's Jira keys, Confluence page ids and absolute local paths.
+# Most of them are verbatim failure transcripts, so scrubbing the identifiers would edit
+# the record rather than redact it. They are kept with the release artifacts, outside
+# this repository; the maintainer's notes say where.
+/docs/release-evidence/
+/docs/release-0.3.4-runbook.md

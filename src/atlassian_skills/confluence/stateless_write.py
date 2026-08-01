@@ -5,12 +5,20 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
+from dataclasses import field as dataclass_field
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import cfxmark
 from cfxmark.ast import Image
 
+from atlassian_skills.confluence.local_assets import (
+    AssetUploadInterrupted,
+    AssetUploadPlan,
+    prepare_assets,
+    upload_assets,
+)
 from atlassian_skills.confluence.migration_preflight import (
     OWNERSHIP_PROOF_HINT,
     _canonical_json,
@@ -88,7 +96,37 @@ def _image_source_classification(image: Image) -> dict[str, Any]:
     }
 
 
-def _validate_stateless_images(markdown: str, document: object) -> int:
+def _assert_not_managed(markdown: str) -> None:
+    """A document carrying managed markers belongs to the managed workflow.
+
+    Checked before local images are resolved, not after: a managed document may
+    reference assets that only make sense to that workflow, and trying to resolve
+    them here reports a missing file when the real answer is "wrong command".
+    """
+
+    if "<!-- cfxmark:asset" in markdown or "<!-- atls:managed" in markdown:
+        raise ValidationError(
+            "Managed Markdown assets require pull-md/push-md",
+            context={"reason": "managed_asset_requires_push_md"},
+        )
+
+
+def _validate_stateless_images(
+    markdown: str,
+    document: object,
+    *,
+    uploadable: frozenset[str] = frozenset(),
+) -> int:
+    """Refuse any image this path cannot actually put on the page.
+
+    The rule was "absolute HTTPS only", written when the state-free path had no
+    way to know what was already attached to a page or to put anything there. It
+    now resolves local files and uploads them, so `uploadable` names the ones it
+    will -- and only those. Everything else is refused exactly as before, because
+    the reason for refusing was never that local files are suspicious; it was that
+    we could not deliver them.
+    """
+
     if "<!-- cfxmark:asset" in markdown or "<!-- atls:managed" in markdown:
         raise ValidationError(
             "Managed Markdown assets require pull-md/push-md",
@@ -99,6 +137,10 @@ def _validate_stateless_images(markdown: str, document: object) -> int:
         if not isinstance(value, Image):
             continue
         count += 1
+        if value.src in uploadable:
+            # Resolved from a real file under the base directory, and on its way
+            # to becoming an attachment on this page.
+            continue
         parsed = urlsplit(value.src)
         if (
             value.attachment_filename is not None
@@ -117,6 +159,59 @@ def _validate_stateless_images(markdown: str, document: object) -> int:
                 },
             )
     return count
+
+
+def _regeneration_outlook(remote_storage: str, markdown: str, options: Any) -> dict[str, Any]:
+    """A diagnostic reading of what a from-scratch publish would cost. Never a verdict.
+
+    Attached to a refusal that says only `semantic-mapping-ambiguous`, which on a
+    real document -- a live Story page that Markdown holds completely -- left nobody
+    able to learn whether anything was actually at stake.
+
+    What this is not: an answer to "is it safe to publish". Two things make that
+    reading wrong, and both of them already misled a report before this comment
+    existed.
+
+    `requires_user_approval` counts named losses only. Identity that a
+    regeneration cannot carry -- a macro id the server issued -- is refused
+    elsewhere and is not somebody's to approve, so `false` here means "nothing to
+    ask about", not "nothing to lose". The keys below say so in their own names
+    rather than leaving it to be inferred.
+
+    And the regeneration measured here is not the candidate the publish would
+    send. Measured on the same document: the generator *does* produce a candidate
+    under the ambiguity -- it falls back to a base-free mapping -- and it is the
+    validator's independent replay that raises, because it does not repeat that
+    fallback. So the real fix is to make the two symmetric and to carry identity
+    for the elements that did correspond uniquely. Until that lands, this only
+    describes; the refusal above still decides.
+    """
+
+    from atlassian_skills.confluence.compatibility import candidate_loss
+
+    try:
+        regenerated = cfxmark.to_cfx_artifact(markdown, options=options)
+        loss = candidate_loss(remote_storage, regenerated.xhtml)
+    except Exception:  # noqa: BLE001 - an outlook that cannot be computed is simply absent
+        return {}
+    blocking: list[str] = []
+    if loss["identity"]:
+        blocking.append("identity_not_carried")
+    if loss["named_losses"]:
+        blocking.append("named_losses")
+    return {
+        "regeneration_outlook": {
+            # First, so that nothing below is read as permission.
+            "diagnostic_only": True,
+            "safe_to_publish": False,
+            "blocking_reasons": blocking,
+            "named_losses": loss["named_losses"],
+            "identity": loss["identity"],
+            # Kept, and deliberately last: it answers a narrower question than
+            # its name suggests and is the field that produced the wrong reading.
+            "named_loss_approval_required": loss["requires_user_approval"],
+        }
+    }
 
 
 def _diagnostic_payload(diagnostic: Any, *, display: bool) -> dict[str, Any]:
@@ -192,7 +287,7 @@ class SourceConversion:
         }
 
 
-def build_source_conversion(markdown: str) -> SourceConversion:
+def build_source_conversion(markdown: str, *, uploadable: frozenset[str] = frozenset()) -> SourceConversion:
     """Build a classified Markdown-to-storage conversion proof for page create."""
 
     from atlassian_skills.confluence.push_md import _assert_push_safe_source
@@ -217,7 +312,7 @@ def build_source_conversion(markdown: str) -> SourceConversion:
             context={"reason": "source_conversion_unclassified", "diagnostic_codes": []},
         )
     _validate_source_diagnostics(diagnostics)
-    external_image_count = _validate_stateless_images(markdown, artifact.document)
+    external_image_count = _validate_stateless_images(markdown, artifact.document, uploadable=uploadable)
     report = _source_conversion_report(diagnostics, display=True)
     report_sha256 = _sha256_bytes(_canonical_json(_source_conversion_report(diagnostics, display=False)))
     consent_required = bool(diagnostics) or not artifact.push_safe
@@ -270,6 +365,10 @@ class PageUpdatePreflight:
     consent_required: bool
     ownership: dict[str, Any]
     external_image_count: int
+    #: What this publish would upload and reuse. Carried on the preflight so a dry
+    #: run can show it, and so the publish does not have to resolve the document a
+    #: second time and risk resolving it differently.
+    assets: AssetUploadPlan = dataclass_field(default_factory=lambda: AssetUploadPlan((), ()))
 
     @property
     def would_update(self) -> bool:
@@ -316,6 +415,8 @@ def _build_markdown_update(
     markdown: str,
     remote_title: str,
     title: str,
+    #: Image references this publish will turn into attachments on the page.
+    uploadable: frozenset[str] = frozenset(),
 ) -> PageUpdatePreflight:
     from atlassian_skills.confluence.push_md import _assert_push_safe_source
 
@@ -345,7 +446,11 @@ def _build_markdown_update(
     except (cfxmark.CfxmarkError, TypeError, ValueError) as error:
         raise ValidationError(
             "Markdown update has no complete source-bound ownership proof",
-            context={"reason": "ownership_proof_invalid", **conversion_failure_context(error)},
+            context={
+                "reason": "ownership_proof_invalid",
+                **conversion_failure_context(error),
+                **_regeneration_outlook(remote_storage, markdown, options),
+            },
             hint=OWNERSHIP_PROOF_HINT,
         ) from error
     ownership = _ownership_payload(candidate)
@@ -362,7 +467,7 @@ def _build_markdown_update(
             context={"reason": "source_conversion_unclassified", "diagnostic_codes": []},
         )
     _validate_source_diagnostics(diagnostics)
-    external_image_count = _validate_stateless_images(markdown, candidate.document)
+    external_image_count = _validate_stateless_images(markdown, candidate.document, uploadable=uploadable)
     source_report = _source_conversion_report(diagnostics, display=True)
     source_report_sha256 = _sha256_bytes(_canonical_json(_source_conversion_report(diagnostics, display=False)))
     report = candidate.source_migration_report or base.migration_report
@@ -423,9 +528,19 @@ def build_page_update_preflight(
     body_format: str,
     title: str | None = None,
     if_version: int | None = None,
+    #: Where a relative image reference resolves from. The body file's own
+    #: directory unless the caller widened it.
+    asset_dir: Path | None = None,
 ) -> PageUpdatePreflight:
     if body_format not in {"md", "storage"}:
         raise ValidationError("--body-format must be md or storage", context={"reason": "invalid_body_format"})
+    # Rewritten before the candidate is built, so what gets proved and published is
+    # the document that references the attachments.
+    prepared = None
+    if body_format == "md":
+        _assert_not_managed(body)
+        prepared = prepare_assets(body, base_dir=asset_dir)
+        body = prepared.markdown
     page = client.get_page(page_id)
     remote_storage = getattr(page, "body_storage", None)
     if not isinstance(remote_storage, str):
@@ -446,14 +561,19 @@ def build_page_update_preflight(
     if not isinstance(base_url, str):
         raise ValidationError("Confluence client base URL is missing", context={"reason": "site_missing"})
     if body_format == "md":
-        return _build_markdown_update(
-            page_id=page_id,
-            site=site_fingerprint(base_url),
-            remote_version=remote_version,
-            remote_storage=remote_storage,
-            markdown=body,
-            remote_title=remote_title,
-            title=effective_title,
+        assert prepared is not None
+        return replace(
+            _build_markdown_update(
+                page_id=page_id,
+                site=site_fingerprint(base_url),
+                remote_version=remote_version,
+                remote_storage=remote_storage,
+                markdown=body,
+                remote_title=remote_title,
+                title=effective_title,
+                uploadable=frozenset(item.filename for item in prepared.assets),
+            ),
+            assets=prepared.plan,
         )
     try:
         cfxmark.to_md_artifact(body)
@@ -520,6 +640,13 @@ def publish_page_update(
     minor_edit: bool,
     next_action_argv: tuple[str, ...],
 ) -> dict[str, Any]:
+    """Publish the proven candidate, uploading its images first.
+
+    Images go up before the body, so the page never references an attachment that
+    is not there yet. The reverse order leaves a window where every image on the
+    page is broken.
+    """
+
     # A proven no-op performs no remote mutation, so it must never demand migration
     # consent: decide no_change before the consent gate.
     if not preflight.would_update:
@@ -531,6 +658,23 @@ def publish_page_update(
         }
     if preflight.consent_required and accept_migration != preflight.migration_fingerprint:
         raise _consent_error(preflight, argv=next_action_argv)
+    if preflight.assets.upload:
+        try:
+            upload_assets(client, preflight.page_id, preflight.assets)
+        except AssetUploadInterrupted as interrupted:
+            raise ValidationError(
+                f"Image upload stopped at {interrupted.failed}; the page body was not changed.",
+                hint=(
+                    "Files already uploaded stay on the page and nothing is deleted. Re-running "
+                    "uploads them again -- this path proves nothing about sameness from a name, "
+                    "so it never reuses -- which costs an attachment version and no content."
+                ),
+                context={
+                    "reason": "asset_upload_interrupted",
+                    "uploaded": list(interrupted.uploaded),
+                    "failed": interrupted.failed,
+                },
+            ) from interrupted
     observed = client.get_page(preflight.page_id)
     observed_storage = getattr(observed, "body_storage", None)
     if (
@@ -724,12 +868,26 @@ def create_page_stateless(
     dry_run: bool,
     accept_conversion: str | None,
     next_action_argv: tuple[str, ...],
+    #: Where a relative image reference resolves from. The Markdown file's own
+    #: directory unless the caller widened it.
+    asset_dir: Path | None = None,
+    #: The path the body was read from, carried only so a partial-upload failure
+    #: can name a command the caller can actually run. Absent for a body from
+    #: standard input, and then no recovery action is offered rather than one
+    #: pointing at a file that does not exist.
+    body_source: str | None = None,
 ) -> dict[str, Any]:
     if body_format not in {"md", "storage"}:
         raise ValidationError("--body-format must be md or storage", context={"reason": "invalid_body_format"})
     consent_action: dict[str, Any] | None = None
+    prepared = None
     if body_format == "md":
-        conversion = build_source_conversion(body)
+        _assert_not_managed(body)
+        # Rewritten before conversion, so the candidate that gets proved and
+        # published is the one that references the attachments.
+        prepared = prepare_assets(body, base_dir=asset_dir)
+        body = prepared.markdown
+        conversion = build_source_conversion(body, uploadable=frozenset(item.filename for item in prepared.assets))
         candidate = conversion.candidate_storage
         proof = conversion.to_dict()
         if conversion.consent_required:
@@ -775,6 +933,7 @@ def create_page_stateless(
             "parent_id": parent_id,
             "method": "POST",
             "post_count": 0,
+            **({"assets": prepared.plan.to_dict()} if prepared is not None else {}),
             **({"next_actions": [consent_action]} if consent_action is not None else {}),
         }
     _assert_create_target_available(client, space=space, title=title)
@@ -835,14 +994,66 @@ def create_page_stateless(
                 "Page create outcome is ambiguous; no duplicate POST was attempted",
                 context={"reason": "page_create_outcome_ambiguous"},
             ) from create_error
+    # After the create, not before: an attachment needs a page to hang off. So a
+    # freshly created page shows broken images for the moment it takes to upload
+    # them, and if the upload fails the page exists with the images missing. Both
+    # are reported rather than hidden -- the alternative is deleting the page a
+    # user asked for, on the strength of a picture.
+    uploaded: tuple[str, ...] = ()
+    upload_failure: dict[str, Any] | None = None
+    if prepared is not None and prepared.plan.upload:
+        try:
+            uploaded = upload_assets(client, str(page.id), prepared.plan).uploaded
+        except AssetUploadInterrupted as interrupted:
+            upload_failure = {
+                "reason": "asset_upload_interrupted",
+                "uploaded": list(interrupted.uploaded),
+                "failed": interrupted.failed,
+            }
     return {
         **proof,
-        "status": "created",
+        "status": "created" if upload_failure is None else "created_with_missing_images",
         "id": str(page.id),
         "title": title,
         "space": space,
         "parent_id": parent_id,
         "version": _page_version(page),
         "post_count": 1,
+        **({"assets": {"uploaded": list(uploaded)}} if uploaded else {}),
+        **({"assets_incomplete": upload_failure} if upload_failure is not None else {}),
+        # A status naming a problem and no way to act on it is where an agent
+        # starts inventing commands, which is the dead end this design exists to
+        # remove -- and the first version of this was worse than nothing twice
+        # over. Its argv carried `<the same file>`, which cannot be run, and
+        # rerunning the write recovers nothing anyway: the page body already is
+        # the candidate, so the update returns `no_change` before reaching any
+        # upload. Measured, both times.
+        #
+        # So it names a command that does the one thing needed -- upload what is
+        # missing, touch no body -- with the paths this run actually used. Omitted
+        # entirely when the caller gave no file to name, because a next action
+        # nobody can run is what this replaces.
+        **(
+            {
+                "next_actions": [
+                    {
+                        "label": "upload the pictures that did not land",
+                        "argv": [
+                            "confluence",
+                            "page",
+                            "recover-assets",
+                            str(page.id),
+                            "--body-file",
+                            body_source,
+                            *(("--asset-dir", str(asset_dir)) if asset_dir is not None else ()),
+                            "--format=json",
+                        ],
+                        "requires_user_approval": True,
+                    }
+                ]
+            }
+            if upload_failure is not None and body_source
+            else {}
+        ),
         **({"recovery": "lost_response_adopted"} if create_error is not None else {}),
     }

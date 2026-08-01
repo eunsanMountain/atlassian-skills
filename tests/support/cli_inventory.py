@@ -12,6 +12,20 @@ be diffed mechanically and classified as kept/changed/removed/added.
 Extraction goes through ``typer.main.get_command`` rather than Typer's own
 objects because Click is what actually parses argv: what we record here is the
 surface a user hits, not the decorator source.
+
+**Nothing here imports Click.** It used to, and that import was both undeclared
+and wrong. Typer stopped requiring Click at 0.26 and vendored it as
+``typer._click``, so a top-level ``import click`` resolves -- when something else
+happens to have installed it -- to a DIFFERENT class family than the objects
+``get_command`` returns. Every ``isinstance`` against it then answers False
+silently: the root group is recorded as a leaf command and the inventory drops
+from 201 entries to 1, which is a shape this module has no way to notice. When
+nothing else installed Click, the import aborted collection instead.
+
+Structure is read off the objects instead. ``param_type_name`` and the presence
+of ``.commands`` are Click's own public shape and are identical in both copies,
+and the document this produces is byte-for-byte the one the ``isinstance``
+version produced on typer 0.24.1 and 0.25.1.
 """
 
 from __future__ import annotations
@@ -19,7 +33,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import click
 import typer
 from typer.main import get_command
 
@@ -49,15 +62,18 @@ def _normalize_default(value: Any) -> Any:
     return {"__opaque__": type(value).__name__}
 
 
-def _param_kind(param: click.Parameter) -> str:
-    if isinstance(param, click.Argument):
-        return "argument"
-    if isinstance(param, click.Option):
-        return "option"
+def _param_kind(param: Any) -> str:
+    # Click sets `param_type_name` on the class -- "argument" on Argument,
+    # "option" on Option -- and Typer's subclasses inherit it. Reading it gives
+    # the same answer the isinstance ladder gave, against whichever copy of
+    # Click the running Typer is built on.
+    kind = getattr(param, "param_type_name", None)
+    if isinstance(kind, str) and kind in {"argument", "option"}:
+        return kind
     return type(param).__name__.lower()
 
 
-def _type_name(param: click.Parameter) -> str:
+def _type_name(param: Any) -> str:
     param_type = param.type
     name = getattr(param_type, "name", None)
     if isinstance(name, str) and name:
@@ -65,7 +81,7 @@ def _type_name(param: click.Parameter) -> str:
     return type(param_type).__name__.lower()
 
 
-def _describe_param(param: click.Parameter) -> dict[str, Any]:
+def _describe_param(param: Any) -> dict[str, Any]:
     entry: dict[str, Any] = {
         "name": param.name,
         "kind": _param_kind(param),
@@ -79,22 +95,26 @@ def _describe_param(param: click.Parameter) -> dict[str, Any]:
         "nargs": param.nargs,
         "type": _type_name(param),
     }
-    if isinstance(param, click.Option):
+    if entry["kind"] == "option":
         entry["is_flag"] = bool(param.is_flag)
         entry["hidden"] = bool(param.hidden)
     return entry
 
 
-def _describe_params(command: click.Command) -> list[dict[str, Any]]:
+def _describe_params(command: Any) -> list[dict[str, Any]]:
     described = [_describe_param(param) for param in command.params]
     # Sort by the python-level name: it is stable across versions even when a
     # flag spelling changes, which is exactly the delta we want to surface.
     return sorted(described, key=lambda item: str(item["name"]))
 
 
-def _walk(command: click.Command, path: tuple[str, ...]) -> list[dict[str, Any]]:
+def _walk(command: Any, path: tuple[str, ...]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
-    if isinstance(command, click.Group):
+    # Having subcommands IS being a group. The isinstance check that used to be
+    # here said the same thing until Typer vendored Click, at which point it
+    # answered False about a TyperGroup and this walk stopped descending.
+    subcommands = getattr(command, "commands", None)
+    if subcommands is not None:
         if path:
             # Record the group itself so that adding or removing a whole
             # command family, or changing a group-level option, is visible.
@@ -106,8 +126,8 @@ def _walk(command: click.Command, path: tuple[str, ...]) -> list[dict[str, Any]]
                     "params": _describe_params(command),
                 }
             )
-        for name in sorted(command.commands):
-            entries.extend(_walk(command.commands[name], (*path, name)))
+        for name in sorted(subcommands):
+            entries.extend(_walk(subcommands[name], (*path, name)))
         return entries
     entries.append(
         {

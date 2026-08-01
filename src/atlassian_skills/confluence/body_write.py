@@ -44,6 +44,7 @@ from atlassian_skills.core.errors import (
 )
 from atlassian_skills.core.managed_file import read_managed_utf8_bound
 from atlassian_skills.core.managed_manifest import (
+    CURRENT_MANAGED_MANIFEST_VERSION,
     ManagedManifest,
     ManagedManifestError,
     canonical_asset_set_sha256,
@@ -94,6 +95,53 @@ def _storage_equivalent(local_body: str, remote_body: str, *, passthrough: tuple
     except (cfxmark.CfxmarkError, TypeError, ValueError):
         return False
     return bool(local.push_safe and remote.push_safe and local.markdown == remote.markdown)
+
+
+def _remote_projection(page: Any, passthrough: Any) -> str | None:
+    """`R2`: the readback storage projected back through the publishing converter.
+
+    `None` when the projection cannot be trusted -- a conversion error, or output the
+    converter will not vouch for. A baseline that cannot be reproduced is not a
+    baseline, and guessing one here would still be recorded as proof. The caller keeps
+    the submitted Markdown in that case, which is what shipped before this existed, so
+    an unprojectable readback degrades a publish the server has already accepted rather
+    than failing it.
+    """
+
+    from atlassian_skills.core.format.markdown import confluence_storage_to_md_result
+
+    try:
+        result = confluence_storage_to_md_result(
+            page.body_storage or "",
+            profile="editable",
+            passthrough_prefixes=passthrough,
+        )
+    except (cfxmark.CfxmarkError, TypeError, ValueError):
+        return None
+    if not result.push_safe:
+        return None
+    return str(result.markdown)
+
+
+def _identity_not_stored(preflight: ManagedPreflight, page: Any) -> dict[str, int]:
+    """Which macro identities we sent the server is not holding afterwards.
+
+    Asked of the readback rather than derived from the gate's pre-write answer, because
+    they are different questions: the gate refuses a *candidate* that would drop an
+    identity, and this reports a *server* that did not store one we sent. Nothing was
+    asking the second, and nothing could -- `_readback_matches` compares the two sides
+    as Markdown, which does not carry `ac:macro-id`.
+
+    Append proofs are excluded. There the candidate is the remote plus a suffix and the
+    macros in the prefix were never re-sent, so "we sent this id" is not true of them
+    and a comparison would report the whole page as unstored.
+    """
+
+    from atlassian_skills.confluence.identity_gate import identity_not_stored
+
+    if preflight.proof_mode == "exact_remote_prefix_append":
+        return {}
+    return identity_not_stored(preflight.candidate_storage, page.body_storage or "")
 
 
 def _readback_matches(preflight: ManagedPreflight, page: Any) -> bool:
@@ -412,9 +460,37 @@ def _operation_payload(
     adopted_asset_response_loss: bool = False,
     asset_dirty: bool = False,
     reason: str | None = None,
+    #: Present only on `published_normalized`: what the file said when it was submitted
+    #: and what it says now. §9.10 requires the rewrite to be reported, and a receipt
+    #: that only says the publish succeeded leaves the author's next diff unexplained.
+    local_rewrite: dict[str, Any] | None = None,
+    #: Per tracked attribute, how many macro identities we sent that the server is not
+    #: holding afterwards. `{}` when the readback carries all of them, and `{}` rather
+    #: than an absent key for the same reason as below: absent reads as "this build does
+    #: not check", which is the state this was in.
+    remote_reassigned_identity: dict[str, int] | None = None,
+    #: How many places this publish replaced `<p/>` with `<p><br/></p>`, or `None`
+    #: where this run cannot know.
+    #:
+    #: `None` is a third state on purpose, and it is not "no change". A recovery path
+    #: reaches a receipt after somebody else's run already applied the operation, and
+    #: all it holds of the pre-write page is a hash -- so the count is unavailable
+    #: rather than zero. Reporting `false` there would be a claim, and omitting the
+    #: field would be indistinguishable from a build that does not have it.
+    presentation: int | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "status": status,
+        # A reassignment is not a different kind of success. Every comment, permission
+        # and attachment on those macros has detached, and an agent that reads `status`
+        # and moves on would report the publish as clean -- so the word changes, the
+        # way `published_normalized` changes it for a rewrite the author has to know
+        # about.
+        "status": (
+            "reconciled_identity_reassigned" if status == "reconciled" and remote_reassigned_identity else status
+        ),
+        "remote_reassigned_identity": remote_reassigned_identity,
+        "first_publish_changes_presentation": None if presentation is None else presentation > 0,
+        "affected_occurrences": presentation,
         "operation_id": operation.operation_id,
         "proof_mode": proof_mode or operation.proof,
         "source_version": operation.source_version,
@@ -428,6 +504,8 @@ def _operation_payload(
         payload["version"] = version
     if reason is not None:
         payload["reason"] = reason
+    if local_rewrite is not None:
+        payload["local_rewrite"] = local_rewrite
     action: dict[str, object] | None = None
     if status in {"readback_pending", "assets_applied_body_pending"}:
         action = {
@@ -513,6 +591,8 @@ def _finalize_manifest(
     page: Any,
     *,
     expected_marked_text: str | None,
+    presentation: int | None = None,
+    remote_reassigned_identity: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     _revalidate_managed_directory(capability)
     current = _read_exact(capability, path)
@@ -520,6 +600,8 @@ def _finalize_manifest(
     if current_operation is None or current_operation.operation_id != operation.operation_id:
         return _operation_payload(
             operation,
+            presentation=presentation,
+            remote_reassigned_identity=remote_reassigned_identity,
             status="local_finalize_conflict",
             version=_page_version(page),
             reason="operation_marker_changed",
@@ -527,6 +609,8 @@ def _finalize_manifest(
     if expected_marked_text is not None and current != expected_marked_text:
         return _operation_payload(
             operation,
+            presentation=presentation,
+            remote_reassigned_identity=remote_reassigned_identity,
             status="local_finalize_conflict",
             version=_page_version(page),
             reason="local_file_changed_before_finalize",
@@ -539,6 +623,8 @@ def _finalize_manifest(
     except ValidationError:
         return _operation_payload(
             operation,
+            presentation=presentation,
+            remote_reassigned_identity=remote_reassigned_identity,
             status="local_finalize_conflict",
             version=_page_version(page),
             asset_dirty=any(asset.action in {"create", "update"} for asset in current_assets),
@@ -547,6 +633,8 @@ def _finalize_manifest(
     if asset_plan_sha256 != operation.assets:
         return _operation_payload(
             operation,
+            presentation=presentation,
+            remote_reassigned_identity=remote_reassigned_identity,
             status="local_finalize_conflict",
             version=_page_version(page),
             asset_dirty=any(asset.action in {"create", "update"} for asset in current_assets),
@@ -558,36 +646,94 @@ def _finalize_manifest(
     if canonical_content_sha256(content) != operation.edited_md:
         return _operation_payload(
             operation,
+            presentation=presentation,
+            remote_reassigned_identity=remote_reassigned_identity,
             status="local_finalize_conflict",
             version=_page_version(page),
             reason="local_markdown_changed_before_finalize",
         )
     records = extract_asset_records(promoted_assets)
     remote_storage = page.body_storage or ""
+    # §9.8/§9.9: the baseline is the readback projected through the same converter and
+    # profile -- `R2` -- and not the Markdown that was submitted.
+    #
+    # They are usually the same string and sometimes not. The readback check passes on
+    # semantic equivalence, so a server that stores our candidate and normalises its
+    # representation still matches; projecting that storage back then yields Markdown
+    # that differs from what was typed. Binding the submitted text made the manifest
+    # describe a page the server is not holding, and the next compare reported a local
+    # edit nobody made.
+    # Asset-bearing documents included, which is the part U4 left open and review R3 found
+    # independently (R3-3, blocker 12).
+    #
+    # A portable managed file points its image links at local asset paths; `R2` points them
+    # at the remote attachment names, because that is what the storage says. They are
+    # supposed to differ, so writing `R2` verbatim over a document with assets rewrote every
+    # link back to a remote name and broke the portability the managed file exists for --
+    # measured, which is how the earlier scope limit was found rather than reasoned.
+    #
+    # The answer is not to skip those documents. It is to apply the same rewrite the pull
+    # applies, from the records the document is already carrying, so the projection names
+    # the local assets and `base_md` describes the file that is actually on disk.
+    projection = _remote_projection(page, manifest.passthrough)
+    if projection is not None and records:
+        from atlassian_skills.confluence.asset_sync import rewrite_projection_assets
+
+        projection = rewrite_projection_assets(projection, records)
+    normalized = projection is not None and canonical_content_sha256(projection) != operation.edited_md
+    body = projection if normalized and projection is not None else content
     promoted = ManagedManifest(
-        v=manifest.v,
+        # §6.3: a document moves to v3 on the next SUCCESSFUL pull, push or record,
+        # and only when its authority is Markdown and its baseline verified. Reaching
+        # here is that condition met -- the PUT landed and the readback agreed -- so
+        # the version moves with the baseline rather than on its own.
+        v=CURRENT_MANAGED_MANIFEST_VERSION,
         page=manifest.page,
         site=manifest.site,
         remote_version=_page_version(page),
         remote_storage=_sha256_text(remote_storage),
-        base_md=canonical_content_sha256(content),
+        base_md=canonical_content_sha256(body),
         assets=canonical_asset_set_sha256(records),
         converter=manifest.converter,
         profile=manifest.profile,
         passthrough=manifest.passthrough,
     )
-    final_text = serialize_managed_manifest(promoted) + "\n" + content
+    final_text = serialize_managed_manifest(promoted) + "\n" + body
     _revalidate_managed_directory(capability)
     if _read_exact(capability, path) != current:
         return _operation_payload(
             operation,
+            presentation=presentation,
+            remote_reassigned_identity=remote_reassigned_identity,
             status="local_finalize_conflict",
             version=_page_version(page),
             reason="local_file_changed_before_finalize",
         )
     _write_exact(capability, path, final_text)
+    if normalized:
+        # §9.10. The publish succeeded *and* the file on disk is no longer what was
+        # submitted. Reporting this as a plain success would leave the author's next
+        # `git diff` showing changes they did not make, with nothing to attribute them
+        # to. `published_normalized` is one of the five receipts §12.4 gives the
+        # adapter, and this is the branch it exists for.
+        return _operation_payload(
+            operation,
+            presentation=presentation,
+            remote_reassigned_identity=remote_reassigned_identity,
+            status="published_normalized",
+            version=promoted.remote_version,
+            asset_dirty=bool(parse_managed_asset_operations(current)),
+            reason="remote_normalized_the_submitted_markdown",
+            local_rewrite={
+                "path": str(path),
+                "submitted_md_sha256": operation.edited_md,
+                "stored_md_sha256": promoted.base_md,
+            },
+        )
     return _operation_payload(
         operation,
+        presentation=presentation,
+        remote_reassigned_identity=remote_reassigned_identity,
         status="reconciled",
         version=promoted.remote_version,
         asset_dirty=bool(parse_managed_asset_operations(current)),
@@ -871,6 +1017,8 @@ def _publish_marked_operation(
             operation,
             readback,
             expected_marked_text=marked_text,
+            presentation=preflight.presentation_occurrences,
+            remote_reassigned_identity=_identity_not_stored(preflight, readback),
         )
     else:
         result = _put_and_readback(
@@ -1016,6 +1164,8 @@ def _put_and_readback(
             operation,
             readback,
             expected_marked_text=marked_text,
+            presentation=preflight.presentation_occurrences,
+            remote_reassigned_identity=_identity_not_stored(preflight, readback),
         )
         if finalized["status"] == "reconciled" and update_error is not None:
             finalized["adopted_response_loss"] = True
@@ -1053,19 +1203,39 @@ def _put_and_readback(
             asset_dirty=preflight.asset_dirty,
             reason="exact_append_remote_prefix_or_suffix_changed",
         )
+    # We read the page, and what is on it is neither our candidate nor the source we
+    # started from. That is not `readback_pending`.
+    #
+    # §9.12 splits the two on purpose: `readback_pending` means the readback did not
+    # happen, so retrying it is the right move and recovery may adopt what it finds.
+    # Here the readback happened and disagreed. Calling that "pending" understates
+    # exactly the case where somebody else's edit is sitting on the page -- and it
+    # sends recovery down a path that adopts remote state, which is the last thing to
+    # do when the remote is holding a body nobody in this operation wrote.
+    #
+    # This is `body_put_failed` versus `body_put_not_observed` from U0, mirrored.
+    # There a name claimed knowledge the code did not have; here it disclaimed
+    # knowledge the code did have, and the reason string below has been saying so all
+    # along.
+    #
+    # `manual_recovery` rather than a new `readback_mismatch`: §12.4 gives the adapter
+    # five receipts to branch on and `readback_mismatch` is not one of them, so
+    # introducing it would put a status in front of a consumer specified not to
+    # understand it. The reason field is what distinguishes this from the append case.
     transitioned = _transition_marker(
         directory_capability,
         managed_path,
         marked_text,
         operation,
-        "readback_pending",
+        "manual_recovery",
     )
     if transitioned is not None:
         _marked, operation = transitioned
     return _operation_payload(
         operation,
-        status="readback_pending",
+        status="manual_recovery",
         version=_page_version(readback),
+        asset_dirty=preflight.asset_dirty,
         reason="remote_body_did_not_match_candidate",
     )
 

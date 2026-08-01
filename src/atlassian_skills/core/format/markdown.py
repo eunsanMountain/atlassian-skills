@@ -25,10 +25,47 @@ _MARKDOWN_FENCE_RE = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 
 @dataclass(frozen=True)
 class JiraMarkdownResult:
-    """Converted Jira Markdown plus diagnostics kept outside the document body."""
+    """Converted Jira Markdown plus diagnostics kept outside the document body.
+
+    cfxmark answers six questions about a conversion and this type used to carry
+    two of them, so `attachments`, `push_safe`, `losses` and `diagnostics` were
+    computed on every read and discarded at the boundary.
+
+    `attachments` is the one that misleads a reader rather than merely leaving
+    them uninformed. The Markdown says `![](design.png)` whether or not that file
+    exists anywhere the caller can reach, so an agent summarises a picture it has
+    never seen, and an agent that writes the body back publishes a reference to
+    an attachment that is not there.
+
+    `losses` is kept apart from `warnings` rather than concatenated into it. A
+    warning is something to know; a loss is something gone, and a caller that has
+    to tell them apart by reading the wording cannot.
+    """
 
     markdown: str
     warnings: tuple[str, ...] = ()
+    #: What the conversion could not carry across, as cfxmark names it.
+    losses: tuple[str, ...] = ()
+    #: Filenames the body references. Nothing here says they were downloaded.
+    attachments: tuple[str, ...] = ()
+    #: False when this Markdown must not be published back as the issue body.
+    push_safe: bool = True
+    #: cfxmark's structured account, passed through untouched for the JSON path.
+    diagnostics: tuple[Any, ...] = ()
+    #: The parsed body. Kept because it is the only grounded answer to "what text
+    #: does this issue actually contain" -- the wiki source cannot be tokenised
+    #: without counting macro names as words.
+    document: Any = None
+
+    @property
+    def all_warnings(self) -> tuple[str, ...]:
+        """Warnings and losses together, for callers that treat them alike.
+
+        The two fields stay separate; this exists so that flattening them is a
+        choice a call site makes rather than one this type makes for everybody.
+        """
+
+        return self.warnings + self.losses
 
 
 class ReadableMarkdown(str):
@@ -120,9 +157,25 @@ def jira_wiki_to_md_result(source: str) -> JiraMarkdownResult:
             "Jira wiki markup could not be converted to Markdown",
             hint=str(error),
         ) from error
+    return _from_cfxmark(result, result.markdown or "")
+
+
+def _from_cfxmark(result: Any, markdown: str) -> JiraMarkdownResult:
+    """Carry across everything cfxmark answered, not just the two fields.
+
+    The Markdown is passed separately because callers post-process it -- section
+    extraction, notice stripping -- and the diagnostics still describe the whole
+    conversion that produced it.
+    """
+
     return JiraMarkdownResult(
-        markdown=result.markdown or "",
-        warnings=result.warnings + result.losses,
+        markdown=markdown,
+        warnings=tuple(result.warnings),
+        losses=tuple(result.losses),
+        attachments=tuple(result.attachments),
+        push_safe=bool(result.push_safe),
+        diagnostics=tuple(result.diagnostics),
+        document=result.document,
     )
 
 
@@ -213,17 +266,21 @@ def jira_wiki_to_md_with_options_result(
     del heading_promotion
     if not wiki_text:
         return JiraMarkdownResult(markdown="")
+    converted: Any = None
     warnings: tuple[str, ...] = ()
     if skip_conversion:
         md = wiki_text
     else:
         try:
-            result = cfxmark.from_jira_wiki(wiki_text)
-            md = result.markdown or ""
-            warnings = result.warnings + result.losses
+            converted = cfxmark.from_jira_wiki(wiki_text)
+            md = converted.markdown or ""
         except Exception as e:
+            # The original is returned rather than nothing, and `push_safe`
+            # stays false: a body that could not be converted is a body nobody
+            # should publish back as though it had been.
             warnings = (f"cfxmark conversion failed; original Jira wiki retained: {e}",)
             md = wiki_text
+            return JiraMarkdownResult(markdown=md, warnings=warnings, push_safe=False)
 
     if drop_leading_notice:
         md = _drop_notice_lines(md, drop_leading_notice)
@@ -235,7 +292,11 @@ def jira_wiki_to_md_with_options_result(
             raise _SectionNotFoundError(section)
         md = extracted
 
-    return JiraMarkdownResult(markdown=md, warnings=warnings)
+    if converted is None:
+        # `skip_conversion` -- the body arrived already converted, so there is
+        # no conversion here to have diagnostics about.
+        return JiraMarkdownResult(markdown=md, warnings=warnings)
+    return _from_cfxmark(converted, md)
 
 
 class _SectionNotFoundError(Exception):

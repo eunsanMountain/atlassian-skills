@@ -20,6 +20,42 @@ class ExitCode(IntEnum):
     RATE_LIMITED = 11
 
 
+#: Context keys that exist for a caller holding the exception object and must never
+#: be serialized into an error envelope.
+#:
+#: `context` is the envelope payload, so everything in it is public by construction.
+#: A field meant for in-process use only is therefore a trap unless the serialization
+#: boundary itself knows about it -- and it sprung: `all_identities` was stripped by
+#: `to_error_context`, which the consent path calls and the proof-refusal path does
+#: not, so the uncapped leaf list reached the CLI through `to_dict()`. Enforcing it
+#: here covers every raise site instead of the ones someone remembered.
+IN_PROCESS_ONLY_CONTEXT_KEYS = frozenset({"all_identities"})
+
+
+def _without_in_process_keys(value: Any) -> Any:
+    """Strip in-process-only keys at every depth, not only the top level.
+
+    The first version was a flat comprehension over `context.items()`, which made the
+    comment above ("covers every raise site instead of the ones someone remembered")
+    an overclaim: a key nested under `context["ownership"]`, or inside a list of
+    occurrences, went straight through. That shape is not hypothetical here --
+    `migration_preflight._redact_ownership` exists precisely to pop `all_identities`
+    out of a nested ownership payload, so a sibling helper was already defending a case
+    this boundary did not. A guard whose promise depends on producers keeping the key
+    flat is the kind of guard this one was written to replace.
+    """
+
+    if isinstance(value, dict):
+        return {
+            key: _without_in_process_keys(item)
+            for key, item in value.items()
+            if key not in IN_PROCESS_ONLY_CONTEXT_KEYS
+        }
+    if isinstance(value, list):
+        return [_without_in_process_keys(item) for item in value]
+    return value
+
+
 class AtlasError(Exception):
     """Base error for all atlassian-skills errors."""
 
@@ -57,11 +93,20 @@ class AtlasError(Exception):
         if self.http_status is not None:
             d["error"]["http_status"] = self.http_status
         if self.http_url is not None:
-            d["error"]["http_url"] = self.http_url
+            # Scrubbed, like every other display path. `safe_display_url` is defined in
+            # this same module and its docstring says why callers share it rather than
+            # each rolling their own -- error output and verbose logs both end up in
+            # agent transcripts and in bug reports people paste. This one did not share
+            # it, and it is the path an agent actually reads: a token carried as userinfo
+            # in a configured profile URL, or appended as a query parameter by a proxy or
+            # a redirect, went into the envelope verbatim.
+            d["error"]["http_url"] = safe_display_url(self.http_url)
         if self.http_method is not None:
             d["error"]["http_method"] = self.http_method
         if self.context:
-            d["error"]["context"] = self.context
+            public = _without_in_process_keys(self.context)
+            if public:
+                d["error"]["context"] = public
         return d
 
 

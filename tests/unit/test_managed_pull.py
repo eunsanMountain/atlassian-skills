@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import cfxmark
 import pytest
 
-from atlassian_skills.confluence.pull_md import pull_md
 from atlassian_skills.core.errors import ConflictError
 from atlassian_skills.core.format.markdown import confluence_storage_to_md_result
 from atlassian_skills.core.managed_manifest import extract_asset_records, parse_managed_document
+from tests.unit.managed_seam import pull_managed_suspending_the_write_policy
 
 
 class FakeClient:
@@ -93,11 +93,8 @@ class FakeDetachedAssetClient(FakeAssetClient):
 def test_portable_pull_uses_cfxmark_managed_projection_without_sqlite(tmp_path: Path) -> None:
     output = tmp_path / "portable.md"
 
-    result = pull_md(
-        FakeClient("<p>before<!-- synthetic comment -->after</p>"),
-        "123456",
-        output_path=output,
-        portable=True,
+    result = pull_managed_suspending_the_write_policy(
+        FakeClient("<p>before<!-- synthetic comment -->after</p>"), "123456", output
     )
 
     managed = output.read_text(encoding="utf-8")
@@ -135,7 +132,7 @@ def test_portable_pull_rejects_unrelated_file_before_remote_read(tmp_path: Path)
     client = FakeClient()
 
     with pytest.raises(ConflictError) as error:
-        pull_md(client, "123456", output_path=output, portable=True)
+        pull_managed_suspending_the_write_policy(client, "123456", output)
 
     assert error.value.context["reason"] == "output_conflict"
     assert client.calls == 0
@@ -145,12 +142,12 @@ def test_portable_pull_rejects_unrelated_file_before_remote_read(tmp_path: Path)
 def test_portable_repull_rejects_local_content_edit(tmp_path: Path) -> None:
     output = tmp_path / "portable.md"
     client = FakeClient()
-    pull_md(client, "123456", output_path=output, portable=True)
+    pull_managed_suspending_the_write_policy(client, "123456", output)
     original_calls = client.calls
     output.write_text(output.read_text(encoding="utf-8") + "local edit\n", encoding="utf-8")
 
     with pytest.raises(ConflictError) as error:
-        pull_md(client, "123456", output_path=output, portable=True)
+        pull_managed_suspending_the_write_policy(client, "123456", output)
 
     assert error.value.context["reason"] == "local_changes"
     assert client.calls == original_calls
@@ -159,7 +156,7 @@ def test_portable_repull_rejects_local_content_edit(tmp_path: Path) -> None:
 def test_portable_pull_defaults_to_stem_assets_and_embeds_identity(tmp_path: Path) -> None:
     output = tmp_path / "page.md"
 
-    pull_md(FakeAssetClient(), "123456", output_path=output, portable=True)
+    pull_managed_suspending_the_write_policy(FakeAssetClient(), "123456", output)
 
     managed = output.read_text(encoding="utf-8")
     parsed = parse_managed_document(managed, assets=extract_asset_records(managed))
@@ -175,7 +172,7 @@ def test_portable_pull_defaults_to_stem_assets_and_embeds_identity(tmp_path: Pat
 def test_portable_no_assets_keeps_remote_identity_and_hash_without_materialization(tmp_path: Path) -> None:
     output = tmp_path / "page.md"
 
-    pull_md(FakeAssetClient(), "123456", output_path=output, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(FakeAssetClient(), "123456", output, no_assets=True)
 
     managed = output.read_text(encoding="utf-8")
     parsed = parse_managed_document(managed, assets=extract_asset_records(managed))
@@ -189,7 +186,7 @@ def test_portable_no_assets_keeps_remote_identity_and_hash_without_materializati
 def test_portable_pull_records_opaque_attachment_without_requiring_markdown_image(tmp_path: Path) -> None:
     output = tmp_path / "page.md"
 
-    pull_md(FakeOpaqueAssetClient(), "123456", output_path=output, portable=True)
+    pull_managed_suspending_the_write_policy(FakeOpaqueAssetClient(), "123456", output)
 
     managed = output.read_text(encoding="utf-8")
     parsed = parse_managed_document(managed, assets=extract_asset_records(managed))
@@ -207,8 +204,8 @@ def test_detached_asset_path_is_page_bound_not_reused_from_a_sibling(tmp_path: P
 
     first = tmp_path / "page.md"
     second = tmp_path / "repull.md"
-    pull_md(FakeDetachedAssetClient(), "123456", output_path=first, portable=True)
-    pull_md(FakeDetachedAssetClient(), "123456", output_path=second, portable=True)
+    pull_managed_suspending_the_write_policy(FakeDetachedAssetClient(), "123456", first)
+    pull_managed_suspending_the_write_policy(FakeDetachedAssetClient(), "123456", second)
 
     first_asset = parse_managed_document(
         first.read_text(encoding="utf-8"), assets=extract_asset_records(first.read_text(encoding="utf-8"))
@@ -225,10 +222,10 @@ def test_detached_asset_path_is_page_bound_not_reused_from_a_sibling(tmp_path: P
 def test_byte_identical_portable_repull_preserves_file_identity_and_mtime(tmp_path: Path) -> None:
     output = tmp_path / "portable.md"
     client = FakeClient()
-    pull_md(client, "123456", output_path=output, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123456", output, no_assets=True)
     before = output.stat()
 
-    pull_md(client, "123456", output_path=output, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123456", output, no_assets=True)
 
     after = output.stat()
     assert (after.st_dev, after.st_ino, after.st_mtime_ns) == (before.st_dev, before.st_ino, before.st_mtime_ns)

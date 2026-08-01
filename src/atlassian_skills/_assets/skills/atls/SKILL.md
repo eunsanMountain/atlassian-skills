@@ -4,9 +4,9 @@ description: |
   ALL Atlassian work — Jira, Confluence, Bitbucket on Server/DC
   (지라/컨플루언스/비트버킷). Load BEFORE the first atls command.
 
-  Without this body, you WILL guess atls conventions wrong: JQL/CQL is
-  positional (not --jql), --format=json (not -f json — `-f` is
-  --md-file on push-md), push-md vs page update, exit 5 = stale-version.
+  Without this body you WILL guess atls conventions wrong: JQL/CQL is
+  positional, `-f` is --md-file not --format, managed push differs from
+  page update, exit 5 = stale-version.
 
   TRIGGER: Jira, Confluence, Bitbucket, atls, JQL, CQL, PROJ-123,
   지라, 컨플루언스, 비트버킷, 아틀라시안.
@@ -14,100 +14,144 @@ description: |
 
 # atls — Atlassian CLI dispatcher
 
-<!-- installed-by: atls 0.3.3 -->
+<!-- installed-by: atls 0.4.0 -->
 
 Load this skill before any `atls` command. Use `--help` for uncommon operations and `atls version --check` when a command is missing.
 
 ## Syntax agents often get wrong
 
 - JQL/CQL is positional: `atls jira issue search "project=PROJ"`.
-- Spell output `--format=json`; `-f` is command-specific and means `--md-file` on `push-md`.
-- Use compact for scans, JSON for agent decisions, md for reading, and raw only for byte-exact responses.
-- Main groups are `jira`, `confluence`, and `bitbucket`. There is no runtime `state` group.
+- Spell output `--format=json`; `-f` means `--md-file` on `md push`.
+- compact for scans, JSON for decisions, md for reading, raw for byte-exact.
+- `compare` is a local file against the live remote; `diff` is two things already on the server.
+- Main groups: `jira`, `confluence`, `bitbucket`. There is no runtime `state` group.
+
+## Invariants
+
+Run only `next_actions[].argv`, exactly as returned; never compose one. `requires_user_approval=true` is never auto-run. Zero PUT before approval or on an unresolved conflict; storage publishes only the approved hash.
 
 ## Choose the Confluence workflow
 
-- Read/summarize: `atls confluence page get ID --body-repr=md`. Content-only, never publish input; stop here for a read-only task.
-- If edit intent is ambiguous, re-read with `--format=json` so version and body stay together.
-- One exact text leaf: dry-run `page patch-text ID --find OLD --replace NEW --if-version N --format=json`, then repeat only when exactly one occurrence is patchable.
-- Exact supported blocks appended at EOF: `pull-md` and use the exact-append proof path; do not convert the existing remote storage body.
-- Structure/table/link/code/macro/image edit: `page inspect ID --intent=structure-edit --format=json` first; its `edit_guidance` predicts the proof, and `in_place_blocked` means only append or `patch-text` lands. Then `pull-md` if the user continues.
-- Existing managed file: validate/diff/proof-push it without an unnecessary get or repull. Fresh remote revalidation still happens inside push.
-- Exact rendered HTML: `page get ID --body-repr=view --format=raw`.
-- Locally authored Markdown: `page create` or `page update --body-format md`. Both run source-conversion preflight; neither bypasses loss consent.
-- Caller-authored storage: `page update --body-format storage` is outside Markdown conversion consent. Use it only for storage bytes the user supplied or approved; stale/read-back guards still apply.
-- Validation copy: only into a verified run-owned parent with a unique caller-supplied title. Dry-run `page copy` first, keep `--verify`.
+- Read/summarize: `page get ID --body-repr=md`. On `content_complete=false` the Markdown is missing text — re-read with the returned `--body-repr=view` argv before summarizing. Reads change nothing; do it without asking.
+- One exact text leaf: dry-run `page patch-text ID --find OLD --replace NEW --if-version N`; repeat only when one occurrence is patchable.
+- Structure/table/macro/image edit: `page inspect ID --intent=structure-edit --format=json` first; `in_place_blocked` means only append or `patch-text` lands. Then `md pull`.
+- Existing managed file: validate/compare/proof-push without an unnecessary get or repull.
+- Locally authored Markdown: `page create` or `page update --body-format md`. Local `![](x.png)` uploads from the body file's directory; `--asset-dir` moves that base, stdin requires it. Every publish re-uploads pictures — prefer `md push` for a page edited twice. On `created_with_missing_images` run the returned `page recover-assets` argv; rerunning the write recovers nothing.
+- Storage the user supplied: `page update --body-format storage`.
 
+Managed `md push` and stateless `page update --body-format md` emit different raw JSON/`status`; branch on outcome, not field equality. `md compare` is a three-way Markdown comparison, not a storage-candidate proof.
 
-Managed `push-md` and stateless `page update --body-format md` emit different raw JSON/`status`; branch on outcome, not field equality. `diff-local` is a local Markdown diff, not a storage-candidate proof.
+For `patch-text`, branch on `error.context.reason`: `text_not_found`, `text_occurrence_not_unique` (add approved surrounding text), `cross_text_node_boundary`, `unsupported_target_context`. A failed patch is not a reason to switch to a lossy full-page migration. Never synthesize a new `--find` value from server text.
 
-For `patch-text`, branch on `error.context.reason`:
+## What kind of document you pulled
 
-- `text_not_found`: re-read and use the user's exact intended wording.
-- `text_occurrence_not_unique`: add caller-approved surrounding text.
-- `cross_text_node_boundary`: the match crosses markup; target one plain-text leaf or use pull-md.
-- `unsupported_target_context`: attributes and macro/code bodies are never patched.
+Branch on `attention_required` at the top of the payload; `attention_reason` is the status. Non-JSON runs print it as a WARNING on stderr.
 
-A failed patch is not a reason to switch to a lossy full-page migration. Never synthesize a new `--find` value from server text or promote failure into an automatically approved full migration.
+`md pull` and `md push --dry-run` report `compatibility.status`:
+
+- `markdown_ready` edit and publish · `markdown_identity_bound` needs a registered identity capability
+- `migration_required` show findings and locations, then ask · `converter_fix_required` our gap, not the author's to approve
+- `xhtml_required` uses storage when `canonical_write_permitted` is false
+
+`canonical_write_permitted`, not the grade, decides whether pull writes a file. Applied capabilities are named in `preservation_capability` and `identity_preservation_capability`.
+`protected_remote_structures` may be preserved but not edited; such edits fail before PUT.
+
+`workflow_decision_required` chooses the representation; `publish_consent_required` approves this dry-run candidate's loss. Ask only for the latter.
 
 ## Portable managed Markdown
 
-- `pull-md --output` is mandatory. Pull writes the file even when losses exist and returns `pulled` or `pulled_with_migrations`.
-- The top `atls:managed v=2` comment binds page/site/version/source, Markdown, asset-set, converter/profile, and passthrough hashes. Adjacent asset comments bind attachment ID/version/remote name/local hash.
-- Files may be copied or moved. There is no checkout registry, one-path rule, hidden edit-ban approval layer, or global publication database.
-- Do not casually edit the managed manifest, `cfxmark:migration`, `cfxmark:img`, `cfxmark:asset`, or active `atls:operation` comments.
-- A later web-editor save can reintroduce rich storage that Markdown cannot represent; every push therefore starts from fresh remote evidence.
-- Run `page validate-local FILE --format=json`. It is offline and reports `remote_freshness=not_checked`; it does not authorize a write.
-- Then run `page push-md ID --md-file FILE --if-version N --dry-run --format=json`.
+- `md pull --output` is mandatory. A file is written only where `canonical_write_permitted` is true, returning `pulled` or `pulled_with_migrations`; otherwise `not_pulled`, `path: null` — run the argv in `next_actions` (`migration_required` gets `--accept-migration`).
+- The top `atls:managed v=3` comment binds page/site/version/source, Markdown, asset-set, converter/profile and passthrough hashes; adjacent comments bind attachments. Do not hand-write it. Leave `cfxmark:` comments in place — `cfxmark:list` binds to the next block, so text between them changes the page.
+- Files may be copied or moved; no checkout registry. Push and merge need no sidecar.
+- Run `page md validate FILE --format=json` (offline), then `page md push ID --md-file FILE --if-version N --dry-run --format=json`. Pull with `--resolve-assets=sidecar --asset-dir=assets` for attachments.
 
-Push proof order is `no_change`, `exact_remote_prefix_append`, then `full_migration`. Exact append is valid only when existing Markdown is unchanged and supported root blocks are added at exact EOF; it preserves the old remote storage prefix byte-for-byte. Deleting or moving blocks drops to `full_migration`, which can fail closed where append succeeds — dry-run first.
+Push proof order is `no_change`, `exact_remote_prefix_append`, then `full_migration`. Append preserves the old storage prefix byte-for-byte and needs existing Markdown unchanged with blocks added at exact EOF; deleting or moving blocks drops to `full_migration`, which can fail closed where append succeeds — dry-run first. Ambiguous source maps, duplicate identity, overlapping storage changes, page/site mismatch or stale evidence fail before PUT; `error.context.fatal_class` names which.
+On `ownership_proof_invalid`, execute `next_actions` (compare, prepare, reconcile); never force-publish.
 
-Ambiguous source maps, duplicate identity, unclassified/multiply-owned/overlap storage changes, page/site mismatch, or stale remote evidence fail before PUT; `error.context.fatal_class` names which. The final invocation repeats remote and local revalidation immediately before mutation and verifies a fresh read-back.
+## When the page moved under your edit
+
+`remote_stale` means someone else edited it. Do not repull and retype: a repull discards the
+local edit. Only step 4 replaces a canonical body.
+
+1. `page md compare ID --md-file FILE --format=json` — what differs, plus a `fingerprint`.
+   Writes nothing; `stale` and `local_dirty` are separate.
+2. `page md prepare-reconcile ID --md-file FILE --output-dir DIR --format=json` — writes
+   `base`, `local`, `remote`, a report, and no candidate. `base_available: false` names why the
+   base is missing; with no base an empty conflict list is not "merges cleanly".
+3. Read base→local and base→remote, merge for meaning into a plain file, and ask the author
+   only where the two disagree about the same thing.
+4. `page md record-reconciled-against ID --md-file FILE --reconciled-file MERGED --compare-fingerprint FP`
+   — refuses unless a fresh read still produces `FP`, and names which half moved. The receipt
+   carries the body hash before and after.
+
+`manifest_base_projection_mismatch` means the baseline is wrong, not the body:
+`page md rebaseline ID --md-file FILE --accept-remote-baseline FP` moves it, body untouched.
+`converter_nondeterministic` has no way out.
+
+## Storage workflow, for pages Markdown cannot hold
+
+`page xhtml pull ID --output page.xhtml` → edit → `page xhtml validate page.xhtml` (offline: parse, namespaces, dropped identity) → `page xhtml compare ID page.xhtml` → `page xhtml push ID --xhtml-file page.xhtml --dry-run`, then rerun with `--accept-candidate` and the hash.
+
+Within one directory only one representation publishes: `xhtml pull` makes storage authoritative, so `md push` refuses with `xhtml_is_authoritative`; hand back with `page xhtml set-authority ID --to=markdown --md-file FILE`. A copy elsewhere is not covered — what protects a page is every push re-measuring the fresh remote.
 
 ## Informed consent
 
-When JSON reports `migration_consent_required`:
+On `migration_consent_required`: show the loss summary and fatal diagnostics before proposing a command; never infer consent from tests, `push_safe`, prior approval or agent policy; ask, then run the returned argv exactly.
 
-1. Show the loss summary and fatal diagnostics before any proposed command.
-2. Do not infer consent from tests, `push_safe`, prior approval, or agent policy.
-3. Ask for explicit user approval.
-4. Only after approval, execute the returned `next_actions[].argv` exactly.
-
-An action marked `requires_user_approval=true` is never auto-run. Do not synthesize argv or add server-provided titles, usernames, URLs, or attachment filenames. Do not store or automatically replay a fingerprint. Keep it only in the active conversation until explicit approval. Any remote source, local candidate, asset plan, converter/profile, report, or proof change invalidates it.
-
-The exact cfxmark version is fingerprint input. A converter upgrade invalidates pending consent and may require a managed file to be refreshed or revalidated.
-
-- `push-md` and Markdown `page update`: `--accept-migration FINGERPRINT`.
-- Markdown `page create`: `--accept-conversion FINGERPRINT`.
+Do not store or replay a fingerprint; keep it in the conversation only. Any change to remote source, local candidate, asset plan, converter/profile, report or proof invalidates it — the exact cfxmark version is fingerprint input, so an upgrade does too. Flags: `--accept-migration` on `md push` and Markdown `page update`, `--accept-conversion` on Markdown `page create`.
 
 ## Assets and recovery
 
-- Managed assets use attachment ID, version, remote filename, and local hash; filename alone is not identity.
-- Automatic asset synchronization exists only in `push-md`; page create/update/copy do not inherit it implicitly.
-- Unchanged assets are not uploaded, unreferenced files are ignored, and deleting a Markdown reference never deletes the remote attachment.
-- Reject cross-origin or credential-bearing URLs. Never place a server-provided filename outside the manifest-bound local path.
-- Partial progress is recorded by bounded operation/asset comments in the managed file. They never contain raw storage, the whole Markdown body, attachment bytes, or credentials.
-- Success removes operation comments. After crash/response loss, rerun the same push. Fresh evidence reconciles `upload_unknown`, `body_put_failed`, `readback_pending`, `reconciled`, or `conflict`; never guess that an upload or PUT succeeded.
-- The durable journal applies only to managed `push-md`. Page create/update/copy and `patch-text` use separate read-back/idempotence contracts.
-- A recovery retry that can upload or PUT requires the exact current migration fingerprint again. The operation comment is never consent; read-only finalization of an already-landed write needs no new mutation.
+- Assets are identified by attachment ID, version, remote filename and local hash; filename alone is not identity. Automatic asset synchronization exists only in Confluence `page md push`: unchanged assets are not re-uploaded, unreferenced files ignored, removing a reference never deletes it. Jira `issue description md push` uploads nothing — see below.
+- Reject cross-origin or credential-bearing URLs. Never put a server filename outside the bound path.
+- Partial progress is recorded by bounded operation comments in the managed file; they hold no storage, body, bytes or credentials, and are never consent. After a crash rerun the same push: fresh evidence reconciles `upload_unknown`, `body_put_not_observed`, `readback_pending`, `reconciled`, `published_normalized` or `conflict`. `manual_recovery` means the page holds a body that is neither yours nor your source: a person must look, do not rerun. `published_normalized` succeeded and rewrote your file to what the server stored, so a diff after it is expected. This in-file journal is Confluence `page md push` only; the Jira description journal is a sidecar and is described below.
 
-Preserve image metadata order:
+Image metadata order: `![alt](a.png)`, `cfxmark:img`, `cfxmark:asset`.
 
-```markdown
-![alt](assets/a.png)<!-- cfxmark:img w=320 h=200 thumbnail=1 align=center --><!-- cfxmark:asset src="assets/a.png" -->
-```
+## Jira issue bodies
 
-Hard breaks round-trip as `<br>`. Readable Markdown may report omitted table presentation; presentation changes follow the same reported-loss and consent path as other full migrations.
+Jira Server stores wiki markup; `issue get KEY --body-repr=md` converts it and answers two questions separately.
+
+- `content_complete=false` — text is missing. Re-read with the returned argv before summarizing.
+- `write_back_safe=false` — the text is all here, so summarizing is fine; publishing this Markdown back would change the issue. `first_difference` names the line; edit the exact markup instead, via `issue get KEY --fields description --format=raw`. Across a live corpus the text always survived and write-back often did not, so this is never a reason to distrust a summary.
+- `attention_reason=requested_projection` — you asked for a `--section`; nothing was lost.
+
+`--body-repr` takes `md|raw|wiki`; `--body-format` and `--comment-format` take `md|wiki`. Anything else is refused, not published raw. `comment add`, `comment edit`, `worklog add` and `issue transition --comment` all take `--comment-format`.
+
+`--fields-json` cannot replace a field the command already set — pass a body one way or the other. `issue update` returns the new `updated` for the next `--if-updated`; `description_matches_sent=false` means the server kept something other than what was sent.
+
+`conversion.attachments` lists the files the body names. The Markdown renders `![](x.png)` whether or not you hold that file, and Jira accepts two attachments under one filename, so filename is not identity there either.
+
+## Editing a Jira description as a file
+
+`issue update` replaces a description in one shot; `issue description` keeps one in a file across edits, bound by `<file>.atls.json`. One representation owns a directory at a time.
+
+- `description wiki pull|validate|compare|push` (`--wiki-file`) — the exact markup, always available.
+- `description md pull|validate|compare|push` (`--md-file`) — only where the round trip proves it.
+- `description prepare-reconcile|record-reconciled-against|set-authority` (`--file`, `--merged`, `--to`). `--to md` is refused — it would publish an ungraded body. Use `md pull`, which grades one.
+
+`md pull` writes nothing when the grade refuses, and returns a complete `wiki pull` argv — run it unchanged. A description write is **best effort, not conditional**: the endpoint has no precondition, so a save landing between our read and the server applying is overwritten and still reported `updated`.
+
+A description graded `markdown_identity_bound` is editable AND the push re-proves identity: smart links and attachment references round trip, so their values and counts are compared against a fresh read. `wiki_required` with `identity_not_carried` names the construct — a `[~user]` mention is deleted and cannot be regenerated.
+
+**Attachments are carried, never uploaded.** Adding, renaming or removing a reference is refused, as is one whose filename two attachments share.
+
+A readback holding different words is `description_readback_mismatch`, a refusal that keeps the operation file. `push` reports `change_class`: `no_change`, `content_change`, or `whitespace_only_change` — same words, different bytes, possible on a first push because the grade normalises whitespace and the publish does not. Refusals are distinct: `description_remote_changed` (`prepare-reconcile`, then `record-reconciled-against`), `remote_changed_since_prepare`, `candidate_proof_failed`, `description_operation_*`.
+
+A crash leaves `<file>.atls.op.json` — hashes and a stage, no body text. Rerun the same push: it reconciles what landed without a second PUT, retries what did not, or refuses. Never edit it by hand.
+
+## Files this writes to your disk
+
+| what | written by | commit it? | safe to delete? |
+| --- | --- | --- | --- |
+| `atls:managed` comment, first line of the `.md` | every `md pull`/`md push` | yes — it *is* the page binding | no; the file stops being managed |
+| `NAME.md.atls.json` | `md pull` | no | yes — a cache only; push and merge read page history |
+| `NAME.xhtml` and its `.atls.json` | `xhtml pull` | your call | not while you intend to push it: the sidecar holds the exact base |
+| `NAME.reconciled.md` | `md prepare-reconcile` | no | yes, once `record-reconciled-against` succeeded |
+| `atls:operation` comment | mid-publish only | no | no — resume the operation or `md compare` first |
 
 ## Write guards and output
 
-- Use `--dry-run` where offered. Use `--if-version N` on Confluence update/patch/push; patch files embed their version. Use Jira `--if-updated ISO` where offered.
-- Exit codes: 0 OK; 2 not found/usage; 3 permission; 4 output/conflict; 5 stale; 6 auth; 7 validation/migration; 10 network; 11 rate limit.
-- With `--format=json`, results and error envelopes go to stdout. Human diagnostics go to stderr so body stdout remains clean.
-- `setup uninstall --state` is only explicit cleanup of a verified legacy candidate DB. It is not runtime state authority.
-
-```bash
-atls confluence page pull-md ID --output page.md --resolve-assets=sidecar --asset-dir=assets --format=json
-atls confluence page validate-local page.md --format=json
-atls confluence page push-md ID --md-file page.md --if-version N --dry-run --format=json
-```
+- Use `--dry-run` where offered, `--if-version N` on Confluence writes, Jira `--if-updated`.
+- Exit codes: 0 OK; 2 not found/usage; 3 permission; 4 output/conflict; 5 stale; 6 auth; 7 validation; 10 network; 11 rate limit.
+- With `--format=json`, results and errors go to stdout, diagnostics to stderr.

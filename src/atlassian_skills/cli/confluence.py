@@ -12,8 +12,10 @@ import typer
 from cfxmark.presentation import extract_presentation
 
 from atlassian_skills.confluence.client import ConfluenceClient
+from atlassian_skills.confluence.diagnostics import headline_for
 from atlassian_skills.confluence.migration_preflight import describe_migration_code
 from atlassian_skills.confluence.page_copy import copy_page as copy_confluence_page
+from atlassian_skills.confluence.read_projection import assess_read_projection
 from atlassian_skills.core.auth import resolve_credential
 from atlassian_skills.core.config import get_profile, load_config
 from atlassian_skills.core.dryrun import format_dry_run
@@ -39,7 +41,11 @@ confluence_app = typer.Typer(help="Confluence commands", no_args_is_help=True)
 
 # Sub-groups
 page_app = typer.Typer(
-    help="Page commands (passthrough prefixes are supported by push-md, pull-md, and diff-local)",
+    # The workflow groups below are the documented surface. The older flat
+    # spellings still work -- scripts depend on them -- but they are hidden from
+    # help and completion, because two names for one command is the confusion
+    # the grouping was added to remove, and leaving both visible keeps it.
+    help="Page commands. Managed workflows live under `md` and `xhtml`.",
     no_args_is_help=True,
 )
 space_app = typer.Typer(help="Space commands", no_args_is_help=True)
@@ -147,6 +153,114 @@ def _emit_conversion_diagnostics(
             f"count={table_background_omitted_count}; readable Markdown does not display these backgrounds",
             err=True,
         )
+
+
+def _emit_compatibility_diagnostics(ctx: typer.Context, payload: Any, *, written: str | None = None) -> None:
+    """Say on stderr what the JSON already says, for the person watching.
+
+    The measurement was right and unreachable. A caller reading compact or md
+    output got the compatibility verdict as one field of a one-line dict, which
+    is not a thing anyone notices while a file lands successfully -- and the
+    command exits 0, correctly, because a page Markdown cannot hold is a fact
+    about the page and not a broken command.
+
+    So the exit code stays 0 and the terminal says so out loud. Silent on
+    `markdown_ready`: a tool that comments on every success teaches people to
+    skim past the one time it matters.
+
+    stderr, so a caller piping stdout still gets clean output, and suppressed by
+    `--quiet` like every other diagnostic. The JSON signal is never suppressed --
+    that is the machine's copy, and quiet is a preference about the terminal.
+    """
+
+    if ctx.obj.get("quiet") or not isinstance(payload, dict):
+        return
+    severity = str(payload.get("severity") or "none")
+    if severity == "none":
+        return
+
+    label = "WARNING" if severity == "warning" else "INFO"
+    status = str(payload.get("status") or "")
+    typer.echo(f"{label}  {headline_for(status)} ({status})", err=True)
+    for finding in payload.get("findings") or []:
+        where = (finding.get("semantic_paths") or [None])[0]
+        location = f"  at {where}" if where else ""
+        typer.echo(f"         {finding.get('title')}  count={finding.get('count')}{location}", err=True)
+    protected = [str(item) for item in payload.get("protected_remote_structures") or () if item]
+    if protected:
+        typer.echo(
+            "         Markdown edits are allowed, but these remote-only structures are preserved only; "
+            "editing them is refused before publishing:",
+            err=True,
+        )
+        for structure in protected:
+            typer.echo(f"           - {structure}", err=True)
+    if written:
+        typer.echo(f"         written: {written}", err=True)
+    # The first action safe to print unprompted. `requires_user_approval` alone is
+    # too blunt now: a refused `migration_required` pull offers exactly one action,
+    # approving its named losses, and that approval writes a local file rather than
+    # touching the page. Skipping it left the warning with no next step at all --
+    # which is where agents start inventing commands, the thing this line exists to
+    # prevent. What must never be printed as though it were free is a command that
+    # changes the remote, so that is what gets checked.
+    for action in payload.get("next_actions") or []:
+        argv = list(action.get("argv") or ())
+        if not action.get("requires_user_approval"):
+            typer.echo(f"         next: atls {' '.join(argv)}", err=True)
+            break
+        if _writes_nothing_remote(argv):
+            typer.echo(f"         next: atls {' '.join(argv)}   [read the findings above first]", err=True)
+            break
+
+
+#: Verbs that only ever read the remote. Spelled as an allowlist rather than a list
+#: of writers, so a new mutating verb is excluded by default instead of by someone
+#: remembering to add it.
+_READ_ONLY_VERBS = frozenset({"pull", "get", "inspect", "compare", "diff", "validate"})
+
+
+def _writes_nothing_remote(argv: list[str]) -> bool:
+    """Whether this argv can be suggested without implying a remote change.
+
+    `--dry-run` does not count: it is a promise about one command, and reading it
+    off an argv would extend that promise to whatever the flag is attached to.
+    """
+
+    return any(token in _READ_ONLY_VERBS for token in argv) and not any(
+        token in {"push", "publish", "record-reconciled-against", "rebaseline"} for token in argv
+    )
+
+
+def _emit_projection_diagnostics(ctx: typer.Context, report: Any, page_id: str) -> None:
+    """Tell the reader, in words, that what they are looking at is not all of it.
+
+    The strongest line is the instruction not to summarise from this output.
+    Everything else here is a fact; that one is what changes what the reader
+    does next, and it is the whole reason the check exists.
+
+    Silent when the projection is faithful, which is most pages -- a warning on
+    every read is one nobody reads.
+    """
+
+    if ctx.obj.get("quiet") or not report.attention_required:
+        return
+    if not report.content_complete:
+        typer.echo("WARNING  this Markdown is missing part of the page (content_incomplete)", err=True)
+        typer.echo("         do not summarize this page from this output alone", err=True)
+    else:
+        typer.echo("INFO     some elements are shown as placeholders (structure_incomplete)", err=True)
+    for omission in report.omissions:
+        where = f"  at {omission.semantic_path}" if omission.semantic_path else ""
+        typer.echo(f"         {omission.label}{where}", err=True)
+    for action in _next_actions_for(report, page_id):
+        typer.echo(f"         next: atls {' '.join(action['argv'])}", err=True)
+        break
+
+
+def _next_actions_for(report: Any, page_id: str) -> list[dict[str, Any]]:
+    actions = report.to_dict(page_id).get("next_actions", [])
+    return list(actions) if isinstance(actions, list) else []
 
 
 def _readable_table_background_omission_count(conversion: Any) -> int:
@@ -487,6 +601,11 @@ def page_get(
             payload["representation"] = "md"
             payload["editable"] = False
             payload["publishable"] = False
+            # Whether this projection still holds the page. `editable=false` says
+            # it is not publish input; it does not say a paragraph is missing,
+            # and a caller summarising from an incomplete projection is
+            # confidently wrong with nothing to warn them.
+            payload.update(assess_read_projection(conversion.document).to_dict(page_id))
             payload["conversion_options"] = {"passthrough_prefixes": list(canonical_prefixes)}
             typer.echo(format_output(payload, fmt))
         elif body_repr == "md" and conversion is not None:
@@ -508,6 +627,7 @@ def page_get(
         else:
             typer.echo(format_output(page, fmt))
         if conversion is not None and fmt != OutputFormat.JSON:
+            _emit_projection_diagnostics(ctx, assess_read_projection(conversion.document), page_id)
             _emit_conversion_diagnostics(
                 ctx,
                 conversion.warnings,
@@ -879,6 +999,25 @@ def _resolve_body(body_file: str | None, body_format: str) -> WriteConversionRes
 # ---------------------------------------------------------------------------
 
 
+def _asset_base(body_file: str | None, asset_dir: str | None) -> Path | None:
+    """Where a relative image reference resolves from.
+
+    The body file's own directory by default, because that is what an author sees
+    when they write `![](diagram.png)` next to the file. `--asset-dir` widens it.
+
+    `None` for standard input, which has no directory. Falling back to the
+    working directory would make the same command mean different things in
+    different terminals, so a document from stdin that references a local file is
+    refused with the flag to fix it.
+    """
+
+    if asset_dir is not None:
+        return Path(asset_dir)
+    if body_file is None or body_file == "-":
+        return None
+    return Path(body_file).parent
+
+
 @page_app.command("create")
 def page_create(
     ctx: typer.Context,
@@ -891,6 +1030,11 @@ def page_create(
         None,
         "--accept-conversion",
         help="Exact source conversion fingerprint returned by preflight",
+    ),
+    asset_dir: str | None = typer.Option(
+        None,
+        "--asset-dir",
+        help="Directory local image references resolve from (default: the body file's own directory)",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
@@ -931,6 +1075,8 @@ def page_create(
             dry_run=dry_run,
             accept_conversion=accept_conversion,
             next_action_argv=tuple(next_action),
+            asset_dir=_asset_base(body_file, asset_dir),
+            body_source=body_file,
         )
         if fmt == OutputFormat.COMPACT and result["status"] == "created":
             typer.echo(format_output(WriteResult(action="created", key=str(result["id"]), summary=title), fmt))
@@ -1013,6 +1159,11 @@ def page_update(
         "--accept-migration",
         help="Exact migration fingerprint returned by preflight",
     ),
+    asset_dir: str | None = typer.Option(
+        None,
+        "--asset-dir",
+        help="Directory local image references resolve from (default: the body file's own directory)",
+    ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
@@ -1033,6 +1184,7 @@ def page_update(
             body_format=body_format,
             title=title,
             if_version=if_version,
+            asset_dir=_asset_base(body_file, asset_dir),
         )
         next_action = [
             "atls",
@@ -1418,7 +1570,7 @@ def attachment_upload_batch(
 # ---------------------------------------------------------------------------
 
 
-@page_app.command("push-md")
+@page_app.command("push-md", hidden=True)
 def page_push_md(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
@@ -1458,7 +1610,7 @@ def page_push_md(
 
         from atlassian_skills.confluence.push_md import push_md
 
-        next_action = ["atls", "confluence", "page", "push-md", page_id, "--md-file", md_file]
+        next_action = ["atls", "confluence", "page", "md", "push", page_id, "--md-file", md_file]
         for prefix in passthrough_prefix:
             next_action.extend(("--passthrough-prefix", prefix))
         if if_version is not None:
@@ -1495,7 +1647,275 @@ def page_push_md(
         _handle_error(e, fmt)
 
 
-@page_app.command("validate-local")
+@page_app.command("prepare-merge", hidden=True)
+def page_prepare_merge(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    md_file: str = typer.Option(..., "--md-file", "-f", help="Managed Markdown file path; stdin is rejected"),
+    output_dir: str | None = typer.Option(
+        None, "--output-dir", help="Where to write base/local/remote (default: <md-file>.merge/)"
+    ),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Write base, local and remote side by side so a stale edit can be merged.
+
+    Writes local files and reads the page. It never publishes: the merge is the
+    caller's to make, and this lays out what making it needs.
+    """
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        if md_file == "-":
+            raise ValidationError(
+                "Preparing a merge requires --md-file PATH; stdin has no portable manifest identity.",
+                context={"reason": "managed_file_required"},
+            )
+        md_path = Path(md_file)
+        if not md_path.exists():
+            raise NotFoundError(
+                f"Managed Markdown file not found: {md_file}",
+                context={"reason": "managed_file_not_found", "path": md_file},
+            )
+
+        from atlassian_skills.confluence.prepare_merge import prepare_merge
+
+        client = _make_client(ctx.obj)
+        workspace = prepare_merge(
+            client,
+            page_id,
+            md_path,
+            output_dir=Path(output_dir) if output_dir else md_path.with_suffix(md_path.suffix + ".merge"),
+        )
+        typer.echo(format_output(workspace.to_dict(), fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("recover-assets")
+def page_recover_assets(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    body_file: str = typer.Option(..., "--body-file", help="The document whose images should be on the page"),
+    asset_dir: str | None = typer.Option(None, "--asset-dir", help="Base directory for relative image paths"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Upload the pictures a page is missing, without touching its body.
+
+    For a create whose uploads did not all land. Rerunning the write does not
+    recover them: the page body already is the candidate, so the update finds
+    nothing to change and never reaches the uploads.
+    """
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.local_assets import recover_assets
+
+        path = Path(body_file)
+        if not path.exists():
+            raise NotFoundError(
+                f"Document not found: {body_file}",
+                context={"reason": "body_file_not_found", "path": body_file},
+            )
+        client = _make_client(ctx.obj)
+        result = recover_assets(
+            client,
+            page_id,
+            path.read_text(encoding="utf-8"),
+            base_dir=_asset_base(body_file, asset_dir),
+        )
+        typer.echo(format_output(result, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("finalize-merge", hidden=True)
+def page_finalize_merge(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    md_file: str = typer.Option(..., "--md-file", "-f", help="The managed Markdown file the merge started from"),
+    candidate: str = typer.Option(..., "--candidate", help="The merged body, as reviewed by the caller"),
+    output: str | None = typer.Option(None, "--output", "-o", help="Where to write it (default: merged.md beside it)"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Rebind a merged body to the current remote, as a document push-md accepts.
+
+    The merge workspace holds plain Markdown so an agent can read and edit it.
+    This turns the result back into a managed document without asking anyone to
+    write a manifest by hand.
+    """
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.prepare_merge import finalize_merge
+
+        for label, name in (("Managed Markdown", md_file), ("Merged body", candidate)):
+            if not Path(name).exists():
+                raise NotFoundError(
+                    f"{label} file not found: {name}",
+                    context={"reason": "managed_file_not_found", "path": name},
+                )
+        client = _make_client(ctx.obj)
+        result = finalize_merge(
+            client,
+            page_id,
+            Path(md_file),
+            Path(candidate),
+            output_path=Path(output) if output else None,
+        )
+        typer.echo(format_output(result, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("pull-xhtml", hidden=True)
+def page_pull_xhtml(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    output: str = typer.Option(..., "--output", "-o", help="Where to write the storage document"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Pull a page as storage XHTML, for documents Markdown cannot hold."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.xhtml_workflow import pull_xhtml
+
+        client = _make_client(ctx.obj)
+        typer.echo(format_output(pull_xhtml(client, page_id, output_path=Path(output)), fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("validate-xhtml", hidden=True)
+def page_validate_xhtml(
+    ctx: typer.Context,
+    xhtml_file: str = typer.Argument(..., help="Local storage document"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Check an edited storage document offline: parse, namespaces, identity."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.xhtml_workflow import validate_xhtml
+
+        path = Path(xhtml_file)
+        if not path.exists():
+            raise NotFoundError(
+                f"Storage document not found: {xhtml_file}",
+                context={"reason": "xhtml_file_not_found", "path": xhtml_file},
+            )
+        result = validate_xhtml(path)
+        typer.echo(format_output(result, fmt))
+        if result["findings"]:
+            raise typer.Exit(1)
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("diff-xhtml", hidden=True)
+def page_diff_xhtml(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    xhtml_file: str = typer.Argument(..., help="Local storage document"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Compare a local storage document against what the server holds now."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.xhtml_workflow import diff_xhtml
+
+        path = Path(xhtml_file)
+        if not path.exists():
+            raise NotFoundError(
+                f"Storage document not found: {xhtml_file}",
+                context={"reason": "xhtml_file_not_found", "path": xhtml_file},
+            )
+        client = _make_client(ctx.obj)
+        result = diff_xhtml(client, page_id, path)
+        if fmt == OutputFormat.JSON:
+            typer.echo(format_output(result, fmt))
+        else:
+            typer.echo(result["diff"] or "Identical (no differences)")
+        if not result["identical"]:
+            raise typer.Exit(1)
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("push-xhtml", hidden=True)
+def page_push_xhtml(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    xhtml_file: str = typer.Option(..., "--xhtml-file", "-f", help="Local storage document"),
+    if_version: int | None = typer.Option(None, "--if-version", help="Expected current version (stale check)"),
+    accept_candidate: str | None = typer.Option(
+        None, "--accept-candidate", help="Exact candidate_sha256 returned by --dry-run"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without executing"),
+    reason: str | None = typer.Option(None, "--reason", help="Confluence version message"),
+    minor_edit: bool = typer.Option(False, "--minor-edit", help="Mark the Confluence version as a minor edit"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Publish a storage document, only the exact bytes the caller approved."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.xhtml_workflow import push_xhtml
+
+        path = Path(xhtml_file)
+        if not path.exists():
+            raise NotFoundError(
+                f"Storage document not found: {xhtml_file}",
+                context={"reason": "xhtml_file_not_found", "path": xhtml_file},
+            )
+        client = _make_client(ctx.obj)
+        result = push_xhtml(
+            client,
+            page_id,
+            path,
+            if_version=if_version,
+            accept_candidate=accept_candidate,
+            dry_run=dry_run,
+            reason=reason,
+            minor_edit=minor_edit,
+        )
+        typer.echo(format_output(result, fmt))
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("set-authority", hidden=True)
+def page_set_authority(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    to: str = typer.Option(..., "--to", help="Which representation may publish: markdown|xhtml"),
+    md_file: str | None = typer.Option(None, "--md-file", help="Managed Markdown file for this page"),
+    xhtml_file: str | None = typer.Option(None, "--xhtml-file", help="Storage document for this page"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (compact|json|md|raw)"),
+) -> None:
+    """Declare which representation publishes this page, so two cannot."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.xhtml_workflow import set_authority
+
+        typer.echo(
+            format_output(
+                set_authority(
+                    page_id,
+                    to=to,
+                    md_path=Path(md_file) if md_file else None,
+                    xhtml_path=Path(xhtml_file) if xhtml_file else None,
+                ),
+                fmt,
+            )
+        )
+    except AtlasError as e:
+        _handle_error(e, fmt)
+
+
+@page_app.command("validate-local", hidden=True)
 def page_validate_local(
     ctx: typer.Context,
     local_file: str = typer.Argument(..., help="Managed Markdown file path"),
@@ -1518,7 +1938,7 @@ def page_validate_local(
 # ---------------------------------------------------------------------------
 
 
-@page_app.command("pull-md")
+@page_app.command("pull-md", hidden=True)
 def page_pull_md(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
@@ -1531,9 +1951,26 @@ def page_pull_md(
     no_assets: bool = typer.Option(
         False, "--no-assets", help="Keep remote asset identity without local materialization"
     ),
+    accept_migration: str | None = typer.Option(
+        None,
+        "--accept-migration",
+        help="Exact migration_report_sha256 from this page's refused pull; approves its named losses",
+    ),
+    write_base_cache: bool = typer.Option(
+        False,
+        "--write-base-cache",
+        help="Also write a .md.atls.json base cache for offline or retention use (not written by default)",
+    ),
     format: str | None = typer.Option(None, "--format", "-f", help="Override output format (compact|json|md|raw)"),
 ) -> None:
-    """Publish a portable managed Markdown file with an embedded baseline."""
+    """Download a page as managed Markdown with its version/hash binding embedded.
+
+    A page whose grade forbids a canonical write (§8.2) writes nothing and returns
+    `not_pulled` with the commands that move it forward. `--accept-migration`
+    approves the named losses of a `migration_required` page and only that grade.
+    Historical base content stays on the server; `--write-base-cache` is the
+    explicit opt-in for a local offline copy.
+    """
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
@@ -1552,17 +1989,33 @@ def page_pull_md(
             site_url=getattr(client, "base_url", None),
             portable=True,
             no_assets=no_assets,
+            accept_migration=accept_migration,
+            write_base_cache=write_base_cache,
         )
+        written = result.status != "not_pulled"
         typer.echo(
             format_output(
                 {
                     "status": result.status,
-                    "path": str(output_path),
+                    # Null when the grade forbade the write. Reporting the path
+                    # regardless would name a file that does not exist, and the
+                    # next command in the chain would be run against it.
+                    "path": str(output_path) if written else None,
                     "version": result.version,
                     "assets": list(getattr(result, "assets", ())),
                     "edit_guidance": list(getattr(result, "edit_guidance", ())),
                     "migration_report": result.migration_report,
                     "migration_report_sha256": result.migration_report_sha256,
+                    # What Markdown cannot hold for this page, measured against
+                    # the storage that was just read. Emitted at pull time so the
+                    # caller knows what kind of document it has before editing
+                    # it, instead of finding out when the push is refused.
+                    "compatibility": result.compatibility,
+                    # Lifted out of `compatibility` on purpose. Everything here
+                    # was already true three levels down, and a caller that does
+                    # not descend publishes as if the page were plain.
+                    "attention_required": bool((result.compatibility or {}).get("attention_required")),
+                    "attention_reason": (result.compatibility or {}).get("attention_reason"),
                     "conversion": {
                         **_conversion_diagnostics(result.warnings, result.losses, result.push_safe),
                         "blockers": list(result.blockers),
@@ -1573,6 +2026,7 @@ def page_pull_md(
         )
         if fmt != OutputFormat.JSON:
             _emit_conversion_diagnostics(ctx, result.warnings, result.losses, result.push_safe)
+            _emit_compatibility_diagnostics(ctx, result.compatibility, written=str(output_path))
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1582,7 +2036,7 @@ def page_pull_md(
 # ---------------------------------------------------------------------------
 
 
-@page_app.command("pull-batch")
+@page_app.command("pull-batch", hidden=True)
 def page_pull_batch(
     ctx: typer.Context,
     page_ids: list[str] = typer.Argument(..., help="One or more Confluence page IDs"),
@@ -1647,7 +2101,7 @@ def page_pull_batch(
 # ---------------------------------------------------------------------------
 
 
-@page_app.command("diff-local")
+@page_app.command("diff-local", hidden=True)
 def page_diff_local(
     ctx: typer.Context,
     page_id: str = typer.Argument(..., help="Confluence page ID"),
@@ -1751,3 +2205,244 @@ def attachment_delete(
         typer.echo(format_output({"deleted": att_id}, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
+
+
+# ---------------------------------------------------------------------------
+# Workflow groups
+#
+# The same function objects registered under a second name, so the two spellings
+# cannot drift: there is one implementation, one set of options, one behaviour.
+#
+# The names existed but the shape did not. `get`/`update` are single actions,
+# while `pull-md`, `push-xhtml`, `prepare-merge` and the rest are two managed
+# workflows -- and nothing in the naming said which was which, so a reader had to
+# know the answer already. Grouping them says it.
+#
+# Merging these into `get`/`update` behind a flag was considered and rejected:
+# one option would change whether a file is written, whether a manifest and
+# sidecar are created, which representation may publish, how attachments are
+# handled, whether a stale merge is offered, whether an ownership proof runs,
+# whether a journal is kept, whether the user is asked, and whether a read-back
+# is verified. `get` would also stop meaning "read".
+#
+# `recover-assets` deliberately stays where it is. It repairs a state-free
+# create's images and takes an ordinary body file; under `md` it would read as
+# part of the managed workflow, which it is not.
+# ---------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
+# the four reconciliation commands (SSOT §7.1-§7.5)
+#
+# Registered on `md_app` only, further down. §7.1 lists them under `page md` and
+# nowhere else -- the flat `page pull-md` spellings exist because they shipped that
+# way and are kept as hidden aliases, which is not a reason to invent a flat spelling
+# for a command that never had one.
+# --------------------------------------------------------------------------
+
+
+def _managed_file_path(md_file: str, *, what: str) -> Path:
+    if md_file == "-":
+        raise ValidationError(
+            f"{what} requires --md-file PATH; stdin has no portable manifest identity.",
+            context={"reason": "managed_file_required"},
+        )
+    path = Path(md_file)
+    if not path.exists():
+        raise NotFoundError(
+            f"Managed Markdown file not found: {md_file}",
+            context={"reason": "managed_file_not_found", "path": md_file},
+        )
+    return path
+
+
+def page_compare(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    md_file: str = typer.Option(..., "--md-file", "-f", help="Managed Markdown file path"),
+    view: str = typer.Option("summary", "--view", help="summary|diff"),
+    base_file: str | None = typer.Option(
+        None, "--base-file", help="A managed document to use as the base if history cannot supply one"
+    ),
+    write_workspace_dir: str | None = typer.Option(
+        None, "--write-workspace", help="Also lay the three versions out in this directory"
+    ),
+    format: str | None = typer.Option(None, "--format", help="Override output format"),
+) -> None:
+    """Say what differs between the base, the local file and the page.
+
+    Read-only in both directions: no PUT, and no canonical file written unless
+    --write-workspace names a directory. The single comparison command: three-way, so a
+    remote edit made since the pull shows up here rather than being discovered by a
+    refused push. `--view=diff` renders the same comparison as text.
+    """
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.reconcile import compare, compare_payload, write_workspace
+
+        md_path = _managed_file_path(md_file, what="Comparing")
+        client = _make_client(ctx.obj)
+        comparison = compare(client, page_id, md_path, base_file=Path(base_file) if base_file else None)
+        payload = compare_payload(comparison, view=view)
+        if write_workspace_dir:
+            payload["workspace"] = write_workspace(
+                comparison, output_dir=Path(write_workspace_dir), managed_path=md_path
+            )
+        typer.echo(format_output(payload, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+def page_prepare_reconcile(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    md_file: str = typer.Option(..., "--md-file", "-f", help="Managed Markdown file path"),
+    output_dir: str | None = typer.Option(
+        None, "--output-dir", help="Where to write base/local/remote/report (default: <md-file>.reconcile/)"
+    ),
+    base_file: str | None = typer.Option(None, "--base-file", help="A managed document to use as the base"),
+    format: str | None = typer.Option(None, "--format", help="Override output format"),
+) -> None:
+    """Lay out base, local and remote so a stale document can be reconciled.
+
+    Writes only inside the directory it is given. The canonical file is not touched:
+    the merge is the caller's to make, and `record-reconciled-against` is what brings
+    the result back.
+    """
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.reconcile import compare, write_workspace
+
+        md_path = _managed_file_path(md_file, what="Preparing a reconciliation")
+        client = _make_client(ctx.obj)
+        target = Path(output_dir) if output_dir else md_path.with_name(f"{md_path.name}.reconcile")
+        comparison = compare(client, page_id, md_path, base_file=Path(base_file) if base_file else None)
+        typer.echo(format_output(write_workspace(comparison, output_dir=target, managed_path=md_path), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+def page_record_reconciled_against(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    md_file: str = typer.Option(..., "--md-file", "-f", help="The canonical managed file to replace"),
+    reconciled_file: str = typer.Option(..., "--reconciled-file", help="The reconciled body, as plain Markdown"),
+    compare_fingerprint: str = typer.Option(
+        ..., "--compare-fingerprint", help="The fingerprint the comparison returned"
+    ),
+    base_file: str | None = typer.Option(None, "--base-file", help="A managed document to use as the base"),
+    format: str | None = typer.Option(None, "--format", help="Override output format"),
+) -> None:
+    """Rebind a reconciled body to the remote it was reconciled against.
+
+    No PUT. This is the only step in the stale flow that may replace a canonical
+    body, and it refuses unless a fresh read still produces the fingerprint the
+    comparison did -- so a page that moved, or a file somebody edited meanwhile, ends
+    in a named refusal instead of a body reconciled with something that is gone.
+    """
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.reconcile import record_reconciled_against
+
+        md_path = _managed_file_path(md_file, what="Recording a reconciliation")
+        reconciled = Path(reconciled_file)
+        if not reconciled.exists():
+            raise NotFoundError(
+                f"Reconciled file not found: {reconciled_file}",
+                context={"reason": "reconciled_file_not_found", "path": reconciled_file},
+            )
+        client = _make_client(ctx.obj)
+        typer.echo(
+            format_output(
+                record_reconciled_against(
+                    client,
+                    page_id,
+                    md_path,
+                    reconciled,
+                    compare_fingerprint=compare_fingerprint,
+                    base_file=Path(base_file) if base_file else None,
+                ),
+                fmt,
+            )
+        )
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+def page_rebaseline(
+    ctx: typer.Context,
+    page_id: str = typer.Argument(..., help="Confluence page ID"),
+    md_file: str = typer.Option(..., "--md-file", "-f", help="Managed Markdown file path"),
+    accept_remote_baseline: str = typer.Option(
+        ..., "--accept-remote-baseline", help="The fingerprint of the comparison you reviewed"
+    ),
+    format: str | None = typer.Option(None, "--format", help="Override output format"),
+) -> None:
+    """Move the baseline to the current remote, leaving the body alone.
+
+    The narrow way out of a base projection that does not reproduce its recorded hash
+    while everything else about the binding checks out. No PUT, no body change, and
+    the next push performs the full proof with no waiver.
+    """
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        from atlassian_skills.confluence.reconcile import rebaseline
+
+        md_path = _managed_file_path(md_file, what="Rebaselining")
+        client = _make_client(ctx.obj)
+        typer.echo(
+            format_output(rebaseline(client, page_id, md_path, accept_remote_baseline=accept_remote_baseline), fmt)
+        )
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+md_app = typer.Typer(help="Managed Markdown workflow: pull, edit, prove, publish", no_args_is_help=True)
+xhtml_app = typer.Typer(help="Managed storage workflow, for pages Markdown cannot hold", no_args_is_help=True)
+
+md_app.command("pull")(page_pull_md)
+md_app.command("push")(page_push_md)
+md_app.command("validate")(page_validate_local)
+md_app.command("compare")(page_compare)
+md_app.command("prepare-reconcile")(page_prepare_reconcile)
+md_app.command("record-reconciled-against")(page_record_reconciled_against)
+md_app.command("rebaseline")(page_rebaseline)
+# Visible, because a refusal names them. `merge_available` offers `prepare-merge` and
+# `prepare-merge` offers `finalize-merge`, both as `next_actions` argv a caller is meant
+# to run -- and a command the product tells you to run must be a command `--help` admits
+# exists. Hidden, the pair made the merge a dead end for anyone discovering the CLI by
+# reading its help, which is how an agent discovers it.
+#
+# Not folded into the reconciliation quartet: `prepare-reconcile` is `compare` plus a
+# workspace and answers a baseline that will not reproduce, while this pair three-way
+# merges a page that moved. Same-looking names, different questions, different code.
+md_app.command("prepare-merge")(page_prepare_merge)
+md_app.command("finalize-merge")(page_finalize_merge)
+# §7.1: a hidden compatibility spelling, kept working and kept out of the canonical help
+# so a new flow cannot reach for it by reading `--help`. `pull-batch` shipped visible in
+# 0.3.x and is a removal candidate for the next breaking release.
+#
+# `diff` is deliberately NOT re-registered here. It was a 0.4.0-only alias for
+# `page diff-local`, which answers "what did I change against my base" -- not the
+# question `compare` answers, which is "how do the base, my file and the page stand
+# against each other". Two spellings one letter apart giving different answers, with the
+# one that cannot see a remote edit named `diff`, is a trap; the shipped flat spelling
+# `page diff-local` is still there for anything that already calls it.
+md_app.command("pull-batch", hidden=True)(page_pull_batch)
+
+xhtml_app.command("pull")(page_pull_xhtml)
+xhtml_app.command("push")(page_push_xhtml)
+xhtml_app.command("validate")(page_validate_xhtml)
+# `compare`, matching `md compare`: both answer "this local file against the page as it
+# stands now". `diff` across this CLI means two things that already exist on the server
+# -- `page diff` between two versions, `bitbucket pr diff` -- and a local file is not one
+# of those. New in 0.4.0 and never published under the other spelling, so there is
+# nothing to keep an alias for.
+xhtml_app.command("compare")(page_diff_xhtml)
+xhtml_app.command("set-authority")(page_set_authority)
+
+page_app.add_typer(md_app, name="md")
+page_app.add_typer(xhtml_app, name="xhtml")

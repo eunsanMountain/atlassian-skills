@@ -19,6 +19,7 @@ Coverage:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +31,7 @@ import pytest
 from atlassian_skills.confluence.migration_preflight import (
     build_managed_preflight,
     conversion_failure_context,
+    describe_migration_code,
 )
 from atlassian_skills.confluence.page_inspect import inspect_page
 from atlassian_skills.confluence.pull_md import pull_md
@@ -55,7 +57,27 @@ MSG_MARKER = "CONVERSIONMSGLEAKMARKER"
 CONTENT_MARKER = "PAGECONTENTLEAKMARKER"
 
 # The only keys a conversion-error context may carry.
-_SAFE_CONVERSION_CONTEXT_KEYS = frozenset({"reason", "conversion_code", "conversion_reason_code"})
+#
+# `conversion_reason_description` and `supported_alternatives` are atls-authored
+# constants selected by a stable code -- a sentence from this repository's own
+# table and a fixed list of two command shapes. They are on this list because a
+# caller that gets only codes cannot act: a live publish refused with
+# `semantic-mapping-ambiguous` and had nothing to print but the code.
+#
+# The marker assertions below still apply to them, so if either ever starts
+# carrying cfxmark's message or page content, this file fails.
+_SAFE_CONVERSION_CONTEXT_KEYS = frozenset(
+    {
+        "reason",
+        "conversion_code",
+        "conversion_reason_code",
+        "conversion_reason_description",
+        "supported_alternatives",
+        # Counts and code names only -- asserted separately below to carry no
+        # page text, by the same marker check as everything else here.
+        "regeneration_outlook",
+    }
+)
 
 
 class ManagedClient:
@@ -154,10 +176,20 @@ _INJECTION_SURFACES = {
 
 
 def test_adapter_projection_is_allowlist_gated_and_backwards_compatible() -> None:
-    # Allowlisted code → generic code plus the specific reason code.
+    # Allowlisted code → generic code, the specific reason code, and the two
+    # static things that make it actionable. A live publish refused with
+    # `ownership_proof_invalid/semantic-mapping-ambiguous` and its caller had
+    # nothing to print but those two words; the sentence and the alternatives
+    # existed in atls and never crossed the boundary.
+    #
+    # Both additions are atls-authored constants keyed by a stable code -- never
+    # cfxmark's message or display_label -- which is what the rest of this file
+    # exists to keep true.
     assert conversion_failure_context(cfxmark.ConversionError("m", reason_code=REASON)) == {
         "conversion_code": "conversion_error",
         "conversion_reason_code": REASON,
+        "conversion_reason_description": describe_migration_code(REASON),
+        "supported_alternatives": ["append_markdown_blocks", "page_patch_text"],
     }
     # Non-allowlisted code → dropped; the generic code is untouched.
     assert conversion_failure_context(cfxmark.ConversionError("m", reason_code="not-in-allowlist")) == {
@@ -200,24 +232,49 @@ def test_injected_reason_code_reaches_every_surface_value_free(
 
 
 def test_tie_end_to_end_stateless_update() -> None:
+    """A tie now arrives as a proof refusal rather than a conversion failure.
+
+    The converter's validator repeats the generator's base-free fallback instead
+    of raising at it, so the candidate is reconstructable and the refusal comes
+    from the ownership proof. The caller gets the diagnosis -- fatal class,
+    counts, the diagnostics and their resolutions -- where it used to get two
+    bare codes.
+    """
+
     client = StatelessClient(TIE_STORAGE)
     with pytest.raises(AtlasError) as info:
         build_page_update_preflight(client, "123", TIE_EDITED_MD, body_format="md", if_version=7)
     context = info.value.to_dict()["error"]["context"]
-    assert context["conversion_reason_code"] == REASON
-    assert context["conversion_code"] == "conversion_error"
+    assert context["reason"] == "ownership_proof_invalid"
+    assert context["fatal_class"]
+    # The cause still names itself in a value-free machine code, which is what
+    # the old `conversion_reason_code` assertion protected.
+    assert REASON in {item["code"] for item in context["diagnostics"]}
 
 
 def test_tie_end_to_end_managed_preflight(tmp_path: Path) -> None:
+    """And on the managed path the loss gate now gets to answer.
+
+    It could not before: the converter raised where the gate would have run, so
+    a tie was refused without anyone asking what the candidate actually costs.
+    This edit deletes one of two identical paragraphs and loses nothing, the
+    candidate agrees with an independent regeneration, and the publish proceeds
+    with the proof waived rather than the proof missing.
+
+    The gate is not "zero migrations". It requires the candidate to lose nothing
+    named, to be classifiable, and to match a regeneration -- so this asserts the
+    waiver is recorded, not merely that no exception escaped.
+    """
+
     client = ManagedClient(TIE_STORAGE)
     path = tmp_path / "page.md"
     pull_md(client, "123", output_path=path, portable=True, no_assets=True)
     path.write_text(path.read_text(encoding="utf-8").replace("X\n\nX", "X", 1), encoding="utf-8")
-    with pytest.raises(AtlasError) as info:
-        build_managed_preflight(client, "123", path)
-    context = info.value.to_dict()["error"]["context"]
-    assert context["conversion_reason_code"] == REASON
-    assert context["conversion_code"] == "conversion_error"
+
+    preflight = build_managed_preflight(client, "123", path)
+    assert preflight.ownership["proof_waived"] is True
+    assert preflight.proof_mode == "regeneration_verified"
+    assert preflight.to_dict()["candidate_loss"]["named_losses"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -234,3 +291,101 @@ def test_out_of_allowlist_reason_code_is_omitted(reason_code: str | None, monkey
     assert "conversion_reason_code" not in context
     # The generic code path stays intact (backwards compatible).
     assert context["conversion_code"] == "conversion_error"
+
+
+# ---------------------------------------------------------------------------
+# The other reading, when the proof cannot produce one
+# ---------------------------------------------------------------------------
+
+
+def test_an_ambiguous_proof_reports_what_regenerating_would_cost() -> None:
+    """The refusal used to be a dead end.
+
+    The proof aligns the stored page against the edited Markdown, and when that
+    alignment has two equally cheap readings it raises before producing a
+    candidate -- so there is nothing to gate on and nothing to decide. Measured
+    on a real document: a live Story page that Markdown holds completely could not be
+    published and the error said only `semantic-mapping-ambiguous`.
+
+    The refusal now also says what publishing from the Markdown alone would drop,
+    which is the number a caller needs before asking for that instead. It still
+    publishes nothing.
+    """
+
+    from atlassian_skills.confluence.stateless_write import _regeneration_outlook
+
+    options = cfxmark.ConversionOptions(profile="editable")
+    remote = (
+        "<p>alpha</p>"
+        '<ac:structured-macro ac:name="info" ac:macro-id="7f3a">'
+        "<ac:rich-text-body><p>note body</p></ac:rich-text-body></ac:structured-macro>"
+    )
+    # The macro survives the edit -- it is still in the Markdown. What a
+    # regeneration cannot carry is the id the server gave it, which is the whole
+    # shape this outlook exists to price. Deleting the macro instead would be a
+    # deliberate removal and not an identity loss at all.
+    edited = cfxmark.to_md_artifact(remote, options=options).markdown.replace("alpha", "alpha edited")
+    outlook = _regeneration_outlook(remote, edited, options)
+
+    reading = outlook["regeneration_outlook"]
+    # It describes; it does not permit. Both of these were read as permission
+    # once already, in a report to the owner, before they were named this way.
+    assert reading["diagnostic_only"] is True
+    assert reading["safe_to_publish"] is False
+    assert set(reading) == {
+        "diagnostic_only",
+        "safe_to_publish",
+        "blocking_reasons",
+        "named_losses",
+        "identity",
+        "named_loss_approval_required",
+    }
+    # Counts and code names, whatever the document. Values depend on it -- this
+    # fixture's editable Markdown binds the macro id and loses nothing, while the
+    # live Story page that prompted this carries a portable macro fence and loses one.
+    assert isinstance(reading["named_losses"], list)
+    assert isinstance(reading["identity"], list)
+    assert isinstance(reading["named_loss_approval_required"], bool)
+
+
+def test_identity_the_regeneration_cannot_carry_is_a_blocking_reason() -> None:
+    """`named_loss_approval_required` counts named losses only. A macro id the
+    server issued is refused elsewhere and is nobody's to approve, so `false`
+    there means "nothing to ask about" and never "nothing to lose"."""
+
+    from atlassian_skills.confluence.stateless_write import _regeneration_outlook
+
+    options = cfxmark.ConversionOptions(profile="editable")
+    remote = (
+        "<p>alpha</p>"
+        '<ac:structured-macro ac:name="info" ac:macro-id="7f3a">'
+        "<ac:rich-text-body><p>note body</p></ac:rich-text-body></ac:structured-macro>"
+    )
+    # A portable fence: the macro survives the edit and its id has nothing to
+    # bind to, which is the shape that live Story page is in.
+    portable = cfxmark.to_md_artifact(remote, options=cfxmark.ConversionOptions(profile="readable")).markdown
+    reading = _regeneration_outlook(remote, portable, options)["regeneration_outlook"]
+
+    if reading["identity"]:
+        assert "identity_not_carried" in reading["blocking_reasons"]
+    assert reading["safe_to_publish"] is False
+
+
+def test_the_outlook_is_absent_rather_than_wrong_when_it_cannot_be_computed() -> None:
+    """A regeneration that also fails must leave the refusal as it was. Replacing
+    one opaque error with two helps nobody."""
+
+    from atlassian_skills.confluence.stateless_write import _regeneration_outlook
+
+    assert _regeneration_outlook("<p>a</p>", "x", object()) == {}
+
+
+def test_the_outlook_never_carries_page_text() -> None:
+    """Same boundary as the rest of this file: a finding code is a name we chose
+    and a count is an integer; neither says what the page says."""
+
+    from atlassian_skills.confluence.stateless_write import _regeneration_outlook
+
+    remote = f"<p>{CONTENT_MARKER}</p>"
+    outlook = _regeneration_outlook(remote, f"{CONTENT_MARKER} edited\n", cfxmark.ConversionOptions(profile="editable"))
+    assert CONTENT_MARKER not in json.dumps(outlook)

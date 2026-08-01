@@ -12,7 +12,7 @@ This document is the source-level architecture for the 0.3.0 Atlassian Server/Da
 | Exact rendered view | `confluence page get --body-repr=view --format=raw` | None; exact server-rendered HTML |
 | Inspect migration or presentation impact | `confluence page inspect --intent=...` | None; advisory only |
 | Replace one exact plain-text storage leaf | `confluence page patch-text` | Fresh version plus exact leaf selection |
-| Edit structure, presentation, links, code, macros, or images | `pull-md` -> edit -> `validate-local` -> `push-md --dry-run` -> `push-md` | Portable manifest, fresh remote proof, and explicit consent when required |
+| Edit structure, presentation, links, code, macros, or images | `md pull` -> edit -> `md validate` -> `md push --dry-run` -> `md push` | Portable manifest, fresh remote proof, and explicit consent when required |
 | Author new Markdown | `page create` or `page update --body-format=md` | Source-conversion preflight and explicit consent when required |
 
 `inspect` is not a mandatory tax on every request. It is used when structural or presentation impact changes the decision.
@@ -79,7 +79,7 @@ Actions marked `requires_user_approval=true` are never auto-run. atls does not p
 
 ## Assets and trust boundaries
 
-Body dirtiness and asset dirtiness are independent. Smart synchronization is a `push-md` feature only. Unchanged attachments are not uploaded, unreferenced local files are ignored, and removing a Markdown reference never deletes a remote attachment.
+Body dirtiness and asset dirtiness are independent. Smart synchronization is a `md push` feature only. Unchanged attachments are not uploaded, unreferenced local files are ignored, and removing a Markdown reference never deletes a remote attachment.
 
 All local asset paths must remain beneath the approved asset root after resolving the file and every ancestor. Symlinks, ancestor symlinks, traversal, and platform reparse escapes fail closed. Server-provided filenames are metadata, not filesystem authority. Cross-origin or credential-bearing URLs are never fetched with Atlassian credentials.
 
@@ -87,11 +87,11 @@ All local asset paths must remain beneath the approved asset root after resolvin
 
 Recovery authority lives in bounded comments in the managed file, not SQLite or a hidden user-directory database. An operation comment binds operation ID, proof mode, source/candidate hashes, version, page/site, asset-plan hash, and stage. Asset comments bind upload intent and receipt evidence.
 
-Important states include `upload_unknown`, `body_put_failed`, `body_applied_readback_pending`, `readback_pending`, `reconciled`, `manual_recovery`, and `conflict`. After a crash or response loss, rerunning the same `push-md` compares fresh remote body and attachment evidence with the journal. It either proves reconciliation, safely retries an unapplied operation, or reports a conflict. It never guesses that an upload or PUT succeeded.
+Important states include `upload_unknown`, `body_applied_readback_pending`, `readback_pending`, `reconciled`, `manual_recovery`, and `conflict`. A PUT whose response never arrived is `body_put_not_observed`, named for what is known rather than for an outcome: the request may have landed. After a crash or response loss, rerunning the same `md push` compares fresh remote body and attachment evidence with the journal. It either proves reconciliation, safely retries an unapplied operation, or reports a conflict. It never guesses that an upload or PUT succeeded.
 
 The journal never stores raw storage, the full Markdown body, attachment bytes, or credentials. Successful finalization updates the manifest/asset records atomically and removes operation comments. Failed or uncertain work keeps only the bounded recovery evidence.
 
-This durable journal is scoped to managed `push-md`. Page create/update/copy and `patch-text` retain their own fresh
+This durable journal is scoped to managed `md push`. Page create/update/copy and `patch-text` retain their own fresh
 read, read-back, and idempotence guarantees but do not claim the same crash journal. A recovery retry that can upload or
 PUT must receive the exact current migration fingerprint again; the operation comment never stores or implies consent.
 If fresh remote evidence proves the write already landed, read-only reconciliation may finish without another mutation.
@@ -107,6 +107,6 @@ Version 0.3 has no runtime SQLite state, global binding, checkout relocation lif
 
 ## Validation and non-goals
 
-`validate-local` is deliberately file-only and reports `remote_freshness=not_checked`. It verifies manifest, Markdown, asset records, hashes, and path containment but cannot authorize a remote write.
+`md validate` is deliberately file-only and reports `remote_freshness=not_checked`. It verifies manifest, Markdown, asset records, hashes, and path containment but cannot authorize a remote write.
 
 The supported release proof is local: unit/property/fault-injection tests, quality checks, reproducible source/wheel builds, clean installed CLI and skill parity, and read-only saved corpus evidence. Live Atlassian writes, native Windows verification, push, tag, GitHub Release, and PyPI publication are separate release-operator actions.

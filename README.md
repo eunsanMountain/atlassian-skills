@@ -253,9 +253,9 @@ atls confluence page search "space=DOCS AND title=API"
 atls confluence page get 12345 --body-repr=md --format=md
 atls confluence page copy 12345 --parent-id 67890 --space DOCS --title "run-20260717-page-001" --include-attachments --verify --reason "Validation baseline" --dry-run --format=json
 atls confluence page copy 12345 --parent-id 67890 --space DOCS --title "run-20260717-page-001" --include-attachments --verify --reason "Validation baseline" --format=json
-atls confluence page pull-md 12345 --output=page.md --resolve-assets=sidecar --asset-dir=assets/ --format=json
-atls confluence page validate-local page.md --format=json
-atls confluence page push-md 12345 --md-file=page.md --if-version 15 --dry-run --format=json
+atls confluence page md pull 12345 --output=page.md --resolve-assets=sidecar --asset-dir=assets/ --format=json
+atls confluence page md validate page.md --format=json
+atls confluence page md push 12345 --md-file=page.md --if-version 15 --dry-run --format=json
 
 # Jira description from markdown
 atls jira issue update PROJ-1 --body-file=desc.md --body-format=md --heading-promotion=jira
@@ -293,13 +293,13 @@ atls jira issue get PROJ-1 --format=md
 atls jira issue get PROJ-1 --format=json | jq '{key, summary, status}'
 
 # 4. Confluence managed page editing workflow
-atls confluence page pull-md PAGE_ID -o page.md --resolve-assets=sidecar --asset-dir=assets/ --format=json
-# Edit page.md. The portable v2 manifest and adjacent asset comments are the only local baseline.
-atls confluence page validate-local page.md --format=json
-atls confluence page push-md PAGE_ID --md-file page.md --if-version 15 --dry-run --format=json
+atls confluence page md pull PAGE_ID -o page.md --resolve-assets=sidecar --asset-dir=assets/ --format=json
+# Edit page.md. The portable v3 manifest and adjacent asset comments are the only local baseline.
+atls confluence page md validate page.md --format=json
+atls confluence page md push PAGE_ID --md-file page.md --if-version 15 --dry-run --format=json
 # If JSON reports migration_consent_required, show the loss summary first and obtain informed user approval.
 # Then run exactly the returned next_actions[].argv; never synthesize or persist its fingerprint.
-atls confluence page push-md PAGE_ID --md-file page.md --if-version 15 --reason "Update documentation" --minor-edit
+atls confluence page md push PAGE_ID --md-file page.md --if-version 15 --reason "Update documentation" --minor-edit
 
 # 5. Branch on exit codes
 # 0=OK, 2=not found/usage, 3=permission, 4=state/output conflict,
@@ -323,14 +323,14 @@ restrictions, likes, watchers, and attachment version history are intentionally 
 Choose the narrowest workflow that matches the intended change:
 
 - Read: `page get PAGE_ID --body-repr=md` returns content-only readable Markdown. `--body-repr=view --format=raw` returns exact server-rendered HTML. Neither is publish input.
-- Inspect: `page inspect PAGE_ID --format=json` reports conversion loss and recommends `patch-text`, `pull-md`, or the exact-append proof path without writing.
+- Inspect: `page inspect PAGE_ID --format=json` reports conversion loss and recommends `patch-text`, `md pull`, or the exact-append proof path without writing.
 - Small text correction: dry-run `page patch-text PAGE_ID --find ... --replace ... --if-version N --format=json`, then repeat only when exactly one decoded plain-text storage leaf is patchable. Batch patches use a versioned `--patch-file`. Attributes, macro/code bodies, duplicates, overlaps, boundary-spanning matches, and remote drift fail before PUT.
-- Structure, formatting, table, or image work: `page pull-md PAGE_ID --output page.md --format=json`. The output is portable managed Markdown with a v2 manifest and source-bound cfxmark migration comments. It may be copied or moved; there is no checkout registry or one-path restriction.
+- Structure, formatting, table, or image work: `page md pull PAGE_ID --output page.md --format=json`. The output is portable managed Markdown with a v3 manifest and source-bound cfxmark migration comments. It may be copied or moved; there is no checkout registry or one-path restriction.
 - Locally authored Markdown: `page create` or `page update --body-format=md` uses the same source-conversion loss report and informed-consent fingerprint as managed push.
 
-Pull always publishes the managed file, even when conversion reports losses. Status is `pulled` or `pulled_with_migrations`; loss reporting is guidance, not a hidden local approval state. The file contains no raw storage XHTML or credentials. Unknown/opaque constructs are preserved only when the cfxmark artifact proves that behavior; otherwise they appear as migration loss.
+**A pull writes a file only where `compatibility.canonical_write_permitted` is true.** Read that field; never infer it from the grade name. Where it is true the status is `pulled` or `pulled_with_migrations`; where it is false the pull returns `not_pulled` with `path: null` and a `next_actions` argv to run — it writes nothing, because a file that cannot be published is not a work product, and it is what the next person edits. A grade is permitted only where a preservation capability is registered *and* covers that page; `preservation_capability` and `identity_preservation_capability` name the one that applied. The file contains no raw storage XHTML or credentials. Unknown/opaque constructs are preserved only when the cfxmark artifact proves that behavior; otherwise they appear as migration loss.
 
-Before publishing, run `validate-local` and `push-md --dry-run --format=json`. Local validation checks only the manifest, Markdown bytes, and referenced local assets, and reports `remote_freshness=not_checked`. Push fetches fresh storage/version, verifies page/site/resource identity, and evaluates proofs in this order:
+Before publishing, run `md validate` and `md push --dry-run --format=json`. Local validation checks only the manifest, Markdown bytes, and referenced local assets, and reports `remote_freshness=not_checked`. Push fetches fresh storage/version, verifies page/site/resource identity, and evaluates proofs in this order:
 
 1. `no_change`
 2. `exact_remote_prefix_append`
@@ -342,9 +342,9 @@ A lossy full migration never writes without the exact `migration_fingerprint` re
 
 Table backgrounds omitted from readable Markdown are reported as conversion loss/presentation diagnostics. They are not hidden protected state, and there is no `table-style` command. Hard line breaks use literal `<br>`. Image presentation metadata remains adjacent to its asset identity comment, for example `![alt](assets/a.png)<!-- cfxmark:img w=320 h=200 thumbnail=1 align=center --><!-- cfxmark:asset src="assets/a.png" -->`.
 
-Assets are matched by attachment ID, remote version, remote filename, and local hash. Body and asset dirtiness are independent: unchanged references are not reuploaded, unreferenced files are ignored, and removing a reference never deletes the remote attachment. Partial progress is recorded in operation comments inside the managed Markdown, without raw storage, full Markdown copies, or credentials. Success removes the operation comments. After a crash or response loss, rerun the same `push-md`; it reconciles `upload_unknown`, `body_put_failed`, `readback_pending`, `reconciled`, or `conflict` from fresh remote evidence and never treats an unproved upload or PUT as success.
+Assets are matched by attachment ID, remote version, remote filename, and local hash. Body and asset dirtiness are independent: unchanged references are not reuploaded, unreferenced files are ignored, and removing a reference never deletes the remote attachment. Partial progress is recorded in operation comments inside the managed Markdown, without raw storage, full Markdown copies, or credentials. Success removes the operation comments. After a crash or response loss, rerun the same `md push`; it reconciles `upload_unknown`, `body_put_not_observed`, `readback_pending`, `reconciled`, or `conflict` from fresh remote evidence and never treats an unproved upload or PUT as success.
 
-The durable operation journal belongs only to managed `push-md`. `page create`, `page update`, `page copy`, and
+The durable operation journal belongs only to managed `md push`. `page create`, `page update`, `page copy`, and
 `patch-text` use their documented fresh-read/read-back or idempotent-selector contracts but do not gain the managed-file
 journal. Direct `page update --body-format=storage` accepts caller-authored storage bytes and is outside Markdown
 conversion consent; it still performs version and read-back checks. A cfxmark version change invalidates pending
@@ -377,7 +377,7 @@ atls jira issue get PROJ-1 --format=json
 
 With `--format=json`, structured result and error envelopes are written to stdout and stderr remains empty. Human-readable warnings and diagnostics use stderr so Markdown or other primary stdout payloads stay clean.
 
-> Some commands use `-f` for file input (e.g. `push-md`). After the subcommand, always use the long form `--format=` to avoid ambiguity.
+> Some commands use `-f` for file input (e.g. `md push`). After the subcommand, always use the long form `--format=` to avoid ambiguity.
 
 ## Command Reference
 
@@ -398,14 +398,18 @@ With `--format=json`, structured result and error envelopes are written to stdou
 - `jira user get`
 
 ### Confluence
-- `confluence page get|inspect|search|children|history|diff|images|create|copy|update|patch-text|delete|move|push-md|validate-local|pull-md|pull-batch|diff-local`
+- `confluence page get|inspect|search|children|history|diff|images|create|copy|update|patch-text|delete|move|recover-assets`
+- `confluence page md pull|push|validate|compare|prepare-reconcile|record-reconciled-against|rebaseline|prepare-merge|finalize-merge`
+- `confluence page xhtml pull|push|validate|compare|set-authority`
 - `confluence space tree`
 - `confluence comment list|add|reply`
 - `confluence label list|add`
 - `confluence attachment list|download|download-all|upload|upload-batch|delete`
 - `confluence user search`
 
-> `--passthrough-prefix` is supported on Confluence Markdown conversion commands: readable `page get`, `push-md`, `pull-md`, `pull-batch`, and `diff-local`.
+> `--passthrough-prefix` is supported on Confluence Markdown conversion commands: readable `page get`, `md push`, and `md pull`.
+>
+> `compare` means "this local file against the page as it stands now"; `diff` means two things that already exist on the server — `page diff` between two versions, `bitbucket pr diff`.
 
 ### Bitbucket (33 commands: 11 read + 22 write)
 - `bitbucket project list`
@@ -519,9 +523,9 @@ SSL_CERT_FILE=/etc/ssl/corp/root-ca.pem atls upgrade     # any installer
 
 - Use `--dry-run` where the command exposes it.
 - Use `confluence page copy --parent-id RUN_PARENT --space SPACE --title UNIQUE_RUN_TITLE --include-attachments --verify --reason TEXT --dry-run --format=json` before creating a verified run-owned Server/DC baseline clone.
-- Use `--if-version N` for Confluence page update and managed `push-md`.
+- Use `--if-version N` for Confluence page update and managed `md push`.
 - Use `--if-updated ISO` for Jira updates.
-- Managed `push-md` requires `--md-file PATH` and does not accept legacy attachment upload flags. Its smart asset plan comes from the portable manifest, adjacent asset records, local hashes, and a fresh remote attachment inventory.
+- Managed `md push` requires `--md-file PATH` and does not accept legacy attachment upload flags. Its smart asset plan comes from the portable manifest, adjacent asset records, local hashes, and a fresh remote attachment inventory.
 - Use `confluence attachment upload|upload-batch` for attachment operations outside the managed Markdown workflow.
 
 ## Jira Custom Fields
@@ -573,7 +577,7 @@ atlassian-skills is a CLI re-implementation of mcp-atlassian's Jira and Confluen
 | httpx | REST client (sync) |
 | typer + rich | CLI framework |
 | pydantic | Response models |
-| cfxmark ≥ 0.5, < 0.6 | Source-bound ownership proofs, managed Markdown projection, migration diagnostics, and Jira wiki conversion |
+| cfxmark = 0.6.0 | Source-bound ownership proofs, managed Markdown projection, migration diagnostics, and Jira wiki conversion |
 | platformdirs | Config path resolution |
 
 ## Development
@@ -595,14 +599,24 @@ uv run mypy src/
 
 # Build
 uv build
+
+# Install the built wheel into a throwaway venv and exercise it end to end.
+# `uv run pytest` measures the working tree, which is not what anyone installs:
+# missing package data, a broken console entry point, or a runtime dependency
+# declared only as a dev extra all pass the tree and fail the artifact.
+bash scripts/wheel_smoke.sh 0.4.0
 ```
+
+This release requires **cfxmark 0.6.0** exactly. The pin is deliberate: two preservation
+capabilities are bound to that converter build so neither is inherited by a build it was
+never measured against, and on a newer patch they stop matching silently.
 
 ## Roadmap
 
-- **0.1.x** — Jira + Confluence read/write, push-md/pull-md/diff-local, benchmarks, GitHub Actions CI/release
+- **0.1.x** — Jira + Confluence read/write, md push/md pull/md diff, benchmarks, GitHub Actions CI/release
 - **0.2.x** — Bitbucket Server/DC PR workflow + Skill-first Claude/Codex integration
 - **0.2.7** — `atls setup` interactive wizard + `atls doctor`; `setup all/codex/claude/paths/status` deprecated
-- **0.3.0 (current)** — portable Markdown-first Confluence workflow, source-bound informed consent, exact EOF-append preservation, state-free asset/body recovery, readable view/inspect, and smart asset synchronization
+- **0.4.0 (current)** — portable Markdown-first Confluence workflow, source-bound informed consent, exact EOF-append preservation, state-free asset/body recovery, readable view/inspect, and smart asset synchronization
 - **0.4.0+** — typed table-style editing, Async client, caching, non-interactive `atls setup`, fish shell support, multi-profile wizard
 
 ## License

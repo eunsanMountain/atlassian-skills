@@ -20,6 +20,269 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ---
 
+## [Unreleased]
+
+## [0.4.0] - 2026-08-01
+
+The version is 0.4.0 rather than 0.3.4 because 0.3.4 was a local milestone that
+was never published, and this release makes the Jira description command names
+public API. A patch number would have made that new surface a contract without
+saying so.
+
+
+A Jira description you can keep in a file, edit, and publish back with proof
+that nothing lost its identity on the way.
+
+**Requires cfxmark 0.6.0.**
+
+### Added
+
+- **The first registered preservation capability: `ragged-table-island-v1`.** §8.2
+  used to answer two questions with one word — *can Markdown express this page* and
+  *does the managed publish keep it* — and conflating them cost half the live corpus
+  its Markdown workflow. A page whose unclassifiable structures lie wholly inside a
+  ragged table island may now have a canonical Markdown file written: prose outside
+  the island is editable and publishes with the island's exact remote bytes carried
+  through, while an edit *inside* it is refused before any PUT with
+  `protected_region_edited` and exit 7.
+
+  Deliberately hard to earn. A capability names the exact diagnostic codes it covers,
+  is closed by a contract test that publishes through the public `push_md` path, and
+  refuses any page whose unknown findings touch text. Merged-cell tables are defined
+  and **not** registered — their contract test refused to close them, because the
+  managed path rejects the very edit the capability would exist to unlock. Nested
+  tables and tables inside macros are excluded and do not become included by
+  resembling a shape that is.
+
+- **`page md pull` says which structures are frozen.** A page can be
+  `canonical_write_permitted` and still contain regions Markdown may not touch. Those
+  are now named on stderr, so "Markdown is allowed here" and "these parts are
+  preserved only" stop being one sentence read two ways.
+
+- **`jira issue description`** — eleven commands, in two representations that do
+  not publish from the same directory at once. `wiki pull|validate|compare|push`
+  holds the markup Jira stores byte for byte and is always available.
+  `md pull|validate|compare|push` holds Markdown and is available only where a
+  round trip proves the edit could come back. `prepare-reconcile`,
+  `record-reconciled-against` and `set-authority` are shared by both.
+
+  They were built and kept hidden until all of them worked. A workflow that can
+  pull but not publish, or publish but not recover, is one a caller builds on
+  before finding out the other half has no safe answer.
+
+- **`markdown_identity_bound`, and a publish that earns it.** The grade means
+  "editable, and publishing verifies identity was carried", so it needed a
+  mechanism before it could be given to anything. The push now compares identity
+  VALUES and their multiplicity against an issue read freshly in the same call:
+  a candidate keeping one of two links, or swapping one attachment's filename
+  for another, is refused rather than published.
+
+- **A `wiki_required` refusal says which construct caused it.** Measured through
+  the converter rather than assumed: smart links and attachment references round
+  trip exactly, and a `[~user]` mention is deleted — its name would have to be
+  looked up again, and the lookup can return the wrong person or nobody. Only
+  the mention is refused, where previously all three were, which had left every
+  description carrying a link or a screenshot unmanageable.
+
+- **Attachments are carried, never uploaded.** Existing references republish
+  unchanged and proven unchanged. Adding, renaming or removing one is refused,
+  and so is a reference whose filename two attachments share — it then resolves
+  to neither in particular.
+
+- **A crash can be concluded rather than guessed.** A publish records what it
+  was about to send in `<file>.atls.op.json` — hashes, an issue identity and a
+  stage, no body text — and rerunning the same push reads the issue to decide.
+  A write that landed is reconciled without a second PUT; one that did not is
+  retried exactly once; anything else refuses. Recovery never asks anyone to
+  edit state by hand.
+
+### Changed
+
+- **One verb per question: `compare` for a local file against the live remote, `diff`
+  for two things that already exist on the server.** `confluence page md compare`
+  answered "how do the base, my file and the page stand against each other" while
+  `jira issue description md diff` answered the same question under the other name, and
+  `confluence page md diff` was a third thing again — the base against the local file,
+  which cannot see a remote edit at all. Two spellings one letter apart giving different
+  answers, with the one that reads like the obvious choice being the one that misses
+  somebody else's edit.
+
+  So `description md diff` and `description wiki diff` are now `compare`, `page xhtml
+  diff` is `page xhtml compare`, and `page md diff` is withdrawn. All four were new in
+  this release and had never been published, so nothing that ever worked stops working;
+  the shipped `page diff-local` spelling is unchanged and still available. `page diff`
+  between two versions and `bitbucket pr diff` keep the name, because they are the case
+  the name is for.
+
+  The two Jira description group headers were left listing the old word over the new
+  command list, so `--help` advertised a `diff` the same wheel then rejected. A test now
+  reads every group header against that group's own commands.
+
+- **The merge recovery commands appear in `--help` again.** A refused push returns
+  `next_actions` naming `page md prepare-merge` and then `page md finalize-merge`, and
+  the Skill tells an agent to run those argv exactly — but both were hidden, so an agent
+  that had only `--help` to go on reached a refusal whose one stated way out looked like
+  it did not exist. They are visible now. On the Jira side the same actions named the
+  hidden `finalize-merge` alias rather than the visible `record-reconciled-against`, and
+  now name what is documented.
+
+- **A presentation change the author did not ask for now needs consent.** Publishing
+  a page holding an empty paragraph could alter the spacing readers see, and the
+  receipt disclosed it without asking. It is now consent-required and carries
+  `change_kind: presentation`, so it is distinguishable from a content loss. The
+  argument that the platform's editor converges the same form anyway is evidence
+  about the editor, not a licence for our REST publish. (cfxmark 0.6.0 removes the
+  divergence itself for the bare form.)
+
+- **`publish_consent_required` is the gate's own answer.** It was recomputed from
+  `candidate_loss`, which counts named losses and presentation changes — and missed the
+  third trigger, a migration occurrence, so an emoticon page reported `false` while the
+  gate held `true` and the push refused. SKILL.md tells an agent to branch on this field
+  and no other, so the two disagreeing is a public contract contradicting itself: the
+  agent does not ask, pushes, and is refused with no way to know why. The field is now
+  the value the gate holds rather than a second expression that has to be kept in step.
+
+- **The dependency on cfxmark is pinned to the build the capabilities were measured
+  against**, `>=0.6.0,<0.6.1`, rather than the compatible range. The preservation
+  registry binds each capability to a converter string so that none is inherited by a
+  build nobody measured — correct, but it fails *silently*: on a permitted 0.6.1 both
+  capabilities stop matching, `canonical_write_permitted` drops, and nothing is raised.
+  The lock pins 0.6.0 so CI could never see it; only a user resolving the newer patch
+  would.
+
+- **The identity carry must cover the page, not merely the build.** Registration
+  checked converter and profile alone, so every identity-bound page on a matching
+  build was granted a canonical write, including identity structures nobody had
+  measured. It now asks about the page: the covered attribute list is exactly
+  `ac:macro-id`, an unknown finding declines, and macros sharing a content signature
+  decline.
+
+- **Jira reconciliation uses Confluence's public names** — `prepare-reconcile` and
+  `record-reconciled-against`. One operation had two vocabularies across the two
+  products; the old spellings remain as hidden aliases.
+
+- **Both Jira description writers disclose the write window, and both narrow it.**
+  `description_push` re-read immediately before its PUT and returned
+  `concurrency.guarantee: best_effort`; `wiki push` did neither, so the representation
+  documented as always available was the one that said least about what it guarantees
+  and left a wider window between deciding and writing. The exact-wiki path now does
+  both.
+
+- **The Jira write window is disclosed rather than merely accepted.** Re-reading
+  immediately before the PUT catches everything a client can observe, and the interval
+  between that response and the server applying it is a property of an API without
+  preconditions. Both the dry run and the receipt now say `concurrency.guarantee:
+  best_effort` instead of leaving the reader to assume a guarantee.
+
+### Fixed
+
+- **A missing local image no longer reports where it looked on this machine.** The
+  refusal carried the absolute resolved path, which is base directory plus the filename
+  the caller already has — nothing to act on, and this machine's directory layout and
+  account name in a JSON envelope that ends up in an agent transcript. The filename as
+  the author wrote it stays, because it is what locates the line to fix. The same for
+  the traversal refusal, whose hint printed the base directory.
+
+- **A refused Jira description pull no longer reproduces the description that was
+  refused.** The grade lists one entry per loss, each naming the construct it is about,
+  so a description with a mention in every paragraph produced an entry per paragraph: on
+  one measured body a JSON error envelope 62% the size of the description, out of a
+  command that had just declined to write anything. The serialized grade now shows the
+  first ten and a `losses_total` count, the same shape the Confluence side already used
+  for leaf identities. The full list stays available to a caller holding the grade.
+
+- **The identity carry could be granted without being shown the page.** Its coverage
+  check ends by asking whether the page holds two macros a positional walk cannot tell
+  apart — a question that needs the page — and the argument carrying it defaulted to
+  empty. An empty page answers "nothing found", which reads as "no ambiguity", so a
+  caller who omitted it was granted the carry with the last check silently skipped. The
+  argument is required now. No shipped path omitted it; the default was a loaded gun on
+  the wrong side of a fail-closed rule.
+
+- **An identity-bound page the carry cannot cover no longer recommends a workflow it
+  will not write.** Where the registered carry declines a page — two macros with
+  identical content signatures, which nothing in a positional walk can tell apart —
+  `canonical_write_permitted` flipped to `False` and every other field kept saying the
+  opposite: `recommended_workflow: markdown`, `workflow_decision_required: false`, and a
+  summary about publishing through the managed path. An agent reading the fields it is
+  told to read ran the pull and found no file. The preservation axis had this treatment
+  for when its capability applies; the identity axis now has the mirror for when its
+  carry does not, with `attention_reason: identity_carry_not_proven_for_this_page`.
+
+- **Asset discovery read Markdown with a hand-written line scanner.** Three separate
+  content corruptions came out of it, each found after the previous was patched: a
+  narrower fence inside a wider one read as a close, a tab-indented line read as
+  opening a fence, and a fence inside a block quote or list item not recognised at
+  all. Each could hide a real image from discovery or rewrite an example inside a code
+  block. Replaced with `mistletoe`, the tokenizer every document is already parsed
+  with, so code ranges come from a parser rather than a growing pile of regular
+  expressions.
+
+- **An uncapped diagnostic list could reach a CLI error envelope.** The rule that
+  keeps it in-process lived in one helper, and the ownership-refusal path did not call
+  it. It is now enforced at the serialization boundary, which covers every raise site
+  rather than the remembered ones.
+
+- **A trailing space stopped being reported as a converter defect.** The grade
+  is decided on a round trip that ignores blank lines and trailing whitespace,
+  because comparing them called every faithful body a change; the publish
+  compared bytes. So a paragraph ending in a space graded `markdown_ready` and
+  then failed to publish with `converter_drift`, naming a bug that does not
+  exist. Publishing is now classified as `no_change`, `whitespace_only_change`
+  or `content_change`, reported on push, on dry run and in diff. Allowed, and
+  never silent.
+
+- **A description bound to Markdown the server did not keep.** The server may
+  store something other than what was sent, and the file was bound to the sent
+  Markdown anyway, leaving a pair that does not round trip — so the next push
+  reported drift. It now binds Markdown proven to reproduce what is stored.
+
+- **A finalized merge no longer measures against the pre-merge body.** On the
+  Markdown side the binding kept its old base while its hash said it was current
+  with the remote, and the next push compared the merged text to the wrong
+  baseline.
+
+- **A test that rebound the CLI's client factory and did not put it back.**
+  Found by sweeping randomised orders: five tests failed in a file that had
+  nothing to do with the cause. An autouse guard now fails whichever test leaves
+  a factory replaced, so the failure lands where the mistake is.
+
+- **A reference to a file the issue does not have is refused.** Adding one was
+  already documented as refused and was not checked: identity compares what the
+  base had against what the candidate kept, which is satisfied by a candidate
+  that keeps everything and adds one more. It published as a broken image at
+  exit 0. The refusal now names the filenames and returns the argv that attaches
+  them.
+
+- **An attachment the description never mentions no longer blocks the push.**
+  The identity check compared the whole attachment set, so a log dropped on the
+  issue during an edit refused the publish — with a finding about attachments,
+  on a body that references none. It now compares only the files this
+  description points at, which is the question the check exists to ask. The
+  refusals that matter are unchanged: replacing a referenced attachment is still
+  caught, and each finding now carries its own hint instead of one sentence
+  covering six.
+
+- **A publish whose readback holds something else is no longer reported as
+  updated.** The comparison was made and left in a field nothing had to read, so
+  a concurrent editor arrived as `status: updated` and exit 0 while the issue
+  held their text. It is now a refusal that keeps the pending-operation record,
+  which is what the next run needs to tell a collision from a fresh local edit.
+  A server that only normalises whitespace still publishes, and says so.
+
+- **`description set-authority --to md` is refused instead of publishing an
+  ungraded body.** It moved the authority field without grading the stored
+  description or converting it, and the publish proof reads a missing Markdown
+  baseline as nothing to check — so `safe: true` at exit 0, with a numbered list
+  arriving as two H1s and a table as escaped pipes. Pull the issue with
+  `description md pull`, which grades it. Handing authority back lands with that
+  grading in place.
+
+- **A pending-operation file from a newer version no longer crashes the push.**
+  An unknown field raised `TypeError` past the handler, so the traceback went to
+  stderr and `--format=json` returned empty stdout with no envelope. It is now
+  the same refusal as any other unreadable journal.
+
 ## [0.3.3] - 2026-07-28
 
 Diagnosability for failed in-place edits, plus the cfxmark repairs that make a
@@ -170,7 +433,7 @@ Diagnosability and TLS/proxy support for corporate networks. Reported by @credmo
 - Proof ordering for `no_change`, exact remote-prefix EOF append, and full source-bound migration. Exact append converts
   only the added suffix and preserves all existing remote storage bytes.
 - State-free body and attachment recovery using bounded operation comments, exact upload/PUT intent, fresh remote
-  reconciliation, and explicit `upload_unknown`, `body_put_failed`, `readback_pending`, `reconciled`, and
+  reconciliation, and explicit `upload_unknown`, `body_put_not_observed`, `readback_pending`, `reconciled`, and
   `conflict` states. Successful operations remove their comments.
 - `confluence page inspect`, content-only readable Markdown, exact server-rendered view HTML, and repeatable canonical
   `--passthrough-prefix` support.

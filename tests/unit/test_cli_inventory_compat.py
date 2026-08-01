@@ -120,6 +120,33 @@ def test_every_command_path_delta_is_classified(
     )
 
 
+def test_every_visibility_change_on_shared_commands_is_classified(
+    baseline: dict[str, Any], current: dict[str, Any], classification: dict[str, Any]
+) -> None:
+    """A command can vanish from help without being removed.
+
+    The gate watched paths and parameters, so hiding one passed silently -- and
+    a hidden command is, to anyone reading `--help` or using completion, gone.
+    That is a compatibility decision with the same weight as deleting it, so it
+    is named the same way.
+
+    `visibility` rather than reusing `classification`, because the command itself
+    is unchanged: it still exists, still takes the same options, still works.
+    """
+
+    old = index_by_path(baseline)
+    new = index_by_path(current)
+    entries = classification["entries"]
+
+    unexplained = [
+        f"{path}: hidden {old[path].get('hidden')} -> {new[path].get('hidden')}"
+        for path in sorted(set(old) & set(new))
+        if bool(old[path].get("hidden")) != bool(new[path].get("hidden"))
+        and entries.get(path, {}).get("visibility") != "hidden"
+    ]
+    assert not unexplained, f"visibility changed without a named decision: {unexplained}"
+
+
 def test_every_parameter_delta_on_shared_commands_is_classified(
     baseline: dict[str, Any], current: dict[str, Any], classification: dict[str, Any]
 ) -> None:

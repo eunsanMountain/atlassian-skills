@@ -6,9 +6,16 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.3.0 (portable Markdown-first Confluence workflow, source-bound informed consent, state-free body/asset recovery, and smart asset synchronization)
+- **Current version**: 0.4.0 (portable Markdown-first Confluence workflow, source-bound informed consent, state-free body/asset recovery, and smart asset synchronization)
 
 ## Build & Run
+
+> **Release evidence comes from a built wheel in a throwaway venv, never from this
+> working tree.** `uv run pytest` here measures the tree, which is not the artifact
+> anyone installs: it can pass over a packaging defect — missing package data, a broken
+> console entry point, a runtime dependency declared only as a dev extra — and an
+> editable install can pass over all three. `scripts/wheel_smoke.sh` is the part of that
+> which lives in this repository and runs in CI.
 
 ```bash
 # Install (uv recommended)
@@ -105,7 +112,7 @@ docs/                       # design docs and analyses
 | `httpx` | REST client (sync) |
 | `typer` + `rich` | CLI framework |
 | `pydantic` | Response models |
-| `cfxmark>=0.5` | Confluence XHTML ↔ md artifacts, Jira wiki ↔ md |
+| `cfxmark>=0.6` | Confluence XHTML ↔ md artifacts, Jira wiki ↔ md |
 | `platformdirs` | Config paths |
 
 ## Authentication (§7.1)

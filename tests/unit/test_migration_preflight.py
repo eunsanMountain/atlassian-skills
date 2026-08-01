@@ -10,6 +10,7 @@ from atlassian_skills.confluence.migration_preflight import build_managed_prefli
 from atlassian_skills.confluence.pull_md import pull_md
 from atlassian_skills.confluence.push_md import push_md
 from atlassian_skills.core.errors import MigrationConsentRequiredError, StaleError, ValidationError
+from tests.unit.managed_seam import pull_managed_suspending_the_write_policy
 
 
 class FakeClient:
@@ -32,14 +33,7 @@ class FakeClient:
 
 
 def _pull(client: FakeClient, path: Path, *, passthrough: list[str] | None = None) -> None:
-    pull_md(
-        client,
-        "123",
-        output_path=path,
-        portable=True,
-        no_assets=True,
-        passthrough_prefixes=passthrough,
-    )
+    pull_managed_suspending_the_write_policy(client, "123", path, no_assets=True, passthrough_prefixes=passthrough)
 
 
 def test_preflight_selects_no_change_before_other_proof_modes(tmp_path: Path) -> None:
@@ -88,7 +82,10 @@ def test_preflight_exact_append_preserves_remote_storage_as_byte_prefix(tmp_path
     assert proof.deferred_migrations == ()
 
 
-def test_in_place_edit_uses_source_bound_full_migration_proof(tmp_path: Path) -> None:
+def test_in_place_edit_uses_source_bound_full_migration_proof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = FakeClient('<p><ac:emoticon ac:name="smile"/></p><p>before</p>')
     path = tmp_path / "page.md"
     _pull(client, path)
@@ -106,6 +103,15 @@ def test_in_place_edit_uses_source_bound_full_migration_proof(tmp_path: Path) ->
     assert proof.ownership["accepted_migration_occurrence_ids"]
     assert proof.candidate is not None
     assert proof.candidate.source_storage_sha256 == proof.remote_storage_sha256.removeprefix("sha256:")
+
+    def repeated_measurement(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("serialising one preflight must not remeasure its fresh remote")
+
+    monkeypatch.setattr("atlassian_skills.confluence.migration_preflight.compatibility_payload", repeated_measurement)
+    monkeypatch.setattr("atlassian_skills.confluence.migration_preflight.candidate_loss", repeated_measurement)
+    payload = proof.to_dict()
+    assert payload["compatibility"] == proof.compatibility
+    assert payload["candidate_loss"] == proof.candidate_loss_payload
 
 
 def test_fingerprint_changes_when_local_candidate_changes(tmp_path: Path) -> None:

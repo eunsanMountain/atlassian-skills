@@ -8,18 +8,21 @@ import hashlib
 import mimetypes
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
 import cfxmark
+from cfxmark.ast import Image
+from cfxmark.parsers.md import parse_md
 
 from atlassian_skills.confluence.managed_operation import ManagedAssetOperation, attachment_inventory_sha256
 from atlassian_skills.core.errors import ValidationError
 from atlassian_skills.core.file_identity import inspect_file_identity
 from atlassian_skills.core.managed_file import resolve_managed_asset_path
+from atlassian_skills.core.managed_manifest import extract_asset_records, serialize_asset_record
 
 _ASSET_MARKER_RE = re.compile(
     r"(?P<prefix>!\[(?:\\.|[^\]])*\]\()"
@@ -27,7 +30,6 @@ _ASSET_MARKER_RE = re.compile(
     r"(?P<img_metadata><!-- cfxmark:img(?: [^<>]*)? -->)?"
     r'<!-- cfxmark:asset(?: v=(?P<asset_version>[23]))? src="(?P<asset_source>[^"]*)" -->'
 )
-_IMAGE_REFERENCE_RE = re.compile(r"!\[(?:\\.|[^\]])*\]\((<(?:\\.|[^>])*>|(?:\\.|[^)])+)\)")
 _MANAGED_IMAGE_RE = re.compile(
     r"(?P<prefix>!\[(?:\\.|[^\]])*\]\()"
     r"(?P<target><(?:\\.|[^>])*>|(?:\\.|[^)])+)\)"
@@ -237,6 +239,30 @@ def rewrite_attachment_markdown(markdown: str, references: dict[str, str]) -> st
     return rewritten
 
 
+def rewrite_projection_assets(markdown: str, records: Any) -> str:
+    """Point a fresh projection's image links at the local assets the document already holds.
+
+    A projection of remote storage names attachments the way the server does. A portable managed
+    file names them by local path, because that is what makes it portable. The pull applies this
+    rewrite on the way in; anything that re-projects the remote afterwards has to apply the same
+    one, or it produces a document that is correct about the page and wrong about this copy of it.
+
+    The direction is pull's direction, not its inverse: `remote_name -> src`, from the records the
+    document is already carrying, so no filename is invented and an attachment the document does
+    not know about is left alone.
+    """
+
+    references = {
+        record.remote_name: record.src
+        for record in records
+        if getattr(record, "remote_name", None) and getattr(record, "src", None)
+    }
+    if not references:
+        return markdown
+    rewritten, _replacements = _rewrite_attachment_markdown(markdown, references)
+    return rewritten
+
+
 def rewrite_attachment_artifact(
     artifact: cfxmark.MarkdownArtifact,
     references: dict[str, str],
@@ -331,22 +357,39 @@ def extract_managed_asset_references(markdown: str) -> tuple[ManagedAssetReferen
             raise ValueError("managed local attachment query or fragment is not representable")
         return unquote(url.path)
 
-    marker_starts: set[int] = set()
-    for match in _ASSET_MARKER_RE.finditer(markdown):
-        marker_starts.add(match.start())
-        local = local_reference(match.group("target"))
-        if local is not None:
-            references.append(ManagedAssetReference(local, _cfx_asset_marker_source(match)))
-    for match in _IMAGE_REFERENCE_RE.finditer(markdown):
-        if match.start() in marker_starts:
-            continue
-        local = local_reference(match.group(1))
-        if local is None:
-            continue
-        remote_filename = unquote(PurePosixPath(urlsplit(match.group(1).strip("<>")).path).name)
-        if not remote_filename:
-            continue
-        references.append(ManagedAssetReference(local, remote_filename))
+    parseable_markdown = markdown
+    for record in extract_asset_records(markdown):
+        parseable_markdown = parseable_markdown.replace(
+            serialize_asset_record(record),
+            _serialize_cfx_asset_marker(record.remote_name),
+        )
+
+    document, _warnings = parse_md(
+        parseable_markdown,
+        validate_asset_marker_sources=True,
+    )
+
+    def visit(value: Any) -> None:
+        if isinstance(value, (tuple, list)):
+            for item in value:
+                visit(item)
+            return
+        if not is_dataclass(value):
+            return
+        if isinstance(value, Image):
+            visible = str(value.src)
+            local = local_reference(visible)
+            if local is not None:
+                remote = value.attachment_filename
+                if not isinstance(remote, str) or not remote:
+                    remote = unquote(PurePosixPath(urlsplit(visible.strip("<>")).path).name)
+                if remote:
+                    references.append(ManagedAssetReference(local, remote))
+            return
+        for item in fields(value):
+            visit(getattr(value, item.name))
+
+    visit(document)
     return tuple(references)
 
 

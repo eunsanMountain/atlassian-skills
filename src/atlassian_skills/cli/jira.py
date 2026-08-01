@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -12,6 +13,7 @@ from atlassian_skills.core.dryrun import format_dry_run
 from atlassian_skills.core.errors import AtlasError, ValidationError, request_context_line
 from atlassian_skills.core.format import OutputFormat, format_output
 from atlassian_skills.core.format.markdown import (
+    JiraMarkdownResult,
     WriteConversionResult,
     _SectionNotFoundError,
     format_md_issue,
@@ -22,14 +24,27 @@ from atlassian_skills.core.format.markdown import (
 from atlassian_skills.core.models import WriteResult
 from atlassian_skills.core.stdin import read_body
 from atlassian_skills.core.tls import build_ssl_context
+from atlassian_skills.jira import description_md, description_merge, description_push, description_wiki
 from atlassian_skills.jira.client import JiraClient
 from atlassian_skills.jira.models import Issue, IssueDates, JiraAttachment
+from atlassian_skills.jira.read_projection import (
+    REQUESTED_PROJECTION,
+    JiraReadReport,
+    assess_jira_read,
+)
 
 jira_app = typer.Typer(help="Jira commands", no_args_is_help=True)
 
 # Sub-groups
 user_app = typer.Typer(help="User commands", no_args_is_help=True)
 issue_app = typer.Typer(help="Issue commands", no_args_is_help=True)
+#: Hidden until the whole managed contract lands. A description workflow that
+#: can pull and push but cannot merge or recover is worse than none: it invites
+#: a caller to depend on a half of it that has no safe answer for the other
+#: half. `wiki` works today and is exposed with the rest, not before it.
+description_app = typer.Typer(help="Managed description workflows", no_args_is_help=True)
+description_wiki_app = typer.Typer(help="Exact Jira wiki workflow: pull, edit, compare, push", no_args_is_help=True)
+description_md_app = typer.Typer(help="Managed Markdown workflow: pull, validate, compare, push", no_args_is_help=True)
 field_app = typer.Typer(help="Field commands", no_args_is_help=True)
 project_app = typer.Typer(help="Project commands", no_args_is_help=True)
 board_app = typer.Typer(help="Board commands", no_args_is_help=True)
@@ -47,6 +62,9 @@ issue_batch_app = typer.Typer(help="Issue batch commands", no_args_is_help=True)
 
 jira_app.add_typer(user_app, name="user")
 jira_app.add_typer(issue_app, name="issue")
+issue_app.add_typer(description_app, name="description")
+description_app.add_typer(description_wiki_app, name="wiki")
+description_app.add_typer(description_md_app, name="md")
 jira_app.add_typer(issue_batch_app, name="issue-batch")
 jira_app.add_typer(field_app, name="field")
 jira_app.add_typer(project_app, name="project")
@@ -142,6 +160,190 @@ def _assert_write_conversion_safe(result: WriteConversionResult) -> None:
         hint="Resolve the reported conversion losses before publishing.",
         context=_conversion_diagnostics(result),
     )
+
+
+#: What `--body-format` accepts on a write. `wiki` is the default and means the
+#: text is already Jira markup.
+BODY_FORMATS = ("md", "wiki")
+#: What `--body-repr` accepts on a read. `raw` and `wiki` both mean the stored
+#: markup, unconverted.
+BODY_REPRS = ("md", "raw", "wiki")
+
+
+def _checked_choice(value: str | None, allowed: tuple[str, ...], option: str) -> str | None:
+    """Refuse a value this command does not understand, rather than ignoring it.
+
+    Every one of these options was compared against a single literal, so anything
+    else fell through to the default branch. `--body-format markdown` is a
+    plausible typo and it did not fail: it published the Markdown to Jira as
+    though it were already wiki markup, which is a wrong issue body and no error
+    anywhere.
+
+    The refusal names what was passed and what is accepted, because a caller who
+    has just been told "invalid" and not "invalid, try one of these" guesses
+    again.
+    """
+
+    if value is None or value in allowed:
+        return value
+    raise ValidationError(
+        f"{option} does not accept {value!r}",
+        hint=f"use one of: {', '.join(allowed)}",
+        context={"reason": "unknown_body_option", "option": option, "value": value, "allowed": list(allowed)},
+    )
+
+
+def _merge_extra_fields(fields: dict[str, Any], fields_json: str | None) -> None:
+    """Add the caller's extra fields, and refuse to let them replace a converted one.
+
+    `--fields-json` used to be applied last and win. Combined with `--body-format
+    md` that meant the body was read, converted, checked for conversion losses --
+    and then thrown away:
+
+        --body-format md --body-file b.md --fields-json '{"description": "..."}'
+        PUT {"fields": {"description": "..."}}
+
+    The Markdown never reached the server and nothing said so. Every safety
+    check on the write path had run against a body that was not published.
+
+    Refused rather than resolved in either direction. Preferring the converted
+    body would ignore what the caller typed; preferring the JSON is what already
+    happens and is the bug. The two instructions genuinely conflict, and the
+    caller is the only one who knows which they meant.
+    """
+
+    if not fields_json:
+        return
+    try:
+        extra = json.loads(fields_json)
+    except json.JSONDecodeError as exc:
+        raise ValidationError(f"Invalid --fields-json: {exc}") from exc
+    if not isinstance(extra, dict):
+        raise ValidationError(
+            "--fields-json must be a JSON object of field names to values",
+            context={"reason": "fields_json_not_an_object", "type": type(extra).__name__},
+        )
+    clashes = sorted(name for name in extra if name in fields)
+    if clashes:
+        raise ValidationError(
+            f"--fields-json would replace {', '.join(clashes)}, which this command already set",
+            hint="pass the value one way or the other, not both",
+            context={"reason": "fields_json_conflict", "fields": clashes},
+        )
+    fields.update(extra)
+
+
+def _write_readback(client: JiraClient, key: str, sent_description: str | None) -> dict[str, Any]:
+    """Read the issue back after a write, and say what the server actually kept.
+
+    Two things a caller could not get before, both of them cheap -- one GET of
+    two fields.
+
+    `updated` is what the next write needs for `--if-updated`. Without it a
+    caller has to guess or re-read, and a caller who guesses stops passing the
+    flag. Measured on the sandbox: the field carries milliseconds and three
+    writes in a row produced three distinct values, so it is fine to compare
+    exactly.
+
+    `description_matches_sent` is the check that was missing. Confluence rewrites
+    what it stores; the same probe found Jira storing bodies byte for byte, which
+    is a reason to expect a match and not a reason to skip looking.
+    """
+
+    readback: dict[str, Any] = {}
+    try:
+        raw = client.get_issue_raw_text(key, fields=["updated", "description"])
+        fields = (json.loads(raw).get("fields") or {}) if raw else {}
+    except Exception:  # noqa: BLE001 - the write succeeded; failing to describe it must not fail the command
+        return {"readback": "unavailable"}
+    updated = fields.get("updated")
+    if isinstance(updated, str):
+        readback["updated"] = updated
+    if sent_description is not None:
+        stored = fields.get("description") or ""
+        readback["description_matches_sent"] = stored == sent_description
+        if stored != sent_description:
+            readback["stored_description"] = stored
+    return readback
+
+
+def _read_conversion_payload(
+    conversion: JiraMarkdownResult | None,
+    flattened: tuple[str, ...],
+) -> dict[str, Any]:
+    """What the conversion found, not only the sentences it produced.
+
+    `warnings` keeps its old shape and meaning so that anything already reading
+    this payload is unaffected. The rest is what atls used to compute and throw
+    away at the boundary.
+
+    `attachments` matters most. The Markdown renders `![](design.png)` whether or
+    not that file is anywhere the caller can reach, so listing the filenames is
+    what lets a caller notice that it has a reference and not a picture.
+    """
+
+    payload: dict[str, Any] = {"warnings": list(flattened)}
+    if conversion is None:
+        return payload
+    payload["losses"] = list(conversion.losses)
+    payload["attachments"] = list(conversion.attachments)
+    payload["push_safe"] = conversion.push_safe
+    return payload
+
+
+def _read_projection_payload(
+    issue_key: str,
+    source_wiki: str,
+    markdown: str,
+    conversion: JiraMarkdownResult | None,
+    *,
+    requested_projection: bool,
+) -> dict[str, Any]:
+    """Whether this Markdown still says what the issue says."""
+
+    report = assess_jira_read(
+        source_wiki,
+        markdown,
+        document=conversion.document if conversion else None,
+        losses=conversion.losses if conversion else (),
+        attachments=conversion.attachments if conversion else (),
+        requested_projection=requested_projection,
+    )
+    return report.to_dict(issue_key)
+
+
+def _emit_read_projection_warning(ctx: typer.Context, report: JiraReadReport, issue_key: str) -> None:
+    """Say what is actually wrong with this body, and only that.
+
+    Three different problems and three different things to do about them. Saying
+    "do not summarize this" about a body whose every word is present is how a
+    warning stops being read -- and on the measured corpus that is most of them:
+    the text always survives, and what varies is whether writing it back would
+    change the issue.
+
+    Silent when there is nothing to say, which is most bodies.
+    """
+
+    if ctx.obj.get("quiet") or not report.attention_required:
+        return
+    if report.reason == REQUESTED_PROJECTION:
+        typer.echo("INFO     this is the section you asked for, not the whole body", err=True)
+    elif not report.content_complete:
+        typer.echo("WARNING  this Markdown is missing part of the issue body (content_incomplete)", err=True)
+        typer.echo("         do not summarize this issue from this output alone", err=True)
+    else:
+        # The words are all here. Reading it is fine; publishing it is not.
+        typer.echo("WARNING  writing this Markdown back would change the issue (body_would_change)", err=True)
+        typer.echo("         reading it is fine -- the text is all here", err=True)
+        if report.first_difference is not None:
+            stored, would_write = report.first_difference
+            typer.echo(f"         stored:     {stored}", err=True)
+            typer.echo(f"         would save: {would_write}", err=True)
+    for loss in report.losses:
+        typer.echo(f"         {loss}", err=True)
+    for action in report.to_dict(issue_key).get("next_actions", []):
+        typer.echo(f"         next: atls {' '.join(action['argv'])}", err=True)
+        break
 
 
 def _output_with_write_diagnostics(
@@ -315,6 +517,7 @@ def issue_get(
         _needs_body = False
 
     try:
+        body_repr = _checked_choice(body_repr, BODY_REPRS, "--body-repr")
         client = _make_client(ctx.obj)
 
         # RAW format: return server response text verbatim (byte-preserving contract)
@@ -324,13 +527,20 @@ def issue_get(
 
         issue = client.get_issue(key, fields=field_list)
         conversion_warnings: tuple[str, ...] = ()
+        #: The conversion itself, kept so the JSON path can report what it found
+        #: rather than only the sentences it produced.
+        read_conversion: JiraMarkdownResult | None = None
+        #: The stored markup, kept because the conversion overwrites it and the
+        #: completeness check needs something to compare the Markdown against.
+        source_wiki = issue.description or ""
 
         # Task 1: --body-repr conversion on the description field.
         if body_repr and issue.description:
             if body_repr == "md":
                 conversion = jira_wiki_to_md_result(issue.description)
                 issue.description = conversion.markdown
-                conversion_warnings += conversion.warnings
+                conversion_warnings += conversion.all_warnings
+                read_conversion = conversion
             # "raw" and "wiki" keep the original wiki markup (Server stores wiki natively)
 
         if fmt == OutputFormat.MD and (section or heading_promotion or notice_prefixes):
@@ -347,7 +557,8 @@ def issue_get(
                         skip_conversion=bool(body_repr),
                     )
                     body_md = conversion.markdown
-                    conversion_warnings += conversion.warnings
+                    conversion_warnings += conversion.all_warnings
+                    read_conversion = conversion
                 except _SectionNotFoundError as exc:
                     raise ValidationError(f"Section '{exc.section}' not found in issue body") from exc
             else:
@@ -363,14 +574,41 @@ def issue_get(
         elif fmt == OutputFormat.MD:
             conversion = jira_wiki_to_md_result(issue.description or "")
             issue.description = conversion.markdown
+            read_conversion = conversion
             typer.echo(format_md_issue(_issue_to_json_dict(issue), skip_body_conversion=True))
-            _emit_conversion_warnings(ctx, conversion.warnings)
+            _emit_conversion_warnings(ctx, conversion.all_warnings)
         elif fmt == OutputFormat.JSON and body_repr == "md":
             payload = _issue_to_json_dict(issue)
-            payload["conversion"] = {"warnings": list(conversion_warnings)}
+            payload["conversion"] = _read_conversion_payload(read_conversion, conversion_warnings)
+            payload.update(
+                _read_projection_payload(
+                    key,
+                    source_wiki,
+                    issue.description or "",
+                    read_conversion,
+                    requested_projection=bool(section or notice_prefixes),
+                )
+            )
             typer.echo(format_output(payload, fmt))
         else:
             typer.echo(_render_issue(issue, fmt))
+        # Every path that handed back converted Markdown, including the plain
+        # `--body-repr=md` one whose whole output is the body. The JSON path
+        # carries the same verdict in the payload and says nothing here, so a
+        # caller parsing stdout is not handed a second copy on stderr.
+        if fmt != OutputFormat.JSON and read_conversion is not None:
+            _emit_read_projection_warning(
+                ctx,
+                assess_jira_read(
+                    source_wiki,
+                    issue.description or "",
+                    document=read_conversion.document,
+                    losses=read_conversion.losses,
+                    attachments=read_conversion.attachments,
+                    requested_projection=bool(section or notice_prefixes),
+                ),
+                key,
+            )
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -411,7 +649,7 @@ def issue_search(
                         drop_leading_notice=notice_prefixes,
                     )
                     body_md = conversion.markdown
-                    conversion_warnings.extend(f"{issue.key}: {message}" for message in conversion.warnings)
+                    conversion_warnings.extend(f"{issue.key}: {message}" for message in conversion.all_warnings)
                 except _SectionNotFoundError as exc:
                     raise ValidationError(f"Section '{exc.section}' not found in issue '{issue.key}' body") from exc
                 parts.append(f"# {issue.key}: {issue.summary or ''}\n\n{body_md}")
@@ -424,7 +662,7 @@ def issue_search(
                 conversion = jira_wiki_to_md_result(issue.description or "")
                 issue.description = conversion.markdown
                 parts.append(format_md_issue(_issue_to_json_dict(issue), skip_body_conversion=True))
-                conversion_warnings.extend(f"{issue.key}: {message}" for message in conversion.warnings)
+                conversion_warnings.extend(f"{issue.key}: {message}" for message in conversion.all_warnings)
             typer.echo("\n\n---\n\n".join(parts))
             _emit_conversion_warnings(ctx, tuple(conversion_warnings))
         else:
@@ -920,7 +1158,7 @@ def issue_create(
     type: str = typer.Option(..., "--type", "-t", help="Issue type name"),
     summary: str = typer.Option(..., "--summary", "-s", help="Issue summary"),
     body_file: str | None = typer.Option(None, "--body-file", help="Description body file (- for stdin)"),
-    body_format: str | None = typer.Option(None, "--body-format", help="Body format hint"),
+    body_format: str | None = typer.Option(None, "--body-format", help="Body format: md|wiki (default wiki)"),
     fields_json: str | None = typer.Option(None, "--fields-json", help="Extra fields as JSON string"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be sent"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
@@ -929,6 +1167,7 @@ def issue_create(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        body_format = _checked_choice(body_format, BODY_FORMATS, "--body-format")
         fields: dict[str, Any] = {
             "project": {"key": project},
             "issuetype": {"name": type},
@@ -942,11 +1181,7 @@ def issue_create(
                 _assert_write_conversion_safe(body_conversion)
                 body_text = body_conversion.body
             fields["description"] = body_text
-        if fields_json:
-            try:
-                fields.update(json.loads(fields_json))
-            except json.JSONDecodeError as exc:
-                raise ValidationError(f"Invalid --fields-json: {exc}") from exc
+        _merge_extra_fields(fields, fields_json)
 
         if dry_run:
             client = _make_client(ctx.obj)
@@ -975,7 +1210,7 @@ def issue_update(
     ctx: typer.Context,
     key: str = typer.Argument(..., help="Issue key"),
     body_file: str | None = typer.Option(None, "--body-file", help="Description body file (- for stdin)"),
-    body_format: str | None = typer.Option(None, "--body-format", help="Body format hint"),
+    body_format: str | None = typer.Option(None, "--body-format", help="Body format: md|wiki (default wiki)"),
     fields_json: str | None = typer.Option(None, "--fields-json", help="Fields as JSON string"),
     set_customfield: list[str] | None = typer.Option(
         None,
@@ -996,6 +1231,7 @@ def issue_update(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        body_format = _checked_choice(body_format, BODY_FORMATS, "--body-format")
         client = _make_client(ctx.obj)
 
         # Stale check: compare --if-updated with the issue's updated field
@@ -1023,11 +1259,7 @@ def issue_update(
                 _assert_write_conversion_safe(body_conversion)
                 body_text = body_conversion.body
             fields["description"] = body_text
-        if fields_json:
-            try:
-                fields.update(json.loads(fields_json))
-            except json.JSONDecodeError as exc:
-                raise ValidationError(f"Invalid --fields-json: {exc}") from exc
+        _merge_extra_fields(fields, fields_json)
         customfield_updates = _parse_customfield_updates(set_customfield)
         fields.update(customfield_updates)
 
@@ -1038,12 +1270,16 @@ def issue_update(
 
         result = client.update_issue(key, fields=fields or None)
         _verify_customfield_updates(client, key, customfield_updates)
+        readback = _write_readback(client, key, fields.get("description"))
         if fmt == OutputFormat.COMPACT:
             compact_output = WriteResult(action="updated", key=key)
             typer.echo(format_output(_output_with_write_diagnostics(ctx, compact_output, fmt, body_conversion), fmt))
         else:
-            result_output = result or {"status": "updated", "key": key}
+            result_output = {**(result or {"status": "updated", "key": key}), **readback}
             typer.echo(format_output(_output_with_write_diagnostics(ctx, result_output, fmt, body_conversion), fmt))
+        if readback.get("description_matches_sent") is False:
+            typer.echo("WARNING  the server stored a different body than was sent", err=True)
+            typer.echo(f"         next: atls jira issue get {key} --fields description --format=raw", err=True)
     except AtlasError as e:
         _handle_error(e, fmt)
 
@@ -1091,6 +1327,9 @@ def issue_transition(
         None, "--transition-name", help="Transition name (alternative to --transition-id)"
     ),
     comment: str | None = typer.Option(None, "--comment", help="Transition comment"),
+    comment_format: str | None = typer.Option(
+        None, "--comment-format", help="Comment format: md|wiki (default wiki; md converts to Jira wiki)"
+    ),
     fields_json: str | None = typer.Option(None, "--fields-json", help="Transition fields as JSON"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be sent"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
@@ -1099,15 +1338,27 @@ def issue_transition(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        # `worklog add` has taken `--comment-format md` since it was written and
+        # this took the comment raw, so the same Markdown published as a comment
+        # or as a worklog note produced two different things on the issue. There
+        # is no reason for the difference; it is where the two were written.
+        comment_format = _checked_choice(comment_format, BODY_FORMATS, "--comment-format")
+        comment_conversion = WriteConversionResult(body=comment or "")
+        if comment and comment_format == "md":
+            comment_conversion = md_to_jira_wiki_result(comment)
+            _assert_write_conversion_safe(comment_conversion)
+            comment = comment_conversion.body
+
         if not transition_id and not transition_name:
             raise ValidationError("Either --transition-id or --transition-name is required")
         if transition_id and transition_name:
             raise ValidationError("Use either --transition-id or --transition-name, not both")
 
-        try:
-            extra_fields = json.loads(fields_json) if fields_json else None
-        except json.JSONDecodeError as exc:
-            raise ValidationError(f"Invalid --fields-json: {exc}") from exc
+        # One place decides what --fields-json means, including "it has to be an
+        # object". Transition sets no fields of its own, so nothing can clash.
+        transition_fields: dict[str, Any] = {}
+        _merge_extra_fields(transition_fields, fields_json)
+        extra_fields = transition_fields or None
 
         client = _make_client(ctx.obj)
 
@@ -1125,12 +1376,14 @@ def issue_transition(
                 body["fields"] = extra_fields
             if comment:
                 body["update"] = {"comment": [{"add": {"body": comment}}]}
+            _emit_conversion_warnings(ctx, comment_conversion.warnings + comment_conversion.losses)
             typer.echo(format_dry_run("POST", f"{client.base_url}/rest/api/2/issue/{key}/transitions", body=body))
             return
 
         if transition_id is None:
             raise typer.BadParameter("Either --transition-id or --transition-name is required")
         client.transition_issue(key, transition_id, fields=extra_fields, comment=comment)
+        _emit_conversion_warnings(ctx, comment_conversion.warnings + comment_conversion.losses)
         if fmt == OutputFormat.COMPACT:
             typer.echo(format_output(WriteResult(action="transitioned", key=key), fmt))
         else:
@@ -1168,7 +1421,7 @@ def comment_add(
     body_file: str | None = typer.Option(None, "--body-file", help="Comment body file (- for stdin)"),
     body: str | None = typer.Option(None, "--body", help="Comment body text"),
     body_format: str | None = typer.Option(
-        None, "--body-format", help="Body format: md (convert to Jira wiki) or wiki (raw, default)"
+        None, "--body-format", help="Body format: md|wiki (default wiki; md converts to Jira wiki)"
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be sent"),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
@@ -1177,6 +1430,7 @@ def comment_add(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        body_format = _checked_choice(body_format, BODY_FORMATS, "--body-format")
         text = read_body(body=body, body_file=body_file)
         body_conversion = WriteConversionResult(body=text)
         if body_format == "md":
@@ -1207,7 +1461,7 @@ def comment_edit(
     body_file: str | None = typer.Option(None, "--body-file", help="Comment body file (- for stdin)"),
     body: str | None = typer.Option(None, "--body", help="Comment body text"),
     body_format: str | None = typer.Option(
-        None, "--body-format", help="Body format: md (convert to Jira wiki) or wiki (raw, default)"
+        None, "--body-format", help="Body format: md|wiki (default wiki; md converts to Jira wiki)"
     ),
     format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
 ) -> None:
@@ -1215,6 +1469,7 @@ def comment_edit(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        body_format = _checked_choice(body_format, BODY_FORMATS, "--body-format")
         text = read_body(body=body, body_file=body_file)
         body_conversion = WriteConversionResult(body=text)
         if body_format == "md":
@@ -1280,6 +1535,11 @@ def worklog_add(
     ctx.ensure_object(dict)
     fmt = _resolve_fmt(ctx.obj, format)
     try:
+        # Validated here like every other body-bearing command. Without it an
+        # unknown value was not an error -- it simply was not "md", so the
+        # comment went out as raw Jira wiki. Measured: `--comment-format
+        # markdown` reached the server and posted.
+        comment_format = _checked_choice(comment_format, BODY_FORMATS, "--comment-format")
         body_conversion = WriteConversionResult(body=comment or "")
         if comment and comment_format == "md":
             body_conversion = md_to_jira_wiki_result(comment)
@@ -1667,3 +1927,224 @@ def issue_batch_create(
             typer.echo(format_output(result, fmt))
     except AtlasError as e:
         _handle_error(e, fmt)
+
+
+# --------------------------------------------------------------------------
+# Exact Jira wiki description workflow
+# --------------------------------------------------------------------------
+
+
+@description_wiki_app.command("pull")
+def description_wiki_pull(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    output: str = typer.Option(..., "--output", "-o", help="Where to write the description"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Write the description exactly as Jira stores it, with its binding."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        result = description_wiki.pull_wiki(client, key, output_path=Path(output), site=str(client.base_url))
+        typer.echo(format_output(result, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_wiki_app.command("validate")
+def description_wiki_validate(
+    ctx: typer.Context,
+    path: str = typer.Argument(..., help="Description file"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Offline: what this file can still do, and what it cannot."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        typer.echo(format_output(description_wiki.validate_wiki(Path(path)), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+# `compare`, the same verb Confluence uses for the same question. Across this CLI `diff`
+# means two things that already exist on the server -- `confluence page diff` between two
+# versions, `bitbucket pr diff` -- and a local file is not one of those. New in 0.4.0 and
+# never published as `diff`, so there is no alias to keep.
+@description_wiki_app.command("compare")
+def description_wiki_diff(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    path: str = typer.Argument(..., help="Description file"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """What a push would change, against the description as it is now."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        typer.echo(format_output(description_wiki.diff_wiki(client, key, Path(path)), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_wiki_app.command("push")
+def description_wiki_push(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    wiki_file: str = typer.Option(..., "--wiki-file", help="Description file to publish"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be written without writing"),
+    allow_unbound: bool = typer.Option(
+        False, "--allow-unbound", help="Publish a file with no binding, without a stale check"
+    ),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Publish the file as the description, refusing if the issue moved."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        result = description_wiki.push_wiki(client, key, Path(wiki_file), dry_run=dry_run, allow_unbound=allow_unbound)
+        typer.echo(format_output(result, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_md_app.command("pull")
+def description_md_pull(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    output: str = typer.Option(..., "--output", "-o", help="Where to write the Markdown"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Write the description as Markdown, if it could be published back."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        result = description_md.pull_md(client, key, output_path=Path(output), site=str(client.base_url))
+        typer.echo(format_output(result, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_md_app.command("validate")
+def description_md_validate(
+    ctx: typer.Context,
+    path: str = typer.Argument(..., help="Managed Markdown file"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Offline: is this file still a managed Markdown description?"""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        typer.echo(format_output(description_md.validate_md(Path(path)), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_md_app.command("compare")
+def description_md_diff(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    path: str = typer.Argument(..., help="Managed Markdown file"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """What changed locally, and what changed on the server, kept apart."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        typer.echo(format_output(description_md.diff_md(client, key, Path(path)), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_md_app.command("push")
+def description_md_push(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    md_file: str = typer.Option(..., "--md-file", help="Managed Markdown file to publish"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Prove the candidate and report without writing"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Publish the Markdown as the description, proving it carries the identity."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        result = description_push.push_md(client, key, Path(md_file), dry_run=dry_run)
+        typer.echo(format_output(result, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+# --------------------------------------------------------------------------
+# Merge and authority: shared by both representations, so directly under
+# `description` rather than under one of them.
+# --------------------------------------------------------------------------
+
+
+# The names Confluence made public in §7.1, so one workflow has one vocabulary.
+#
+# D3. Confluence demoted `prepare-merge`/`finalize-merge` to hidden aliases and made
+# `prepare-reconcile`/`record-reconciled-against` the public pair; Jira kept the old names,
+# so the same operation on the same kind of document had two names depending on which
+# product you had reached. An agent reads one skill for both.
+#
+# The old names stay as hidden aliases rather than disappearing: they are in scripts, and a
+# rename that breaks a caller to tidy a help listing is a worse trade than a hidden alias.
+@description_app.command("prepare-reconcile")
+@description_app.command("prepare-merge", hidden=True)
+def description_prepare_merge(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    file: str = typer.Option(..., "--file", help="Description file whose baseline moved"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Lay out base, local and remote as three files. Merges nothing."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        typer.echo(format_output(description_merge.prepare_merge(client, key, Path(file)), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_app.command("record-reconciled-against")
+@description_app.command("finalize-merge", hidden=True)
+def description_finalize_merge(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    file: str = typer.Option(..., "--file", help="Description file the merge belongs to"),
+    merged: str = typer.Option(..., "--merged", help="The merged text a person wrote"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Re-bind the merged text, refusing if the issue moved again meanwhile."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        result = description_merge.finalize_merge(client, key, Path(file), merged=Path(merged))
+        typer.echo(format_output(result, fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)
+
+
+@description_app.command("set-authority")
+def description_set_authority(
+    ctx: typer.Context,
+    key: str = typer.Argument(..., help="Issue key"),
+    file: str = typer.Option(..., "--file", help="Description file to hand authority to"),
+    to: str = typer.Option(..., "--to", help="Which representation publishes from here: md|wiki"),
+    format: str | None = typer.Option(None, "--format", help="Override output format (same as global atls --format)"),
+) -> None:
+    """Move which representation publishes, re-reading the issue while doing it."""
+    ctx.ensure_object(dict)
+    fmt = _resolve_fmt(ctx.obj, format)
+    try:
+        client = _make_client(ctx.obj)
+        typer.echo(format_output(description_merge.set_authority(client, key, Path(file), to=to), fmt))
+    except AtlasError as error:
+        _handle_error(error, fmt)

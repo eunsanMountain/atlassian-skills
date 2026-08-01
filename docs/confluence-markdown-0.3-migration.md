@@ -151,7 +151,7 @@ The first remote mutation is preceded by a fresh page/version/hash and local-fil
 
 Partial progress is represented by bounded `atls:operation` and per-asset comments in the same managed file. They contain operation/page/source/candidate hashes and receipt identity, never raw storage, the full Markdown body, attachment bytes, or credentials.
 
-States include `asset receipt`, `upload_unknown`, `body_put_failed`, `readback_pending`, `reconciled`, and `conflict`. After success the operation comments are removed. After a crash or lost response, rerun the same `push-md`; fresh remote evidence either adopts the exact mutation, retries a proved-unapplied request, or reports a conflict. It never silently retries an unknown create/upload/PUT and never reports success without journal/read-back reconciliation.
+States include `asset receipt`, `upload_unknown`, `body_put_not_observed`, `readback_pending`, `reconciled`, and `conflict`. After success the operation comments are removed. After a crash or lost response, rerun the same `push-md`; fresh remote evidence either adopts the exact mutation, retries a proved-unapplied request, or reports a conflict. It never silently retries an unknown create/upload/PUT and never reports success without journal/read-back reconciliation.
 
 A successful managed `push-md` reports `status=reconciled`. This is the journal-finalize vocabulary; it does not by itself mean a recovery happened. An actually adopted response loss is flagged separately by `adopted_response_loss` or `adopted_asset_response_loss` on that same receipt. A stateless `page update --body-format md` success instead reports `status=updated`, and a proven no-op reports `status=no_change` with `put_count=0` on either path — a success, not a skip. The intermediate states above (`readback_pending`, `manual_recovery`, `local_finalize_conflict`, `conflict`, …) and a stale version are not successes and require rerun or reconcile. Branch a receipt consumer on these outcomes, never on field-by-field equality between the managed and stateless transports.
 
@@ -161,7 +161,7 @@ current migration fingerprint again; an operation marker is not stored consent. 
 previously approved write already landed, atls may finalize the local journal without another remote mutation.
 
 `page update --body-format=storage` transports explicit caller-provided storage and is outside Markdown-conversion
-consent. It remains subject to stale-version and read-back checks. atls requires `cfxmark>=0.5.1,<0.6`; because the exact
+consent. It remains subject to stale-version and read-back checks. atls requires `cfxmark>=0.6.0,<0.6.1`; because the exact
 converter version is fingerprint input, an upgrade invalidates pending consent and requires managed-file revalidation.
 
 Managed files and local assets reject symlink, ancestor-symlink, hardlink/reparse, and destination-identity swaps at their mutation boundaries.

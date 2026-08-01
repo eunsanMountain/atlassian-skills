@@ -6,6 +6,13 @@ import re
 from pathlib import Path
 from typing import Any
 
+from atlassian_skills.confluence.compatibility import compatibility_payload
+from atlassian_skills.confluence.identity_gate import assert_identity_carried
+from atlassian_skills.confluence.local_assets import (
+    AssetUploadInterrupted,
+    prepare_assets,
+    upload_assets,
+)
 from atlassian_skills.core.errors import (
     MigrationConsentRequiredError,
     ValidationError,
@@ -112,7 +119,7 @@ def _managed_retry_argv(
     reason: str | None,
     minor_edit: bool,
 ) -> tuple[str, ...]:
-    argv = ["atls", "confluence", "page", "push-md", page_id, "--md-file", str(managed_path)]
+    argv = ["atls", "confluence", "page", "md", "push", page_id, "--md-file", str(managed_path)]
     for prefix in passthrough_prefixes or ():
         argv.extend(("--passthrough-prefix", prefix))
     if if_version is not None:
@@ -135,6 +142,9 @@ def push_md(
     attachment_if_exists: str | None = None,
     if_version: int | None = None,
     managed_path: Path | None = None,
+    #: Where a relative image reference resolves from. The Markdown file's own
+    #: directory unless the caller widened it.
+    asset_dir: Path | None = None,
     reason: str | None = None,
     minor_edit: bool = False,
     accept_migration: str | None = None,
@@ -249,6 +259,13 @@ def push_md(
         )
     _assert_push_safe_source(md_content)
 
+    # Local images become attachments, and the document is rewritten to point at
+    # them, before anything is converted. Resolving after conversion would mean
+    # rewriting storage instead of Markdown, which is harder to get right and
+    # impossible to show in a dry run.
+    prepared = prepare_assets(md_content, base_dir=asset_dir)
+    md_content = prepared.markdown
+
     from atlassian_skills.core.format.markdown import md_to_confluence_storage_result
 
     local_conversion = md_to_confluence_storage_result(
@@ -329,6 +346,11 @@ def push_md(
             {"status": "no_change", "page_id": page_id, "version": current_version, "put_count": 0}
         )
 
+    # Checked before the dry-run return so a dry run reports the refusal too:
+    # finding out at publish time that the publish is refused is the failure mode
+    # this whole design exists to remove.
+    assert_identity_carried(page_id, current_body, storage_body, workflow="stateless")
+
     if dry_run:
         return result_with_diagnostics(
             {
@@ -337,8 +359,34 @@ def push_md(
                 "dry_run": True,
                 "would_update": True,
                 "version": current_version + 1,
+                "assets": prepared.plan.to_dict(),
+                # Measured against the body just fetched, for the same reason the
+                # managed path re-measures: the remote may have moved since the
+                # pull, and the classification moves with it.
+                "compatibility": compatibility_payload(page_id, current_body),
             }
         )
+
+    # Uploaded before the body, so the page never references an attachment that is
+    # not there yet. The reverse order leaves a window where every image on the
+    # page is broken.
+    uploaded: tuple[str, ...] = ()
+    if prepared.plan.upload:
+        try:
+            uploaded = upload_assets(client, page_id, prepared.plan).uploaded
+        except AssetUploadInterrupted as interrupted:
+            raise ValidationError(
+                f"Image upload stopped at {interrupted.failed}; the page body was not changed.",
+                hint=(
+                    "Files already uploaded stay on the page. Re-running reuses them rather "
+                    "than uploading again, and nothing is deleted."
+                ),
+                context={
+                    "reason": "asset_upload_interrupted",
+                    "uploaded": list(interrupted.uploaded),
+                    "failed": interrupted.failed,
+                },
+            ) from interrupted
 
     # PUT with new version
     new_version = current_version + 1
@@ -363,7 +411,14 @@ def push_md(
             if_exists=attachment_if_exists or "replace",
         )
 
-    return result_with_diagnostics({"status": "updated", "page_id": page_id, "version": new_version})
+    return result_with_diagnostics(
+        {
+            "status": "updated",
+            "page_id": page_id,
+            "version": new_version,
+            **({"assets": {"uploaded": list(uploaded)}} if uploaded else {}),
+        }
+    )
 
 
 def _storage_equivalent(

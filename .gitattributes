@@ -1,0 +1,11 @@
+# Captured failure transcripts are verbatim records, whitespace included.
+#
+# `docs/release-evidence/**/a2/*-red.txt` are pytest output captured before a fix, kept so a
+# later reader can see the failure the fix was written against rather than a description of
+# it. pytest indents continuation lines and leaves trailing spaces on blank ones, so
+# `git diff --check` reports several hundred trailing-whitespace warnings across them.
+#
+# Normalising would edit evidence to silence a linter. Declaring the intent is the honest
+# option: these paths are exempt from whitespace checks, and the exemption is scoped to the
+# transcripts rather than applied to the tree.
+docs/release-evidence/**/a2/*-red.txt -whitespace

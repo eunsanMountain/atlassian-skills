@@ -1,185 +1,7 @@
 {
-  "schema": "atls-cli-delta-classification-v1",
   "baseline": "atls v0.2.13 (2d0b887)",
-  "target": "atls 0.3.0 (Markdown-first informed migration)",
-  "plan": ".omx/plans/atls-0.3.0-markdown-first-informed-migration-plan.md",
-  "plan_sha256": "945b8eae8af5e5cd8f141011a4d16cf1a6fd800cd342a971d78d662beba583ef",
-  "note": [
-    "Plan 4.4 makes v0.2.13 the public compatibility baseline: anything not listed here",
-    "must stay byte-identical in the CLI surface.",
-    "'entries' classifies the v0.2.13 -> target 0.3.0 delta.",
-    "'candidate_only' lists surface that exists in the withdrawn 0.3.0 candidate (2e765e2)",
-    "but is absent from both v0.2.13 and the target, so it is neither a baseline delta nor",
-    "an addition; Story 11 deletes it. Tracking it separately keeps the gate honest while",
-    "the withdrawn candidate is still checked out."
-  ],
-  "entries": {
-    "confluence page create": {
-      "classification": "changed",
-      "plan_ref": "5.7, Story 9",
-      "reason": "Markdown writes use source-bound informed-consent preflight.",
-      "params": {
-        "accept_conversion": {
-          "classification": "added",
-          "plan_ref": "5.7, Story 9",
-          "reason": "Requires the exact returned source-conversion fingerprint before a lossy create."
-        }
-      }
-    },
-    "confluence page get": {
-      "classification": "changed",
-      "plan_ref": "5.2, Story 10",
-      "reason": "Readable Markdown can preserve explicitly selected HTML-comment prefixes.",
-      "params": {
-        "passthrough_prefix": {
-          "classification": "added",
-          "plan_ref": "5.2, Story 10",
-          "reason": "Canonical repeatable prefix allowlist for readable Markdown conversion."
-        }
-      }
-    },
-    "confluence page inspect": {
-      "classification": "added",
-      "plan_ref": "5.2, Story 10",
-      "reason": "Read-only page diagnostics and workflow recommendation surface."
-    },
-    "confluence page pull-batch": {
-      "classification": "changed",
-      "plan_ref": "5.3.1, Story 6",
-      "reason": "Batch pull keeps the existing command while adopting the same portable manifest and asset materialization contract as pull-md.",
-      "params": {
-        "no_assets": {
-          "classification": "added",
-          "plan_ref": "5.3.1, Story 6",
-          "reason": "Explicitly records referenced attachments as verified remote-only manifest entries."
-        }
-      }
-    },
-    "confluence page pull-md": {
-      "classification": "changed",
-      "plan_ref": "4.4 breaking-change table",
-      "reason": "--output becomes required; readable stdout moves to `page get --body-repr=md`.",
-      "params": {
-        "output": {
-          "classification": "changed",
-          "change": "required: false -> true",
-          "plan_ref": "4.4, 5.3"
-        },
-        "no_assets": {
-          "classification": "added",
-          "plan_ref": "5.3, Story 6",
-          "reason": "Explicitly records referenced attachments as verified remote-only manifest entries."
-        }
-      }
-    },
-    "confluence page push-md": {
-      "classification": "changed",
-      "plan_ref": "4.4 breaking-change table, 5.6",
-      "reason": "Ad-hoc attachment flags are replaced by managed `cfxmark:asset` identity and smart sync; --reason/--minor-edit are additive version-message controls.",
-      "params": {
-        "asset_dir": {
-          "classification": "removed",
-          "plan_ref": "4.4",
-          "reason": "Superseded by managed asset identity in the Markdown manifest."
-        },
-        "attachment": {
-          "classification": "removed",
-          "plan_ref": "4.4",
-          "reason": "Superseded by managed asset identity in the Markdown manifest."
-        },
-        "attachment_if_exists": {
-          "classification": "removed",
-          "plan_ref": "4.4",
-          "reason": "Superseded by attachment ID/version/hash smart sync."
-        },
-        "reason": {
-          "classification": "added",
-          "plan_ref": "5.6",
-          "reason": "Confluence version message; combined after the generated migration/append prefix."
-        },
-        "minor_edit": {
-          "classification": "added",
-          "plan_ref": "5.6",
-          "reason": "Marks the Confluence version as a minor edit."
-        },
-        "accept_migration": {
-          "classification": "added",
-          "plan_ref": "5.4, Story 7",
-          "reason": "Requires the exact source-bound migration fingerprint before a consented write."
-        }
-      }
-    },
-    "confluence page update": {
-      "classification": "changed",
-      "plan_ref": "5.7",
-      "reason": "Additive version-message controls only; --if-version stays optional per 4.4.",
-      "params": {
-        "reason": {
-          "classification": "added",
-          "plan_ref": "5.7",
-          "reason": "Confluence version message."
-        },
-        "minor_edit": {
-          "classification": "added",
-          "plan_ref": "5.7",
-          "reason": "Marks the Confluence version as a minor edit."
-        },
-        "accept_migration": {
-          "classification": "added",
-          "plan_ref": "5.7, Story 9",
-          "reason": "Requires the exact source-bound migration fingerprint before a lossy update."
-        }
-      }
-    },
-    "confluence page copy": {
-      "classification": "added",
-      "plan_ref": "5.9",
-      "reason": "Verified client-side page copy; kept in the target surface for run-owned validation copies."
-    },
-    "confluence page patch-text": {
-      "classification": "added",
-      "plan_ref": "5.8",
-      "reason": "Exact plain-text leaf patch; the canonical low-cost edit path in the target model."
-    },
-    "confluence page validate-local": {
-      "classification": "added",
-      "plan_ref": "5.4",
-      "reason": "Offline managed-file validation; rewritten file-first in Story 5-7 but the command stays."
-    },
-    "setup uninstall": {
-      "classification": "added",
-      "plan_ref": "4.4 (atls uninstall --state), 10.4",
-      "reason": "Removes atls-installed skill files and routing blocks; --state performs legacy local-state cleanup without opening a SQLite runtime."
-    },
-    "doctor": {
-      "classification": "changed",
-      "plan_ref": "0.3.1 corp-network, T4 / GitHub #18",
-      "reason": "Gains an opt-in flag; every pre-existing parameter and default is untouched.",
-      "params": {
-        "check_auth": {
-          "classification": "added",
-          "plan_ref": "0.3.1 corp-network, T4 / GitHub #18",
-          "reason": "Opt-in live probe of each configured product. Off by default so `doctor` keeps its no-network, no-credential-prompt contract."
-        }
-      }
-    },
-    "upgrade": {
-      "classification": "changed",
-      "plan_ref": "0.3.1 corp-network, T6 / GitHub #16",
-      "reason": "Gains an opt-in flag; every pre-existing parameter and default is untouched.",
-      "params": {
-        "system_certs": {
-          "classification": "added",
-          "plan_ref": "0.3.1 corp-network, T6 / GitHub #16",
-          "reason": "Opt-in pass-through of `uv tool upgrade --system-certs` for TLS-inspecting corporate proxies. Never appended automatically — older uv builds reject the flag."
-        }
-      }
-    }
-  },
   "candidate_only": {
-    "plan_ref": "4.4 breaking-change table (candidate-only row), 10.3",
     "owner_story": "Story 11",
-    "reason": "Present only in the withdrawn 0.3.0 candidate (2e765e2). Never published, so removing it carries no public compatibility debt. File-first consent replaces it.",
     "paths": [
       "confluence page migration",
       "confluence page migration accept",
@@ -203,6 +25,462 @@
       "state restore",
       "state show",
       "state stats"
-    ]
-  }
+    ],
+    "plan_ref": "4.4 breaking-change table (candidate-only row), 10.3",
+    "reason": "Present only in the withdrawn 0.3.0 candidate (2e765e2). Never published, so removing it carries no public compatibility debt. File-first consent replaces it."
+  },
+  "entries": {
+    "confluence page copy": {
+      "classification": "added",
+      "plan_ref": "5.9",
+      "reason": "Verified client-side page copy; kept in the target surface for run-owned validation copies."
+    },
+    "confluence page create": {
+      "classification": "changed",
+      "params": {
+        "accept_conversion": {
+          "classification": "added",
+          "plan_ref": "5.7, Story 9",
+          "reason": "Requires the exact returned source-conversion fingerprint before a lossy create."
+        },
+        "asset_dir": {
+          "classification": "added",
+          "note": "Local image support. A Markdown body writing ![](diagram.png) had no way to publish that file: these commands had no notion of a local file, so the reference shipped as a broken link. Optional -- omitted, references resolve from the body file's own directory, and a body from stdin with a local reference is refused with this flag named rather than resolved against whatever the shell's working directory happened to be."
+        }
+      },
+      "plan_ref": "5.7, Story 9",
+      "reason": "Markdown writes use source-bound informed-consent preflight."
+    },
+    "confluence page diff-local": {
+      "classification": "changed",
+      "plan_ref": "A2/D2",
+      "reason": "Hidden from help and completion; behaviour, options, exit codes and JSON unchanged.",
+      "visibility": "hidden",
+      "visibility_reason": "Hidden from help and completion in favour of the `md`/`xhtml` workflow groups. The command, its options, its exit codes and its JSON are unchanged and scripts keep working -- but two documented names for one command is the confusion the grouping was added to remove, so only one is documented. Returned `next_actions` name the visible spelling."
+    },
+    "confluence page diff-xhtml": {
+      "classification": "added",
+      "plan_ref": "P3b",
+      "reason": "The escape hatch for pages Markdown cannot hold. The low-level read and write already existed -- 'page get --body-repr=storage' and 'page update --body-format=storage' -- and everything around them did not, so guidance to use XHTML left callers composing commands out of parts of an error message. What the server holds now against what is on disk, plus the candidate hash a publish takes."
+    },
+    "confluence page finalize-merge": {
+      "classification": "added",
+      "plan_ref": "P3a",
+      "reason": "Rebinds a reviewed merge to the current remote as a document push-md accepts. prepare-merge writes plain Markdown so an agent can read and edit it, and push-md takes only a managed document -- without this the workflow ended one step short of the thing it exists for: the merged text was there and nothing could publish it. Rewriting the manifest is the one part of a merge that must not be done by hand, and it writes a new file rather than the canonical one, because until the push succeeds nothing has been published."
+    },
+    "confluence page get": {
+      "classification": "changed",
+      "params": {
+        "passthrough_prefix": {
+          "classification": "added",
+          "plan_ref": "5.2, Story 10",
+          "reason": "Canonical repeatable prefix allowlist for readable Markdown conversion."
+        }
+      },
+      "plan_ref": "5.2, Story 10",
+      "reason": "Readable Markdown can preserve explicitly selected HTML-comment prefixes."
+    },
+    "confluence page inspect": {
+      "classification": "added",
+      "plan_ref": "5.2, Story 10",
+      "reason": "Read-only page diagnostics and workflow recommendation surface."
+    },
+    "confluence page md": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Workflow group. The names existed but the shape did not: `get`/`update` are single actions while the managed Markdown and storage paths are workflows, and nothing in the naming said which was which. The same function objects are registered under both spellings, so there is one implementation and the two cannot drift. Old names keep working."
+    },
+    "confluence page md compare": {
+      "classification": "added",
+      "plan_ref": "7.2",
+      "reason": "The single canonical comparison command, and three-way: base, local file and page, so a remote edit made since the pull shows up here instead of being discovered by a refused push. Read-only in both directions -- PUT 0, and no canonical file written unless --write-workspace names a directory. `--view=diff` renders the same comparison as text; the 0.4.0 `md diff` alias is withdrawn because it pointed at `diff-local`, which compares against the base and cannot see a remote edit at all."
+    },
+    "confluence page md finalize-merge": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `finalize-merge`. Visible: `merge_available` and `prepare-merge` emit it as a `next_actions` argv, and an action the product tells a caller to run has to be one `--help` admits exists.",
+      "hidden": false
+    },
+    "confluence page md prepare-merge": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `prepare-merge`. Visible: `merge_available` and `prepare-merge` emit it as a `next_actions` argv, and an action the product tells a caller to run has to be one `--help` admits exists.",
+      "hidden": false
+    },
+    "confluence page md prepare-reconcile": {
+      "classification": "added",
+      "plan_ref": "7.3",
+      "reason": "Lays base, local and remote out in a run-owned directory with a report. Writes only inside that directory; the canonical file is untouched. Replaces prepare-merge, which stays as a hidden alias for one release."
+    },
+    "confluence page md pull": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `pull-md`."
+    },
+    "confluence page md pull-batch": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `pull-batch`."
+    },
+    "confluence page md push": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `push-md`."
+    },
+    "confluence page md rebaseline": {
+      "classification": "added",
+      "plan_ref": "5.4",
+      "reason": "The narrow escape from manifest_base_projection_mismatch: the binding checks out and the recorded base hash is still not what this converter produces. PUT 0, body unchanged, and it requires the approval fingerprint of a comparison the caller reviewed. The next push performs the full proof with no waiver."
+    },
+    "confluence page md record-reconciled-against": {
+      "classification": "added",
+      "plan_ref": "7.4",
+      "reason": "Rebinds a reconciled body to the remote it was reconciled against. PUT 0. The only step in the stale flow that may replace a canonical body, and it refuses unless a fresh read still produces the fingerprint the comparison did -- so a page that moved or a file edited meanwhile ends in a named refusal. Replaces finalize-merge, which stays as a hidden alias."
+    },
+    "confluence page md validate": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `validate-local`; it validates a managed Markdown file."
+    },
+    "confluence page patch-text": {
+      "classification": "added",
+      "plan_ref": "5.8",
+      "reason": "Exact plain-text leaf patch; the canonical low-cost edit path in the target model."
+    },
+    "confluence page prepare-merge": {
+      "classification": "added",
+      "plan_ref": "P3a",
+      "reason": "Lays out base, local and remote as three files so a stale edit can be merged by the party that reads documents for meaning. Measured across 55 live pages, every managed push against a page someone else had touched stopped at the refusal with nothing to do but redo the edit by hand. Reads the page and writes local files; it never publishes."
+    },
+    "confluence page pull-batch": {
+      "classification": "changed",
+      "params": {
+        "no_assets": {
+          "classification": "added",
+          "plan_ref": "5.3.1, Story 6",
+          "reason": "Explicitly records referenced attachments as verified remote-only manifest entries."
+        }
+      },
+      "plan_ref": "5.3.1, Story 6",
+      "reason": "Batch pull keeps the existing command while adopting the same portable manifest and asset materialization contract as pull-md.",
+      "visibility": "hidden",
+      "visibility_reason": "Hidden from help and completion in favour of the `md`/`xhtml` workflow groups. The command, its options, its exit codes and its JSON are unchanged and scripts keep working -- but two documented names for one command is the confusion the grouping was added to remove, so only one is documented. Returned `next_actions` name the visible spelling."
+    },
+    "confluence page pull-md": {
+      "classification": "changed",
+      "params": {
+        "accept_migration": {
+          "classification": "added",
+          "plan_ref": "8.2",
+          "reason": "A page whose grade forbids the canonical write now writes nothing; this approves the named losses of a migration_required page by the exact fingerprint of the report the refusal printed. Scoped to that one grade on purpose -- 8.2 declines to add a plain --force, and a flag that unlocked every forbidden grade would be one."
+        },
+        "no_assets": {
+          "classification": "added",
+          "plan_ref": "5.3, Story 6",
+          "reason": "Explicitly records referenced attachments as verified remote-only manifest entries."
+        },
+        "output": {
+          "change": "required: false -> true",
+          "classification": "changed",
+          "plan_ref": "4.4, 5.3"
+        },
+        "write_base_cache": {
+          "classification": "added",
+          "plan_ref": "10.1, AC1",
+          "reason": "The full base Markdown sidecar is no longer written by default: the v3 manifest is the only required persistent metadata and the merge base comes from the page history it names. This flag asks for the cache anyway, for offline or retention use. Existing sidecars are still read."
+        }
+      },
+      "plan_ref": "4.4 breaking-change table",
+      "reason": "--output becomes required; readable stdout moves to `page get --body-repr=md`.",
+      "visibility": "hidden",
+      "visibility_reason": "Hidden from help and completion in favour of the `md`/`xhtml` workflow groups. The command, its options, its exit codes and its JSON are unchanged and scripts keep working -- but two documented names for one command is the confusion the grouping was added to remove, so only one is documented. Returned `next_actions` name the visible spelling."
+    },
+    "confluence page pull-xhtml": {
+      "classification": "added",
+      "plan_ref": "P3b",
+      "reason": "The escape hatch for pages Markdown cannot hold. The low-level read and write already existed -- 'page get --body-repr=storage' and 'page update --body-format=storage' -- and everything around them did not, so guidance to use XHTML left callers composing commands out of parts of an error message. Writes the storage document byte-for-byte and records the version and hash it came from."
+    },
+    "confluence page push-md": {
+      "classification": "changed",
+      "params": {
+        "accept_migration": {
+          "classification": "added",
+          "plan_ref": "5.4, Story 7",
+          "reason": "Requires the exact source-bound migration fingerprint before a consented write."
+        },
+        "asset_dir": {
+          "classification": "removed",
+          "plan_ref": "4.4",
+          "reason": "Superseded by managed asset identity in the Markdown manifest."
+        },
+        "attachment": {
+          "classification": "removed",
+          "plan_ref": "4.4",
+          "reason": "Superseded by managed asset identity in the Markdown manifest."
+        },
+        "attachment_if_exists": {
+          "classification": "removed",
+          "plan_ref": "4.4",
+          "reason": "Superseded by attachment ID/version/hash smart sync."
+        },
+        "minor_edit": {
+          "classification": "added",
+          "plan_ref": "5.6",
+          "reason": "Marks the Confluence version as a minor edit."
+        },
+        "reason": {
+          "classification": "added",
+          "plan_ref": "5.6",
+          "reason": "Confluence version message; combined after the generated migration/append prefix."
+        }
+      },
+      "plan_ref": "4.4 breaking-change table, 5.6",
+      "reason": "Ad-hoc attachment flags are replaced by managed `cfxmark:asset` identity and smart sync; --reason/--minor-edit are additive version-message controls.",
+      "visibility": "hidden",
+      "visibility_reason": "Hidden from help and completion in favour of the `md`/`xhtml` workflow groups. The command, its options, its exit codes and its JSON are unchanged and scripts keep working -- but two documented names for one command is the confusion the grouping was added to remove, so only one is documented. Returned `next_actions` name the visible spelling."
+    },
+    "confluence page push-xhtml": {
+      "classification": "added",
+      "plan_ref": "P3b",
+      "reason": "The escape hatch for pages Markdown cannot hold. The low-level read and write already existed -- 'page get --body-repr=storage' and 'page update --body-format=storage' -- and everything around them did not, so guidance to use XHTML left callers composing commands out of parts of an error message. Publishes only the exact bytes named by --accept-candidate: a storage document can be edited between the dry run that was reviewed and the push that publishes."
+    },
+    "confluence page recover-assets": {
+      "classification": "added",
+      "plan_ref": "P5b",
+      "reason": "Uploads the pictures a page is missing, without touching its body. A create whose uploads did not all land could not be recovered by rerunning the write: after a create the page body already is the candidate, so the update returns no_change and never reaches the uploads. Missing means no attachment with that filename -- not a claim that two files are the same, but that the reference resolves, which is what was broken. Idempotent by consequence: a second run uploads nothing."
+    },
+    "confluence page set-authority": {
+      "classification": "added",
+      "plan_ref": "P3b",
+      "reason": "Declares which representation may publish a page. Without it, Markdown and storage can both publish the same page and the conflict this design set out to remove returns under a new name. Takes the files as well as the id because nothing here maps an id to the documents pulled from it."
+    },
+    "confluence page update": {
+      "classification": "changed",
+      "params": {
+        "accept_migration": {
+          "classification": "added",
+          "plan_ref": "5.7, Story 9",
+          "reason": "Requires the exact source-bound migration fingerprint before a lossy update."
+        },
+        "asset_dir": {
+          "classification": "added",
+          "note": "Local image support. A Markdown body writing ![](diagram.png) had no way to publish that file: these commands had no notion of a local file, so the reference shipped as a broken link. Optional -- omitted, references resolve from the body file's own directory, and a body from stdin with a local reference is refused with this flag named rather than resolved against whatever the shell's working directory happened to be."
+        },
+        "minor_edit": {
+          "classification": "added",
+          "plan_ref": "5.7",
+          "reason": "Marks the Confluence version as a minor edit."
+        },
+        "reason": {
+          "classification": "added",
+          "plan_ref": "5.7",
+          "reason": "Confluence version message."
+        }
+      },
+      "plan_ref": "5.7",
+      "reason": "Additive version-message controls only; --if-version stays optional per 4.4."
+    },
+    "confluence page validate-local": {
+      "classification": "added",
+      "plan_ref": "5.4",
+      "reason": "Offline managed-file validation; rewritten file-first in Story 5-7 but the command stays."
+    },
+    "confluence page validate-xhtml": {
+      "classification": "added",
+      "plan_ref": "P3b",
+      "reason": "The escape hatch for pages Markdown cannot hold. The low-level read and write already existed -- 'page get --body-repr=storage' and 'page update --body-format=storage' -- and everything around them did not, so guidance to use XHTML left callers composing commands out of parts of an error message. Offline parse, namespace and identity check: the failures worth catching here are the ones an editor introduces, and none of them need a round trip."
+    },
+    "confluence page xhtml": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Workflow group. The names existed but the shape did not: `get`/`update` are single actions while the managed Markdown and storage paths are workflows, and nothing in the naming said which was which. The same function objects are registered under both spellings, so there is one implementation and the two cannot drift. Old names keep working."
+    },
+    "confluence page xhtml compare": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `diff-xhtml`. One verb, one meaning. `compare` is this local file against the page as it stands now; `diff` across this CLI is two things that already exist on the server (`confluence page diff` between versions, `bitbucket pr diff`). Renamed before publication, never shipped as `diff`, so no alias is kept."
+    },
+    "confluence page xhtml pull": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `pull-xhtml`."
+    },
+    "confluence page xhtml push": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `push-xhtml`."
+    },
+    "confluence page xhtml set-authority": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `set-authority`."
+    },
+    "confluence page xhtml validate": {
+      "classification": "added",
+      "plan_ref": "A2",
+      "reason": "Alias of `validate-xhtml`."
+    },
+    "doctor": {
+      "classification": "changed",
+      "params": {
+        "check_auth": {
+          "classification": "added",
+          "plan_ref": "0.3.1 corp-network, T4 / GitHub #18",
+          "reason": "Opt-in live probe of each configured product. Off by default so `doctor` keeps its no-network, no-credential-prompt contract."
+        }
+      },
+      "plan_ref": "0.3.1 corp-network, T4 / GitHub #18",
+      "reason": "Gains an opt-in flag; every pre-existing parameter and default is untouched."
+    },
+    "jira issue description": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.6",
+      "reason": "Group. Managed description workflows, kept apart from the single-shot 'issue update' so a command name says which one it is."
+    },
+    "jira issue description finalize-merge": {
+      "classification": "added",
+      "hidden": true,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.5",
+      "reason": "Re-binds the merged text to the issue as it is NOW, refusing if it moved again while the merge was being read. Without that refusal a merge taking ten minutes publishes over minute three. Hidden alias: `prepare-reconcile` / `record-reconciled-against` are the visible spellings, and the refusals name those."
+    },
+    "jira issue description md": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.3, C7.4",
+      "reason": "Group. The managed Markdown representation, reachable only for descriptions whose conversion was proven by a round trip."
+    },
+    "jira issue description md compare": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.3, C7.4",
+      "reason": "Local edit and remote change kept apart, so a caller shown only the first does not republish over somebody else's edit. One verb, one meaning. `compare` is this local file against the page as it stands now; `diff` across this CLI is two things that already exist on the server (`confluence page diff` between versions, `bitbucket pr diff`). Renamed before publication, never shipped as `diff`, so no alias is kept."
+    },
+    "jira issue description md pull": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.3, C7.4",
+      "reason": "Writes Markdown ONLY when the grade says it could be published back; otherwise refuses with the exact wiki argv. A file that exists is a file somebody edits."
+    },
+    "jira issue description md push": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.3, C7.4, C7.7",
+      "reason": "Publishes the Markdown as the description. Proves identity by VALUE and multiplicity against an issue read freshly in the same call, journals the intent before the request, and reads back. Carries attachment references; uploads nothing."
+    },
+    "jira issue description md validate": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.3, C7.4",
+      "reason": "Offline. Reports which representation owns the directory, so a caller does not discover at push time that the wiki side is authoritative."
+    },
+    "jira issue description prepare-merge": {
+      "classification": "added",
+      "hidden": true,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.5",
+      "reason": "Writes base, local and remote as three files and merges nothing. A three-way merge of prose has to be done by somebody who knows what the words mean. Hidden alias: `prepare-reconcile` / `record-reconciled-against` are the visible spellings, and the refusals name those."
+    },
+    "jira issue description prepare-reconcile": {
+      "classification": "added",
+      "plan_ref": "D3",
+      "reason": "§7.1's public reconciliation name, so Jira and Confluence share one vocabulary for the same operation. `prepare-merge` stays as a hidden alias and keeps its own entry: renaming it away would break scripts to tidy a help listing."
+    },
+    "jira issue description record-reconciled-against": {
+      "classification": "added",
+      "plan_ref": "D3",
+      "reason": "§7.1's public reconciliation name, so Jira and Confluence share one vocabulary for the same operation. `finalize-merge` stays as a hidden alias and keeps its own entry: renaming it away would break scripts to tidy a help listing."
+    },
+    "jira issue description set-authority": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.5",
+      "reason": "Moves which representation publishes from a directory, re-reading the issue while doing it. Handing authority over on a stale binding is how the next push overwrites an edit nobody saw."
+    },
+    "jira issue description wiki": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.6",
+      "reason": "Group. The exact representation Jira stores, byte-preserving."
+    },
+    "jira issue description wiki compare": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.6",
+      "reason": "What a push would change, computed against a FRESH read so a remote edit is visible rather than hidden behind local ones. One verb, one meaning. `compare` is this local file against the page as it stands now; `diff` across this CLI is two things that already exist on the server (`confluence page diff` between versions, `bitbucket pr diff`). Renamed before publication, never shipped as `diff`, so no alias is kept."
+    },
+    "jira issue description wiki pull": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.6",
+      "reason": "Writes the description exactly as stored plus a binding (issue id AND key, updated, source sha256, attachment identity)."
+    },
+    "jira issue description wiki push": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.6",
+      "reason": "Re-read, refuse if the description moved, write, read back. Stale is decided on updated AND source hash together, because updated moves for unrelated reasons."
+    },
+    "jira issue description wiki validate": {
+      "classification": "added",
+      "hidden": false,
+      "note": "Exposed in 0.3.4, all at once. A description workflow that can pull but not publish, or publish but not recover, invites a caller to build on a half whose other half has no safe answer -- so the whole set was kept hidden until the acceptance ran: five wiki->md->wiki cycles reaching a fixed point, unsupported input writing nothing, a proven candidate matching what was sent and what came back, and each refusal named separately. Verified offline and against a live sandbox issue.",
+      "plan_ref": "C7.1, C7.6",
+      "reason": "Offline. Reports what the file can still do -- a missing binding narrows capability rather than blocking, and says which capability."
+    },
+    "jira issue transition": {
+      "classification": "changed",
+      "params": {
+        "comment_format": {
+          "classification": "added",
+          "plan_ref": "C5",
+          "reason": "`worklog add` has accepted `--comment-format md` since it was written and this took the comment raw, so the same Markdown published as a transition comment and as a worklog note produced two different things on the issue. The difference tracked where the two commands were written, not anything about comments."
+        }
+      },
+      "plan_ref": "C5",
+      "reason": "Transition comments take the same format contract as every other Jira comment."
+    },
+    "setup uninstall": {
+      "classification": "added",
+      "plan_ref": "4.4 (atls uninstall --state), 10.4",
+      "reason": "Removes atls-installed skill files and routing blocks; --state performs legacy local-state cleanup without opening a SQLite runtime."
+    },
+    "upgrade": {
+      "classification": "changed",
+      "params": {
+        "system_certs": {
+          "classification": "added",
+          "plan_ref": "0.3.1 corp-network, T6 / GitHub #16",
+          "reason": "Opt-in pass-through of `uv tool upgrade --system-certs` for TLS-inspecting corporate proxies. Never appended automatically — older uv builds reject the flag."
+        }
+      },
+      "plan_ref": "0.3.1 corp-network, T6 / GitHub #16",
+      "reason": "Gains an opt-in flag; every pre-existing parameter and default is untouched."
+    }
+  },
+  "note": [
+    "Plan 4.4 makes v0.2.13 the public compatibility baseline: anything not listed here",
+    "must stay byte-identical in the CLI surface.",
+    "'entries' classifies the v0.2.13 -> target 0.3.0 delta.",
+    "'candidate_only' lists surface that exists in the withdrawn 0.3.0 candidate (2e765e2)",
+    "but is absent from both v0.2.13 and the target, so it is neither a baseline delta nor",
+    "an addition; Story 11 deletes it. Tracking it separately keeps the gate honest while",
+    "the withdrawn candidate is still checked out."
+  ],
+  "plan": ".omx/plans/atls-0.3.0-markdown-first-informed-migration-plan.md",
+  "plan_sha256": "945b8eae8af5e5cd8f141011a4d16cf1a6fd800cd342a971d78d662beba583ef",
+  "schema": "atls-cli-delta-classification-v1",
+  "target": "atls 0.3.0 (Markdown-first informed migration)"
 }

@@ -567,8 +567,18 @@ def stage_managed_asset_operations(
         if item.action == "unreferenced":
             continue
         matches = bindings.get(item.src, [])
-        if len(matches) != 1:
+        if not matches:
             raise ManagedOperationError("asset_image_binding_missing_or_ambiguous")
+        # One marker per asset, not per reference. Showing the same picture twice
+        # is ordinary Markdown, and requiring exactly one binding made those
+        # documents pass the dry run and then fail the publish with an internal
+        # error -- the worst shape a refusal can take, because the caller has
+        # already been told it would work.
+        #
+        # The journal entry describes the upload, which happens once however many
+        # times the document points at it, so it is attached to the first
+        # reference and the rest stay plain. Republishing rewrites every
+        # reference from the filename map, which is keyed by src.
         baseline_id = item.remote_id
         baseline_version = item.remote_version
         baseline_sha256 = item.baseline_sha256

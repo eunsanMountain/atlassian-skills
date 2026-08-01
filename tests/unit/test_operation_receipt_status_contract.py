@@ -206,7 +206,12 @@ RECOVERY_MATRIX = (
     RecoveryCase("A2", "source", "partial-applied", "upload-response-loss", "reconciled", 0),
     RecoveryCase("A3", "source", "ambiguous", "create-response-loss", "manual_recovery", 0),
     RecoveryCase("B1", "expected", "expected", "body-response-loss", "reconciled", 0),
-    RecoveryCase("B2", "expected", "expected", "mismatched-storage", "readback_pending", 0),
+    # `manual_recovery`, not `readback_pending`: the recovery read the page and found a
+    # body that is neither the candidate nor the source. §9.12 reserves
+    # `readback_pending` for a readback that did not happen, and calling this one
+    # "pending" sent recovery toward adopting remote state -- the worst move available
+    # when somebody else's edit is what is sitting there.
+    RecoveryCase("B2", "expected", "expected", "mismatched-storage", "manual_recovery", 0),
     RecoveryCase("B3", "source", "all-expected", "body-put-not-applied", "reconciled", 1),
     RecoveryCase("C1", "source", "baseline", "local-body-changed", "manual_recovery_local_changed", 0),
     RecoveryCase("C2", "source", "baseline", "local-asset-changed", "manual_recovery_local_changed", 0),

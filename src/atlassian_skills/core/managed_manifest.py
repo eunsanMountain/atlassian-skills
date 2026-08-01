@@ -13,18 +13,63 @@ _MANIFEST_SUFFIX = " -->"
 _LEGACY_PREFIX = "<!-- atls:binding "
 _HASH_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/+:-]*\Z")
-_FIELD_NAMES = (
-    "v",
-    "page",
-    "site",
-    "remote_version",
-    "remote_storage",
-    "base_md",
-    "assets",
-    "converter",
-    "profile",
-    "passthrough",
-)
+#: One field tuple per manifest version, in canonical order. The order is part of
+#: the format: a document whose fields are the right set in the wrong order is
+#: refused rather than reordered, so a writer cannot drift.
+#:
+#: v3 adds `authority`. It lives in the manifest rather than in a sidecar because a
+#: sidecar can be lost, copied away from its document, or left behind pointing at a
+#: file that has moved on -- and the answer to "may this file publish?" must travel
+#: inside the file it is about.
+_FIELD_NAMES_BY_VERSION: dict[int, tuple[str, ...]] = {
+    2: (
+        "v",
+        "page",
+        "site",
+        "remote_version",
+        "remote_storage",
+        "base_md",
+        "assets",
+        "converter",
+        "profile",
+        "passthrough",
+    ),
+    3: (
+        "v",
+        "page",
+        "site",
+        "remote_version",
+        "remote_storage",
+        "base_md",
+        "authority",
+        "assets",
+        "converter",
+        "profile",
+        "passthrough",
+    ),
+}
+
+#: Read these; write the newest. A v2 document is not rewritten until something
+#: succeeds that has the right to rewrite it -- a pull, a push, or a record.
+SUPPORTED_MANAGED_MANIFEST_VERSIONS: tuple[int, ...] = tuple(sorted(_FIELD_NAMES_BY_VERSION))
+CURRENT_MANAGED_MANIFEST_VERSION: int = max(_FIELD_NAMES_BY_VERSION)
+
+#: Managed Markdown admits one authority. The exact-XHTML workflow keeps its own,
+#: in its own sidecar, because inline metadata inside XHTML would change the bytes
+#: that get published.
+_MANAGED_AUTHORITIES = ("md",)
+
+#: What a profile says about which representation publishes. Only profiles whose
+#: meaning is known appear here: an unknown profile is unknown, not a contradiction,
+#: and calling it one would refuse a document a newer writer produced legitimately.
+_PROFILE_AUTHORITY: dict[str, str] = {
+    "markdown-first": "md",
+    "xhtml-exact": "xhtml",
+}
+
+# Kept for the callers that predate versioned field sets. The v2 spelling, because
+# that is what they were written against.
+_FIELD_NAMES = _FIELD_NAMES_BY_VERSION[2]
 _FENCE_RE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)\Z")
 _INVALID_PERCENT_RE = re.compile(r"%(?![0-9A-Fa-f]{2})")
 _CONTROL_COMMENT_RE = re.compile(
@@ -88,9 +133,24 @@ class ManagedManifest:
     converter: str
     profile: str
     passthrough: tuple[str, ...] = ()
+    #: Which representation may publish this page. v2 documents do not carry it and
+    #: default to `md`, which is what they always meant -- a managed Markdown file is
+    #: a Markdown file. Making it explicit is what lets a later reader tell "this
+    #: file publishes Markdown" from "nobody said".
+    authority: str = "md"
 
     def __post_init__(self) -> None:
-        if self.v != 2:
+        # Version first, and before anything else can raise. A newer writer will add
+        # fields this build has never heard of, and the useful answer is "upgrade",
+        # not "unknown field `authority`" -- which is what the previous ordering
+        # produced, indistinguishable from a corrupt document.
+        if self.v > CURRENT_MANAGED_MANIFEST_VERSION:
+            raise ManagedManifestError(
+                "managed_manifest_newer_version",
+                version=self.v,
+                supported=list(SUPPORTED_MANAGED_MANIFEST_VERSIONS),
+            )
+        if self.v not in _FIELD_NAMES_BY_VERSION:
             raise ManagedManifestError("unsupported_managed_manifest_version", version=self.v)
         if not self.page.isdigit():
             raise ManagedManifestError("invalid_managed_page")
@@ -103,6 +163,19 @@ class ManagedManifest:
         for field, value in (("converter", self.converter), ("profile", self.profile)):
             if not _ASCII_TOKEN_RE.fullmatch(value):
                 raise ManagedManifestError("invalid_manifest_token", field=field)
+        if self.authority not in _MANAGED_AUTHORITIES:
+            raise ManagedManifestError("invalid_managed_authority", authority=self.authority)
+        # A document that says two different things about which representation
+        # publishes it. Whichever field the code happens to read decides what gets
+        # sent, so the honest answer is neither.
+        declared = _PROFILE_AUTHORITY.get(self.profile)
+        if declared is not None and declared != self.authority:
+            raise ManagedManifestError(
+                "managed_manifest_self_contradictory",
+                authority=self.authority,
+                profile=self.profile,
+                profile_implies=declared,
+            )
         canonical = _canonical_passthrough(self.passthrough)
         if self.passthrough != canonical:
             object.__setattr__(self, "passthrough", canonical)
@@ -220,19 +293,31 @@ def extract_asset_records(markdown: str) -> tuple[ManagedAssetRecord, ...]:
 
 
 def serialize_managed_manifest(manifest: ManagedManifest) -> str:
-    values = (
-        str(manifest.v),
-        manifest.page,
-        manifest.site,
-        str(manifest.remote_version),
-        manifest.remote_storage,
-        manifest.base_md,
-        manifest.assets,
-        manifest.converter,
-        manifest.profile,
-        serialize_passthrough(manifest.passthrough),
-    )
-    payload = " ".join(f"{name}={value}" for name, value in zip(_FIELD_NAMES, values, strict=True))
+    """Write the manifest in its own version's field order.
+
+    Reads any supported version and writes whichever one the manifest carries, so
+    the decision to move a document from v2 to v3 belongs to the caller that has the
+    right to rewrite it -- a successful pull, push or record -- and not to whatever
+    happened to serialize it in passing.
+    """
+
+    names = _FIELD_NAMES_BY_VERSION.get(manifest.v)
+    if names is None:
+        raise ManagedManifestError("unsupported_managed_manifest_version", version=manifest.v)
+    available = {
+        "v": str(manifest.v),
+        "page": manifest.page,
+        "site": manifest.site,
+        "remote_version": str(manifest.remote_version),
+        "remote_storage": manifest.remote_storage,
+        "base_md": manifest.base_md,
+        "authority": manifest.authority,
+        "assets": manifest.assets,
+        "converter": manifest.converter,
+        "profile": manifest.profile,
+        "passthrough": serialize_passthrough(manifest.passthrough),
+    }
+    payload = " ".join(f"{name}={available[name]}" for name in names)
     return f"{_MANIFEST_PREFIX}{payload}{_MANIFEST_SUFFIX}"
 
 
@@ -267,15 +352,38 @@ def _parse_manifest_line(line: str) -> ManagedManifest:
     names = tuple(name for name, _value in fields)
     if len(set(names)) != len(names):
         raise ManagedManifestError("duplicate_manifest_field")
-    if names != _FIELD_NAMES:
-        unknown = sorted(set(names) - set(_FIELD_NAMES))
+
+    # `v` is read before the field set is judged, because the field set depends on
+    # it. The previous order compared names against one fixed tuple, so a document
+    # from a newer writer was reported as carrying an unknown field -- the same
+    # answer a corrupt document gets, and the opposite of the useful one.
+    values = dict(fields)
+    if "v" not in values:
+        raise ManagedManifestError("invalid_managed_manifest")
+    try:
+        version = int(values["v"])
+    except ValueError as error:
+        raise ManagedManifestError("invalid_manifest_integer") from error
+    if version > CURRENT_MANAGED_MANIFEST_VERSION:
+        # Deliberately before the field check and carrying no payload: §6.3 forbids
+        # echoing a document this build could not read, and the fields of a version
+        # it does not know are not evidence of anything it can act on.
+        raise ManagedManifestError(
+            "managed_manifest_newer_version",
+            version=version,
+            supported=list(SUPPORTED_MANAGED_MANIFEST_VERSIONS),
+        )
+    expected = _FIELD_NAMES_BY_VERSION.get(version)
+    if expected is None:
+        raise ManagedManifestError("unsupported_managed_manifest_version", version=version)
+    if names != expected:
+        unknown = sorted(set(names) - set(expected))
         raise ManagedManifestError(
             "unknown_manifest_field" if unknown else "noncanonical_manifest_field_order",
             fields=unknown or list(names),
+            version=version,
         )
-    values = dict(fields)
     try:
-        version = int(values["v"])
         remote_version = int(values["remote_version"])
     except ValueError as error:
         raise ManagedManifestError("invalid_manifest_integer") from error
@@ -290,6 +398,8 @@ def _parse_manifest_line(line: str) -> ManagedManifest:
         converter=values["converter"],
         profile=values["profile"],
         passthrough=parse_passthrough(values["passthrough"]),
+        # v2 has no field for it and always meant `md`.
+        authority=values.get("authority", "md"),
     )
 
 

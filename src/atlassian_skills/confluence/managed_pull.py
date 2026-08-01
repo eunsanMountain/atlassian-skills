@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote
@@ -16,11 +16,15 @@ from atlassian_skills.confluence.asset_sync import (
     extract_managed_asset_references,
     rewrite_attachment_artifact,
 )
+from atlassian_skills.confluence.compatibility import compatibility_payload
+from atlassian_skills.confluence.preservation import ragged_protected_table_paths
+from atlassian_skills.confluence.sidecar import Sidecar, sidecar_path
 from atlassian_skills.core.attachment_io import allocate_attachment_filename
 from atlassian_skills.core.errors import ConflictError, ValidationError
 from atlassian_skills.core.file_identity import inspect_file_identity
 from atlassian_skills.core.managed_file import read_managed_utf8, resolve_managed_asset_path
 from atlassian_skills.core.managed_manifest import (
+    CURRENT_MANAGED_MANIFEST_VERSION,
     ManagedAssetRecord,
     ManagedDocument,
     ManagedManifest,
@@ -58,6 +62,11 @@ class PreparedPortablePull:
     asset_records: tuple[ManagedAssetRecord, ...]
     edit_guidance: tuple[dict[str, Any], ...]
     writes: tuple[PublicationFile, ...]
+    #: What Markdown would drop if this page were regenerated from the file we
+    #: just wrote. Computed here because the storage is already in hand -- asking
+    #: for it again after the pull would cost a round trip and could see a
+    #: different version.
+    compatibility: dict[str, Any] = field(default_factory=dict)
 
 
 def _sha256(value: bytes) -> str:
@@ -171,6 +180,8 @@ def _predict_in_place_editability(
     artifact: Any,
     storage: str,
     passthrough_prefixes: tuple[str, ...],
+    *,
+    preservation_capability: str | None = None,
 ) -> tuple[str, tuple[str, ...]]:
     """Predict whether an in-place Markdown edit of this page can be proven.
 
@@ -188,7 +199,19 @@ def _predict_in_place_editability(
         profile="editable",
         passthrough_html_comment_prefixes=passthrough_prefixes,
     )
-    base = replace(artifact, protected_regions=(), remote_subtrees=())
+    if preservation_capability == "ragged-table-island-v1":
+        protected_paths = ragged_protected_table_paths(artifact)
+        base = replace(
+            artifact,
+            protected_regions=tuple(
+                region for region in artifact.protected_regions if tuple(region.remote_node_path) in protected_paths
+            ),
+            remote_subtrees=tuple(
+                subtree for subtree in artifact.remote_subtrees if tuple(subtree.remote_node_path) in protected_paths
+            ),
+        )
+    else:
+        base = replace(artifact, protected_regions=(), remote_subtrees=())
     try:
         candidate = cfxmark.to_cfx_artifact(
             base.markdown,
@@ -287,6 +310,152 @@ def _write_if_changed(
     writes.append(PublicationFile(destination=path, content=content, kind=kind))
 
 
+def _artifact_diagnostics(artifact: Any) -> tuple[tuple[str, ...], tuple[str, ...], tuple[dict[str, Any], ...]]:
+    """`(warnings, losses, blockers)` from one artifact, spelled once.
+
+    Both the pull that writes and the pull that refuses report these, and two
+    hand-written copies of the same three comprehensions is how the refusal ends
+    up describing a different page from the one that succeeded.
+    """
+
+    warnings = tuple(diagnostic.message for diagnostic in artifact.diagnostics if not diagnostic.blocking)
+    losses = tuple(diagnostic.message for diagnostic in artifact.diagnostics if diagnostic.blocking)
+    blockers = tuple(asdict(diagnostic) for diagnostic in artifact.diagnostics if diagnostic.blocking)
+    return warnings, losses, blockers
+
+
+def _canonical_write_allowed(compatibility: dict[str, Any], *, accept_migration: str | None, report_hash: str) -> bool:
+    """May this pull leave a canonical file, given the grade and any approval?
+
+    §8.2 permits two grades outright. Of the three it forbids, exactly one has an
+    approval route -- `migration_required`, whose losses are named and countable,
+    so an author can consent to losing *those*. The other two have none, and this
+    is where that stays true: an `--accept-migration` aimed at a
+    `converter_fix_required` or `xhtml_required` page does not unlock the write. If
+    it did, the flag would be the `--force` §8.2 refuses to add, wearing a
+    fingerprint for cover.
+
+    The approval is compared against the fingerprint of the report *this* pull just
+    built, so an approval carried over from an earlier read of a page that has since
+    changed does not authorise a write against the new losses. Accepting any
+    non-empty string here would make the flag a `--force` with extra typing.
+    """
+
+    if compatibility.get("canonical_write_permitted"):
+        return True
+    if compatibility.get("status") != "migration_required":
+        return False
+    return accept_migration is not None and accept_migration == report_hash
+
+
+def _refused_portable_pull(
+    *,
+    page_id: str,
+    page: Any,
+    output_path: Path,
+    artifact: Any,
+    version: int,
+    compatibility: dict[str, Any],
+    accept_migration: str | None,
+) -> PreparedPortablePull:
+    """A pull that grades no-write: nothing on disk, and the way forward as argv.
+
+    `writes=()` rather than filtering at publish time, so a caller inspecting
+    `prepared.writes` -- the batch pull does -- sees what will actually happen.
+    """
+
+    from atlassian_skills.confluence.compatibility import drop_actions_needing_the_document
+    from atlassian_skills.confluence.migration_preflight import _migration_report_payload, _report_hash
+
+    warnings, losses, blockers = _artifact_diagnostics(artifact)
+    report_hash = _report_hash(artifact.migration_report)
+    grade = str(compatibility.get("status"))
+
+    # This is the one caller whose `document_path` names a file that will not exist.
+    surviving = drop_actions_needing_the_document(list(compatibility.get("next_actions", ())), str(output_path))
+
+    approval: dict[str, Any] | None = None
+    guidance: list[dict[str, Any]] = []
+    if grade == "migration_required":
+        # The exact argv, with the fingerprint filled in, because this is the one
+        # place that knows it. A mismatched `--accept-migration` lands here too:
+        # the fingerprint below is the current one, so re-running this command is
+        # also the remedy for an approval that went stale.
+        approval = {
+            "label": "approve the named losses and write the file",
+            "argv": [
+                "confluence",
+                "page",
+                "md",
+                "pull",
+                page_id,
+                "--output",
+                str(output_path),
+                "--accept-migration",
+                report_hash,
+            ],
+            "requires_user_approval": True,
+        }
+        guidance.append(
+            {
+                "kind": "approve_named_losses",
+                "action": "rerun_pull_with_approval",
+                "message": (
+                    "This page loses the named things listed in migration_report if it is managed as "
+                    "Markdown. Review them, then re-run the pull with the approval below to write the file."
+                    if accept_migration is None
+                    else "The approval did not match the current migration report; the fingerprint below is current."
+                ),
+                "argv": list(approval["argv"]),
+                "requires_user_approval": True,
+            }
+        )
+    else:
+        # `converter_fix_required` and `xhtml_required` have no approval route, so
+        # the guidance must not imply one. `compatibility.next_actions` already
+        # carries the storage-workflow and read argv for these grades.
+        guidance.append(
+            {
+                "kind": "no_approval_available",
+                "action": "use_next_actions",
+                "message": (
+                    f"A page graded {grade} cannot be managed as Markdown by approving anything: "
+                    "see compatibility.next_actions for the commands that do move it forward."
+                ),
+                "requires_user_approval": False,
+            }
+        )
+
+    return PreparedPortablePull(
+        page_id=page_id,
+        title=page.title,
+        output_path=output_path,
+        # The projection is returned so the caller can read the page without a
+        # second round trip. It is *not* written, and `status` says so.
+        markdown=artifact.content if isinstance(getattr(artifact, "content", None), str) else "",
+        version=version,
+        status="not_pulled",
+        warnings=warnings,
+        losses=losses,
+        push_safe=False,
+        blockers=blockers,
+        migration_report=_migration_report_payload(artifact.migration_report, display=True),
+        migration_report_sha256=report_hash,
+        asset_records=(),
+        edit_guidance=tuple(guidance),
+        writes=(),
+        # `next_actions` is where the payload documents what to run, so the approval
+        # belongs there and not only in this pull's own advice. Dropping the actions
+        # that need the absent file and adding nothing back leaves the field empty --
+        # a status with no way forward, which is the dead end this payload exists to
+        # remove and which an existing test rightly refuses.
+        compatibility={
+            **compatibility,
+            "next_actions": ([approval] if approval is not None else []) + surviving,
+        },
+    )
+
+
 def prepare_portable_pull(
     client: Any,
     page_id: str,
@@ -297,6 +466,8 @@ def prepare_portable_pull(
     asset_dir: Path | None = None,
     no_assets: bool = False,
     page: Any | None = None,
+    accept_migration: str | None = None,
+    write_base_cache: bool = False,
 ) -> PreparedPortablePull:
     effective_site_url = site_url or getattr(client, "base_url", None)
     if not isinstance(effective_site_url, str):
@@ -330,10 +501,41 @@ def prepare_portable_pull(
     # writing the file. Degrade to neutral guidance ("edit, then dry-run"),
     # which is what pull emitted before the prediction existed; never degrade to
     # a false "safe" signal, and never to a false "blocked" one.
+    compatibility = compatibility_payload(page_id, storage, document_path=str(output_path))
     try:
-        edit_preflight = _predict_in_place_editability(artifact, storage, passthrough_prefixes)
+        edit_preflight = _predict_in_place_editability(
+            artifact,
+            storage,
+            passthrough_prefixes,
+            preservation_capability=compatibility["preservation_capability"],
+        )
     except Exception:
         edit_preflight = ("unknown", ())
+
+    # §8.2, before anything is downloaded or written.
+    #
+    # The grade was already computed correctly at the bottom of this function and
+    # then not acted on: every grade got its canonical file, including the three
+    # whose file cannot be published. Checking it here rather than at publish time
+    # is deliberate -- a refusal after the attachments are fetched has already put
+    # asset bytes on disk, and half a work product is the thing this policy exists
+    # to prevent.
+    from atlassian_skills.confluence.migration_preflight import _report_hash
+
+    if not _canonical_write_allowed(
+        compatibility,
+        accept_migration=accept_migration,
+        report_hash=_report_hash(artifact.migration_report),
+    ):
+        return _refused_portable_pull(
+            page_id=page_id,
+            page=page,
+            output_path=output_path,
+            artifact=artifact,
+            version=version,
+            compatibility=compatibility,
+            accept_migration=accept_migration,
+        )
     records: list[ManagedAssetRecord] = []
     local_contents: list[tuple[Path, bytes, str]] = []
     references: dict[str, str] = {}
@@ -415,7 +617,10 @@ def prepare_portable_pull(
     )
     asset_records = tuple(records)
     manifest = ManagedManifest(
-        v=2,
+        # A fresh pull has nothing to migrate from, so it writes the current
+        # version outright. §6.3's transition rules govern documents that already
+        # exist, not ones being created.
+        v=CURRENT_MANAGED_MANIFEST_VERSION,
         page=page_id,
         site=site,
         remote_version=version,
@@ -431,7 +636,12 @@ def prepare_portable_pull(
         passthrough=passthrough_prefixes,
     )
     managed = serialize_managed_manifest(manifest) + "\n" + managed_body
-    parse_managed_document(managed, assets=extract_asset_records(managed))
+    # Kept rather than discarded: the sidecar must store exactly what a later push
+    # will compare against. `document.content` is the body with the manifest
+    # stripped, and storing the whole file instead makes the manifest line itself
+    # look like an edit both sides made -- which reads as a conflict on every
+    # merge.
+    parsed_document = parse_managed_document(managed, assets=extract_asset_records(managed))
 
     writes: list[PublicationFile] = []
     for local_path, content, src in local_contents:
@@ -450,10 +660,40 @@ def prepare_portable_pull(
         kind="markdown",
         existing_assets=existing_assets,
     )
+    # AC1/§10.1: not by default.
+    #
+    # The v3 manifest is the only required persistent metadata. The sidecar carried a
+    # full copy of the base Markdown, which made it a second source of truth that
+    # travelled badly -- it can be lost, copied away from its document, or left
+    # pointing at a file that has moved on -- and §5.4 now recovers the base from the
+    # page history the manifest names, which the server still has.
+    #
+    # Keeping the default write is not a neutral convenience. Every downstream contract
+    # in this release -- historical recovery, manifest verification, the local-write
+    # ledger, the stale-compare refusals -- would be passing because the old sidecar
+    # was still there, and we would have measured the sidecar rather than the workflow.
+    #
+    # Reading an existing sidecar stays supported: a document pulled by an earlier
+    # release keeps working, and `resolve_base` still consults it as a cache after
+    # history. Only the unrequested write is gone.
+    if write_base_cache:
+        _write_if_changed(
+            writes,
+            path=sidecar_path(output_path),
+            content=Sidecar(
+                page_id=page_id,
+                site=site,
+                remote_version=version,
+                remote_storage_sha256=_sha256(storage.encode("utf-8")),
+                converter=f"cfxmark {cfxmark.__version__}",
+                profile="editable",
+                base_markdown=parsed_document.content,
+            ).to_json(),
+            kind="sidecar",
+            existing_assets=existing_assets,
+        )
 
-    blockers = tuple(asdict(diagnostic) for diagnostic in artifact.diagnostics if diagnostic.blocking)
-    warnings = tuple(diagnostic.message for diagnostic in artifact.diagnostics if not diagnostic.blocking)
-    losses = tuple(diagnostic.message for diagnostic in artifact.diagnostics if diagnostic.blocking)
+    warnings, losses, blockers = _artifact_diagnostics(artifact)
     needs_migration = artifact.status == "needs_migration"
     from atlassian_skills.confluence.migration_preflight import _migration_report_payload, _report_hash
 
@@ -493,6 +733,11 @@ def prepare_portable_pull(
         asset_records=asset_records,
         edit_guidance=guidance,
         writes=tuple(writes),
+        # The same payload the write policy was decided from, not a second
+        # assessment of the same storage. Two calls mean two conversions and two
+        # answers that can disagree, and the one that reaches the caller would not
+        # be the one that authorised the write.
+        compatibility=compatibility,
     )
 
 

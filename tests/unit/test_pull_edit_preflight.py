@@ -15,9 +15,9 @@ import pytest
 
 from atlassian_skills.confluence.managed_pull import (
     _predict_in_place_editability,
-    prepare_portable_pull,
 )
 from atlassian_skills.confluence.models import Page
+from tests.unit.managed_seam import prepare_portable_pull_suspending_the_write_policy
 
 PLAIN = "<p>alpha paragraph text here</p><p>beta paragraph text here</p>"
 CONSENT = (
@@ -55,7 +55,9 @@ class FakeClient:
 
 
 def _pull_guidance(storage: str, tmp_path: Path) -> tuple[str, ...]:
-    prepared = prepare_portable_pull(FakeClient(storage), "1", tmp_path / "page.md", site_url="https://example.invalid")
+    prepared = prepare_portable_pull_suspending_the_write_policy(
+        FakeClient(storage), "1", tmp_path / "page.md", site_url="https://example.invalid"
+    )
     return tuple(entry["kind"] for entry in prepared.edit_guidance)
 
 
@@ -75,7 +77,9 @@ def test_blocked_page_pull_says_so_before_any_edit(tmp_path: Path) -> None:
 
 
 def test_consent_page_pull_names_the_losses(tmp_path: Path) -> None:
-    prepared = prepare_portable_pull(FakeClient(CONSENT), "1", tmp_path / "page.md", site_url="https://example.invalid")
+    prepared = prepare_portable_pull_suspending_the_write_policy(
+        FakeClient(CONSENT), "1", tmp_path / "page.md", site_url="https://example.invalid"
+    )
     (entry,) = prepared.edit_guidance
     assert entry["kind"] == "in_place_with_consent"
     assert "element-attribute-omitted" in entry["codes"]
@@ -100,7 +104,9 @@ def test_unexpected_predictor_failure_still_pulls(tmp_path: Path, monkeypatch: p
         raise RecursionError("pathological page")
 
     monkeypatch.setattr(managed_pull, "_predict_in_place_editability", boom)
-    prepared = prepare_portable_pull(FakeClient(PLAIN), "1", tmp_path / "page.md", site_url="https://example.invalid")
+    prepared = prepare_portable_pull_suspending_the_write_policy(
+        FakeClient(PLAIN), "1", tmp_path / "page.md", site_url="https://example.invalid"
+    )
 
     # The pull still produces its managed Markdown for the caller to write.
     assert prepared.markdown.strip()

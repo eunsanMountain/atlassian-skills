@@ -89,6 +89,20 @@ jobs:
         run: uv run --python ${{ matrix.python-version }} pytest -m "not integration"
 
   windows-attachment-writer:
+    # Also the AC7 gate. §7.4's concurrent-record contract is platform-neutral, and the
+    # Windows lock is a different mechanism from the POSIX one -- `msvcrt` locks byte
+    # ranges mandatorily and a mandatorily-locked file cannot be renamed over, so Windows
+    # locks a sentinel in TMPDIR instead of the canonical file. That branch cannot be
+    # executed on a Linux runner, so `test_reconcile_windows.py` is where the contract is
+    # actually checked: two real processes through refusal, retry after the holder
+    # finishes, and a killed holder leaving the document still recordable.
+    #
+    # This job was authored-but-unrunnable while `uv.lock` could not be regenerated:
+    # `uv sync --locked` below was the step that blocked, because the lock pinned a
+    # cfxmark the project no longer accepted. cfxmark 0.6.0 is published and the lock is
+    # regenerated, so the gate can execute. Until it has actually run green on a Windows
+    # runner, the AC7 contract remains unverified -- authored and runnable is still not
+    # the same as measured.
     name: Windows Attachment Writer
     runs-on: windows-latest
     steps:
@@ -110,6 +124,8 @@ jobs:
           uv run --python 3.12 pytest
           tests/unit/test_attachment_io.py
           tests/unit/test_attachment_io_windows.py
+          tests/unit/test_reconcile.py
+          tests/unit/test_reconcile_windows.py
           tests/unit/test_config.py
           tests/unit/test_setup.py
           tests/unit/test_doctor.py

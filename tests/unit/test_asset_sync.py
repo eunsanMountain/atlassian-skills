@@ -14,6 +14,7 @@ from atlassian_skills.confluence.asset_sync import (
     extract_managed_asset_references,
     rewrite_attachment_markdown,
 )
+from atlassian_skills.core.managed_manifest import ManagedAssetRecord, serialize_asset_record
 
 
 def _sha(data: bytes) -> str:
@@ -197,3 +198,47 @@ def test_cfxmark_v3_asset_marker_rewrite_decodes_exact_remote_identity() -> None
 
     assert rewritten == "![](page.assets/local.png)\n"
     assert "cfxmark:asset" not in rewritten
+
+
+def test_asset_scan_ignores_fenced_and_inline_code_in_a_list() -> None:
+    markdown = """\
+1. Put an image beside the document:
+
+   ```
+   ![example](assets/example.png)
+   ```
+
+The inline spelling `![also-example](assets/inline.png)` is documentation.
+
+![real](assets/real.png)
+"""
+
+    assert extract_managed_asset_references(markdown) == (
+        ManagedAssetReference(
+            local_reference="assets/real.png",
+            remote_filename="real.png",
+        ),
+    )
+
+
+def test_asset_scan_accepts_managed_asset_records_without_reintroducing_code_examples() -> None:
+    record = ManagedAssetRecord(
+        materialization="local",
+        src="assets/real.png",
+        remote_id="att-1",
+        remote_version=3,
+        remote_name="remote image.png",
+        sha256=f"sha256:{'a' * 64}",
+    )
+    markdown = f"""\
+`![example](assets/inline.png)` is documentation.
+
+![real](assets/real.png){serialize_asset_record(record)}
+"""
+
+    assert extract_managed_asset_references(markdown) == (
+        ManagedAssetReference(
+            local_reference="assets/real.png",
+            remote_filename="remote image.png",
+        ),
+    )

@@ -145,6 +145,7 @@ def inspect_page(client: Any, page_id: str, *, intent: str) -> dict[str, Any]:
         #
         # Scoped to in-place intents on purpose: the proof is O(page size) and is
         # irrelevant to `read` (no write) and `append` (its own exact-append path).
+        from atlassian_skills.confluence.compatibility import compatibility_payload
         from atlassian_skills.confluence.managed_pull import (
             _predict_in_place_editability,
             in_place_edit_guidance,
@@ -152,7 +153,17 @@ def inspect_page(client: Any, page_id: str, *, intent: str) -> dict[str, Any]:
 
         # No passthrough prefixes: the artifact above was built with the same plain
         # editable options, so the prediction must run against the same conversion.
-        predicted = in_place_edit_guidance(*_predict_in_place_editability(artifact, storage, ()))
+        # The preservation capability is the same second-axis answer used by pull;
+        # omitting it made inspect say "blocked" for a page pull had just admitted.
+        compatibility = compatibility_payload(page_id, storage)
+        predicted = in_place_edit_guidance(
+            *_predict_in_place_editability(
+                artifact,
+                storage,
+                (),
+                preservation_capability=compatibility["preservation_capability"],
+            )
+        )
         if predicted is not None:
             result["edit_guidance"] = [predicted]
     return result

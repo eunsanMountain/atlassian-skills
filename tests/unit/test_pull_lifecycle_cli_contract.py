@@ -53,6 +53,10 @@ def test_needs_migration_is_successful_artifact_status(
             migration_report={"schema": "cfxmark-migration-report-v1", "occurrences": []},
             migration_report_sha256="sha256:" + "a" * 64,
             push_safe=False,
+            # A pull now reports what Markdown cannot hold for the page, so the
+            # stub has to model it too -- a fake that omits a field the CLI reads
+            # tests a CLI nobody ships.
+            compatibility={"schema": "atls-compatibility-v1", "status": "migration_required"},
         ),
     )
 
@@ -87,6 +91,7 @@ def test_human_pull_does_not_emit_legacy_state_instructions(
             migration_report={"schema": "cfxmark-migration-report-v1", "occurrences": []},
             migration_report_sha256="sha256:" + "a" * 64,
             push_safe=True,
+            compatibility={"schema": "atls-compatibility-v1", "status": "markdown_ready"},
         ),
     )
 

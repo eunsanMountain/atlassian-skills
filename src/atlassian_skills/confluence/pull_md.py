@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 import cfxmark
 
+from atlassian_skills.confluence.compatibility import compatibility_payload
 from atlassian_skills.core.attachment_io import (
     AttachmentWriteBatch,
     allocate_attachment_filename,
@@ -34,6 +35,10 @@ class PullResult(NamedTuple):
     migration_report_sha256: str | None = None
     assets: tuple[dict[str, Any], ...] = ()
     edit_guidance: tuple[dict[str, Any], ...] = ()
+    #: The `atls-compatibility-v1` assessment for the page as pulled, so the
+    #: caller knows what kind of document it received before editing it rather
+    #: than discovering it at push time.
+    compatibility: dict[str, Any] = {}
 
 
 class PullPageResult(NamedTuple):
@@ -232,6 +237,8 @@ def pull_md(
     site_url: str | None = None,
     portable: bool = False,
     no_assets: bool = False,
+    accept_migration: str | None = None,
+    write_base_cache: bool = False,
 ) -> PullResult:
     """Pull one Confluence page and publish Markdown only after its assets succeed."""
     if portable:
@@ -261,6 +268,8 @@ def pull_md(
             site_url=site_url,
             asset_dir=asset_dir,
             no_assets=no_assets,
+            accept_migration=accept_migration,
+            write_base_cache=write_base_cache,
         )
         publish_portable_pulls((prepared,))
         return PullResult(
@@ -274,8 +283,15 @@ def pull_md(
             blockers=prepared.blockers,
             migration_report=prepared.migration_report,
             migration_report_sha256=prepared.migration_report_sha256,
+            compatibility=prepared.compatibility,
             assets=tuple(asdict(asset) for asset in prepared.asset_records),
             edit_guidance=prepared.edit_guidance,
+        )
+    if accept_migration is not None:
+        raise ValidationError(
+            "--accept-migration applies to the managed Markdown pull only",
+            hint="Add --portable, or drop the approval: this path writes no manifest to approve against.",
+            context={"reason": "approval_not_applicable"},
         )
     if resolve_assets is not None and resolve_assets != "sidecar":
         raise ValueError(f"Unknown resolve_assets mode: {resolve_assets!r} (expected 'sidecar')")
@@ -305,6 +321,7 @@ def pull_md(
         warnings=conversion.warnings,
         losses=conversion.losses,
         push_safe=conversion.push_safe,
+        compatibility=compatibility_payload(page_id, page.body_storage or "", document_path=str(output_path)),
     )
 
 

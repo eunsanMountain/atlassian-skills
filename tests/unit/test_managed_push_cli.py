@@ -7,9 +7,9 @@ import pytest
 from typer.testing import CliRunner
 
 from atlassian_skills.cli.main import app
-from atlassian_skills.confluence.pull_md import pull_md
 from atlassian_skills.confluence.push_md import push_md
 from atlassian_skills.core.errors import ValidationError
+from tests.unit.managed_seam import pull_managed_suspending_the_write_policy
 from tests.unit.test_state_free_body_write import BodyClient
 
 runner = CliRunner()
@@ -21,7 +21,7 @@ def test_managed_push_dry_run_exposes_semantic_proof_without_put(
 ) -> None:
     client = BodyClient()
     managed = tmp_path / "page.md"
-    pull_md(client, "123", output_path=managed, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", managed, no_assets=True)
     managed.write_text(managed.read_text(encoding="utf-8").replace("B", "Edited"), encoding="utf-8")
     monkeypatch.setattr("atlassian_skills.cli.confluence._make_client", lambda _ctx: client)
 
@@ -59,7 +59,7 @@ def test_managed_push_invalid_consent_exits_7_with_approval_gated_action_and_zer
     client = BodyClient()
     client.storage = '<p><ac:emoticon ac:name="smile"/></p><p>Base</p>'
     managed = tmp_path / "page.md"
-    pull_md(client, "123", output_path=managed, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", managed, no_assets=True)
     managed.write_text(managed.read_text(encoding="utf-8").replace("Base", "Edited"), encoding="utf-8")
     monkeypatch.setattr("atlassian_skills.cli.confluence._make_client", lambda _ctx: client)
     argv = [
@@ -91,7 +91,10 @@ def test_managed_push_invalid_consent_exits_7_with_approval_gated_action_and_zer
     assert action["id"] == "retry_with_consent"
     assert action["requires_user_approval"] is True
     assert action["description_code"] == "REVIEW_MIGRATION_AND_RETRY"
-    assert action["argv"][:5] == ["atls", "confluence", "page", "push-md", "123"]
+    # The documented spelling, even though the run above used the older one. A
+    # retry that names a hidden command sends the caller looking for something
+    # they cannot find in help.
+    assert action["argv"][:6] == ["atls", "confluence", "page", "md", "push", "123"]
     assert action["argv"][-2:] == ["--accept-migration", context["migration_fingerprint"]]
     assert action["argv"][action["argv"].index("--reason") + 1] == "Caller supplied reason"
     assert "Page" not in action["argv"]
@@ -108,7 +111,7 @@ def test_pending_operation_recovery_still_exits_7_with_safe_consent_action(
     client = BodyClient()
     client.storage = '<p><ac:emoticon ac:name="smile"/></p><p>Base</p>'
     managed = tmp_path / "page.md"
-    pull_md(client, "123", output_path=managed, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", managed, no_assets=True)
     managed.write_text(managed.read_text(encoding="utf-8").replace("Base", "Edited"), encoding="utf-8")
     preflight = build_managed_preflight(client, "123", managed)
     marked = insert_managed_operation(managed.read_text(encoding="utf-8"), operation_for_preflight(preflight))
@@ -135,7 +138,7 @@ def test_pending_operation_recovery_still_exits_7_with_safe_consent_action(
     context = json.loads(result.stdout)["error"]["context"]
     assert context["reason"] == "migration_consent_required"
     [action] = context["next_actions"]
-    assert action["argv"][:5] == ["atls", "confluence", "page", "push-md", "123"]
+    assert action["argv"][:6] == ["atls", "confluence", "page", "md", "push", "123"]
     assert action["argv"][-2:] == ["--accept-migration", context["migration_fingerprint"]]
     assert "Page" not in action["argv"]
     assert client.puts == 0
@@ -149,7 +152,7 @@ def test_managed_push_human_consent_output_shows_loss_then_alternative_then_quot
     client = BodyClient()
     client.storage = '<p><ac:emoticon ac:name="smile"/></p><p>Base</p>'
     managed = tmp_path / "page with space.md"
-    pull_md(client, "123", output_path=managed, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", managed, no_assets=True)
     managed.write_text(managed.read_text(encoding="utf-8").replace("Base", "Edited"), encoding="utf-8")
     monkeypatch.setattr("atlassian_skills.cli.confluence._make_client", lambda _ctx: client)
 
@@ -184,7 +187,7 @@ def test_managed_push_human_consent_output_shows_loss_then_alternative_then_quot
     assert "--md-file '" in result.output
     assert "--reason 'Caller supplied reason'" in result.output
     assert "Page" not in result.output
-    assert result.output.rstrip().splitlines()[-1].startswith("Retry: atls confluence page push-md 123 ")
+    assert result.output.rstrip().splitlines()[-1].startswith("Retry: atls confluence page md push 123 ")
     assert client.puts == 0
 
 
@@ -250,7 +253,7 @@ def test_managed_push_api_rejects_legacy_attachment_arguments(
 ) -> None:
     client = BodyClient()
     managed = tmp_path / "page.md"
-    pull_md(client, "123", output_path=managed, portable=True, no_assets=True)
+    pull_managed_suspending_the_write_policy(client, "123", managed, no_assets=True)
 
     with pytest.raises(ValidationError) as exc_info:
         push_md(

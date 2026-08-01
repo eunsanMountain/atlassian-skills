@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 from importlib.metadata import version as installed_version
+from pathlib import Path
 
 import httpx
 import respx
@@ -11,11 +13,43 @@ from atlassian_skills.cli.main import app
 from atlassian_skills.cli.setup import ASSETS_DIR
 from atlassian_skills.cli.version import PYPI_URL, _parse_version
 
+# `tomllib` is 3.11+. The package supports 3.10 and CI runs it, and an unguarded
+# import here does not fail one test -- it fails COLLECTION, so the whole suite
+# never runs on that leg. Same guard as `core/config.py`, and `tomli` is already
+# a declared dependency for exactly this.
+if sys.version_info >= (3, 11):
+    import tomllib
+else:  # pragma: no cover - taken on the 3.10 leg of the CI matrix
+    import tomli as tomllib
+
 runner = CliRunner()
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_module_version_matches_distribution_metadata() -> None:
     assert __version__ == installed_version("atlassian-skills")
+
+
+def test_module_version_matches_the_version_pyproject_declares() -> None:
+    """Read from the file, not from what happens to be installed.
+
+    The test above compares against INSTALLED metadata, which in an editable
+    checkout is whatever the last install wrote. Bump `pyproject.toml` alone and
+    it keeps passing: the metadata still says the old number because nothing has
+    been reinstalled. The wheel would then report one version and
+    `atls --version` another, and a release is exactly the moment those two are
+    edited together and one is forgotten.
+
+    The sibling project had this defect and it was caught by a test like this
+    one, after a build had already reported its own version wrong.
+    """
+
+    declared = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+    assert __version__ == declared, (
+        f"pyproject.toml says {declared} and atlassian_skills.__version__ says {__version__}; "
+        "a release edits both or neither"
+    )
 
 
 def test_bundled_skill_marker_matches_package_version() -> None:

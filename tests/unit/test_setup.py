@@ -371,6 +371,35 @@ class TestSkillsOnly:
         # No deprecation warning — this is the canonical upgrade path
         assert "deprecated" not in result.output
 
+    def test_every_installed_copy_is_the_canonical_file_byte_for_byte(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Installs the packaged asset rather than a stub, because a stub cannot
+        catch the failure this exists for.
+
+        Four agents get a copy of one file. A stale install once left the
+        canonical file describing a workflow that the installed copies did not,
+        and nothing said so -- the drift showed up as an agent following
+        instructions for a version it was not running. Every other test here
+        substitutes an asset root, so none of them compare what ships.
+        """
+
+        import atlassian_skills.cli.setup as setup_mod
+
+        canonical = setup_mod._CANONICAL_SKILL_DIR / "SKILL.md"
+        _stub_paths(monkeypatch, tmp_path, setup_mod.ASSETS_DIR)
+        monkeypatch.setattr(setup_mod, "_CANONICAL_SKILL_DIR", canonical.parent)
+
+        assert CliRunner().invoke(setup_mod.setup_app, ["--skills-only"]).exit_code == 0
+
+        expected = canonical.read_bytes()
+        installed = [
+            tmp_path / ".claude" / "skills" / "atls" / "SKILL.md",
+            tmp_path / ".codex" / "skills" / "atls" / "SKILL.md",
+        ]
+        for path in installed:
+            assert path.read_bytes() == expected, path
+
     def test_skills_only_preserves_writer_without_running_probe(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

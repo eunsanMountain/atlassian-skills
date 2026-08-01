@@ -36,7 +36,7 @@ wheels = [
 
 [[package]]
 name = "atlassian-skills"
-version = "0.3.3"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "cfxmark" },
@@ -66,11 +66,12 @@ dev = [
     { name = "syrupy" },
     { name = "tiktoken" },
     { name = "tomli" },
+    { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "cfxmark", specifier = ">=0.5.1,<0.6" },
+    { name = "cfxmark", specifier = ">=0.6.0,<0.6.1" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "keyring", specifier = ">=24" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
@@ -94,6 +95,7 @@ dev = [
     { name = "syrupy", specifier = ">=4" },
     { name = "tiktoken" },
     { name = "tomli" },
+    { name = "typer", specifier = "<0.26" },
 ]
 
 [[package]]
@@ -178,15 +180,15 @@ wheels = [
 
 [[package]]
 name = "cfxmark"
-version = "0.5.1"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lxml" },
     { name = "mistletoe" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/a7/88c5b1732833a61ebbb4bc42568b38dc70371deecab2426e1ed849c33f9c/cfxmark-0.5.1.tar.gz", hash = "sha256:8ebbae6692b3237e8de8a1893b742d247b24b38dd5a30e9caac6c7647b9ffcb4", size = 375460, upload-time = "2026-07-28T07:38:04.778Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/99/7adfe95abe70601927e4392d5fa5328c06024e198d244fa3c766908cf810/cfxmark-0.6.0.tar.gz", hash = "sha256:887106c9bd8862c669c2cf98f0f42dd957b05c5a550f80bbd2b068e2cef10816", size = 437094, upload-time = "2026-07-31T23:57:49.883Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/df/e65041cf003504e6a9f01f855e870d4bbb81a594d97a6a10120eaf72c112/cfxmark-0.5.1-py3-none-any.whl", hash = "sha256:92572c123b6bb7701e3bbc48d5ba7a1bff607e6d2a19ac48555d65b5c09e5233", size = 238811, upload-time = "2026-07-28T07:38:03.448Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/41/5b31ede26364ee761f02b92caa1a7bf89634f0b67d3346cd74bbcaf6dcd7/cfxmark-0.6.0-py3-none-any.whl", hash = "sha256:d94fd011193f0bb5707e91faaa08fd38a07a49c854d2578a41c3549b1cd2ed52", size = 271270, upload-time = "2026-07-31T23:57:48.837Z" },
 ]
 
 [[package]]

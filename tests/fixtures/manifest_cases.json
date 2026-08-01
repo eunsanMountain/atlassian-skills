@@ -1,0 +1,91 @@
+{
+  "cases": [
+    {
+      "name": "valid_v3_first_line",
+      "publishable": true,
+      "refusal": null,
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\n# Title\n\nbody\n",
+      "why": "the one shape §12.1 adopts"
+    },
+    {
+      "name": "inside_fenced_block",
+      "publishable": false,
+      "refusal": null,
+      "text": "# Title\n\n```\n<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n```\n\nbody\n",
+      "why": "documentation about a manifest is not a manifest, so the document has none"
+    },
+    {
+      "name": "not_on_first_line",
+      "publishable": false,
+      "refusal": "manifest_not_on_first_line",
+      "text": "# Title\n\n<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\nbody\n",
+      "why": "a marker further down was not written by a pull"
+    },
+    {
+      "name": "duplicated",
+      "publishable": false,
+      "refusal": "manifest_duplicated",
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\nbody\n",
+      "why": "two markers is not a document to guess about"
+    },
+    {
+      "name": "version_v2",
+      "publishable": false,
+      "refusal": "manifest_version_unsupported",
+      "text": "<!-- atls:managed v=2 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\nbody\n",
+      "why": "an older writer's document is migrated, not published"
+    },
+    {
+      "name": "version_future",
+      "publishable": false,
+      "refusal": "manifest_version_unsupported",
+      "text": "<!-- atls:managed v=4 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\nbody\n",
+      "why": "a newer writer's document is not ours to guess about"
+    },
+    {
+      "name": "missing_base_md",
+      "publishable": false,
+      "refusal": "manifest_incomplete",
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first authority=md passthrough=- -->\n\nbody\n",
+      "why": "a field the migration compares, absent"
+    },
+    {
+      "name": "empty_base_md",
+      "publishable": false,
+      "refusal": "manifest_incomplete",
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md= authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\nbody\n",
+      "why": "present and binding nothing parses as present"
+    },
+    {
+      "name": "malformed_digest",
+      "publishable": false,
+      "refusal": "manifest_digest_malformed",
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:zz authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\nbody\n",
+      "why": "present and malformed is worse than absent, because absence is reported"
+    },
+    {
+      "name": "authority_not_md",
+      "publishable": false,
+      "refusal": "manifest_authority_not_md",
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=xhtml assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\nbody\n",
+      "why": "§10.1: managed Markdown admits one authority"
+    },
+    {
+      "name": "manifest_beside_legacy_block",
+      "publishable": true,
+      "refusal": null,
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n<!-- workflow:meta\nkey: RLM-9\nconfluence_page_id: 999\nlast_synced_version: 3\n-->\n\nbody\n",
+      "why": "§12.1: when both are present the manifest alone decides"
+    },
+    {
+      "name": "valid_first_line_plus_fenced_example",
+      "publishable": true,
+      "refusal": null,
+      "text": "<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n\n# Title\n\n```\n<!-- atls:managed v=3 page=123 site=sha256:0000000000000000000000000000000000000000000000000000000000000000 remote_version=7 remote_storage=sha256:1111111111111111111111111111111111111111111111111111111111111111 base_md=sha256:2222222222222222222222222222222222222222222222222222222222222222 authority=md assets=sha256:3333333333333333333333333333333333333333333333333333333333333333 converter=cfxmark/0.5.2 profile=markdown-first passthrough=- -->\n```\n\nbody\n",
+      "why": "a documented example must not make a real manifest look duplicated"
+    }
+  ],
+  "note_on_field_order": "Markers whose field set is exactly v3's are written in atls's canonical order. Cases that deliberately omit or add a field are left byte-for-byte as authored, because their field set is the thing under test.",
+  "purpose": "One valid/invalid case set for the inline atls:managed manifest, consumed by BOTH atls and the RLM adapter. Fixture parity, not shared implementation: each product runs its own resolver against the same examples, because testing one judgement with two different sets eventually tests two different things.",
+  "schema": "atls-manifest-cases-v1"
+}

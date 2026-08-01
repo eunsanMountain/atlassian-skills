@@ -1,6 +1,6 @@
 [project]
 name = "atlassian-skills"
-version = "0.3.3"
+version = "0.4.0"
 description = "Token-efficient CLI + Claude Code Skill for Atlassian Server/DC (Jira, Confluence, Bitbucket, Bamboo)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,7 +37,16 @@ dependencies = [
     "pydantic>=2.5",
     "tomli; python_version < '3.11'",
     "tomli-w",
-    "cfxmark>=0.5.1,<0.6",
+    # Pinned to the exact measured build, not the compatible range, because the
+    # preservation registry binds capabilities to a converter string:
+    # `ragged-table-island-v1` names `("cfxmark 0.6.0", "editable")` and the identity
+    # carry names `cfxmark 0.6.0`. That binding is deliberate -- a capability must not
+    # be inherited by a build it was never measured against -- but it fails *silently*:
+    # on 0.6.1 both simply stop matching, `canonical_write_permitted` drops, and nothing
+    # is raised. `uv.lock` pins 0.6.0 so CI can never see it; only a user resolving a
+    # newer patch would. Widening this range therefore means re-measuring the
+    # capabilities and moving their build strings in the same change.
+    "cfxmark>=0.6.0,<0.6.1",
     "platformdirs",
     "keyring>=24",
     "truststore>=0.10",
@@ -58,6 +67,31 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.10",
     "tomli",  # needed by mypy (python_version=3.10) to check the tomli fallback branch in core/config.py
+    # Bounded HERE and not in `[project.dependencies]`, deliberately. `atls --help`
+    # and every runtime path work on typer 0.27 -- measured on 0.24.1, 0.25.1,
+    # 0.26.0, 0.26.8 and 0.27.0 -- so capping what users may install would cost
+    # them a resolver conflict and buy nothing.
+    #
+    # There are two boundaries and they are at different versions:
+    #
+    #   0.26.0  Typer vendored Click. `typer.main.get_command` returns objects
+    #           built on `typer._click`, so `isinstance(x, click.Command)` against
+    #           an externally installed Click answers False -- silently, dropping
+    #           the inventory from 201 entries to 1. Nothing here imports Click any
+    #           more, so this one no longer breaks anything.
+    #
+    #   0.27.0  The vendored Click renamed its parameter type names, "text" ->
+    #           "str" and "integer" -> "int". That moves 576 recorded params and
+    #           the compatibility gate reports every one as a surface change.
+    #
+    # The bound is set at the FIRST of them, which is the conservative choice and
+    # the one the release plan specifies. It is not the minimum: the full suite is
+    # green on 0.26.0 and 0.26.8, measured, so raising this to `<0.27` needs no
+    # code change. Going past 0.27 does: `tests/support/cli_inventory._type_name`
+    # has to normalise the renamed spellings, or the fixture has to be re-recorded
+    # with an entry saying the 576 deltas are Click's rename and not ours.
+    # Re-recording quietly would erase the signal the gate exists to give.
+    "typer<0.26",
 ]
 
 [project.scripts]
@@ -87,6 +121,14 @@ exclude = [
     "/.omc",
     "/.omx",
     "/references",
+    # Belt and braces. These are internal working records -- captured pytest
+    # transcripts, per-unit progress notes, the blocker ledger -- carrying this
+    # organisation's Jira keys, Confluence page ids and absolute local paths. They are
+    # gitignored now and so cannot reach a build from a clean checkout, but
+    # `include = ["/docs"]` is a directory-wide rule and would pick them straight back
+    # up from a working tree that still has them on disk.
+    "/docs/release-evidence",
+    "/docs/release-0.3.4-runbook.md",
 ]
 
 [tool.ruff]
