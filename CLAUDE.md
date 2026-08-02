@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.4.0 (portable Markdown-first Confluence workflow, source-bound informed consent, state-free body/asset recovery, and smart asset synchronization)
+- **Current version**: 0.4.1 (adds an explicit two-step approval for a deliberate whole-page rewrite, and implements `attachment upload-batch --if-exists`)
 
 ## Build & Run
 
@@ -112,7 +112,7 @@ docs/                       # design docs and analyses
 | `httpx` | REST client (sync) |
 | `typer` + `rich` | CLI framework |
 | `pydantic` | Response models |
-| `cfxmark>=0.6` | Confluence XHTML ↔ md artifacts, Jira wiki ↔ md |
+| `cfxmark>=0.6.1,<0.6.2` | Confluence XHTML ↔ md artifacts, Jira wiki ↔ md |
 | `platformdirs` | Config paths |
 
 ## Authentication (§7.1)

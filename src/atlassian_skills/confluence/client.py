@@ -27,6 +27,10 @@ from atlassian_skills.core.errors import AtlasError, ValidationError
 from atlassian_skills.core.pagination import DEFAULT_MAX_PAGINATION_PAGES
 from atlassian_skills.jira.models import User
 
+#: The only modes `attachment upload-batch --if-exists` accepts. Anything else is a
+#: caller error and is refused before any request; see `upload_attachments_batch`.
+_IF_EXISTS_MODES = frozenset({"skip", "version", "replace"})
+
 
 class ConfluenceClient(BaseClient):
     def __init__(
@@ -656,21 +660,53 @@ class ConfluenceClient(BaseClient):
     ) -> list[dict[str, Any]]:
         """Upload multiple attachments sequentially.
 
-        if_exists: "skip" (check existing by title), "replace", "version"
+        `if_exists` decides what happens when the page already holds that filename:
+
+            skip              leave the stored file alone and report it skipped
+            version/replace   post a new version of the stored attachment
+
+        All three need the existing list, and only `skip` used to fetch it. `version`
+        and `replace` were accepted by the CLI and then fell through to the create
+        endpoint, where Confluence answers 400 "Cannot add a new attachment with same
+        file name as an existing attachment" -- a message that never names the flag the
+        caller passed. Measured on a page holding seven images that were all already attached: the batch
+        failed on the first and took the page's publish with it.
+
+        `version` and `replace` are deliberately the same operation. Confluence
+        Server/DC has no way to overwrite attachment bytes without adding a version, so
+        the honest choice is one behaviour under two accepted spellings rather than a
+        `replace` that quietly deletes the version history to look different.
         """
-        existing_titles: set[str] | None = None
-        if if_exists == "skip":
-            existing = self.list_attachments(page_id)
-            existing_titles = {a.title for a in existing}
+
+        # Refused before the listing request, so a wrong mode costs nothing. The first
+        # version of this branched on `if_exists == "skip"` and sent *everything else* to
+        # the version endpoint -- which reads as a two-way choice, but the CLI takes a
+        # free string, so `--if-exists=typo` published a new version of a file the caller
+        # never meant to touch. An unrecognised mode is a caller error, not a default.
+        if if_exists not in _IF_EXISTS_MODES:
+            raise ValidationError(
+                f"Unknown --if-exists mode: {if_exists}",
+                hint=f"Use one of: {', '.join(sorted(_IF_EXISTS_MODES))}.",
+                context={"reason": "unknown_if_exists", "allowed": sorted(_IF_EXISTS_MODES)},
+            )
+
+        existing_ids = {
+            attachment.title: str(attachment.id)
+            for attachment in self.list_attachments(page_id)
+            if getattr(attachment, "id", None)
+        }
 
         results: list[dict[str, Any]] = []
         for fp in file_paths:
             path = Path(fp)
-            if if_exists == "skip" and existing_titles and path.name in existing_titles:
+            attachment_id = existing_ids.get(path.name)
+            if attachment_id is not None and if_exists == "skip":
                 results.append({"title": path.name, "skipped": True})
                 continue
-            result = self._upload_attachment_raw(page_id, path)
-            results.append(result)
+            # A stored file gets a new version; anything else is a create. Passing the
+            # id switches `_upload_attachment_raw` to `child/attachment/{id}/data`,
+            # which it already knew how to do.
+            results.append(self._upload_attachment_raw(page_id, path, attachment_id=attachment_id))
         return results
 
     def delete_attachment(self, att_id: str) -> None:

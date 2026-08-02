@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -19,6 +20,7 @@ from atlassian_skills.confluence.stateless_write import (
 from atlassian_skills.core.errors import (
     ConflictError,
     ConversionConsentRequiredError,
+    FullReplacementConsentRequiredError,
     MigrationConsentRequiredError,
     StaleError,
     ValidationError,
@@ -436,7 +438,11 @@ def test_ownership_fatal_names_the_failure_and_the_way_out() -> None:
     assert context["fatal_class"] == "table-presentation-ambiguous"
     # The curated description is what makes the class actionable in JSON.
     assert "could not be matched to exactly one table" in context["fatal_class_description"]
-    assert context["supported_alternatives"] == ["append_markdown_blocks", "page_patch_text"]
+    assert context["supported_alternatives"] == [
+        "append_markdown_blocks",
+        "page_patch_text",
+        "full_replacement_with_consent",
+    ]
     assert all(item["description"] for item in context["diagnostics"])
     # Plain (non-JSON) output writes message + hint only, so the hint is the only
     # place a bare-terminal operator learns there is more to see.
@@ -479,6 +485,208 @@ def test_page_update_second_read_blocks_remote_drift() -> None:
 
     assert exc_info.value.context["reason"] == "prewrite_remote_drift"
     assert client.update_calls == []
+
+
+_FULL_REPLACEMENT_STORAGE = (
+    '<p>A</p><p>B</p><ac:structured-macro ac:name="info" ac:macro-id="discarded-raw-uuid">'
+    "<ac:rich-text-body><p>Old</p></ac:rich-text-body></ac:structured-macro>"
+)
+
+
+def _full_replacement_preflight(client: FakeClient) -> Any:
+    return build_page_update_preflight(client, "123", "B changed\n\nA\n", body_format="md", if_version=7)
+
+
+def test_full_replacement_missing_manifest_capability_is_a_typed_pre_put_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = FakeClient("<p>A</p><p>B</p>")
+    monkeypatch.delattr(cfxmark, "build_replacement_manifest")
+
+    with pytest.raises(ValidationError) as refused:
+        _full_replacement_preflight(client)
+
+    assert refused.value.context == {
+        "reason": "converter_fix_required",
+        "required_converter": "cfxmark>=0.6.1,<0.6.2",
+    }
+    assert client.update_calls == []
+
+
+def test_full_replacement_without_discarded_identities_requires_one_exact_approval() -> None:
+    client = FakeClient("<p>A</p><p>B</p>")
+    preflight = _full_replacement_preflight(client)
+    fingerprint = preflight.replacement_fingerprint
+
+    assert fingerprint is not None
+    assert preflight.replacement_manifest is not None
+    assert preflight.replacement_manifest["discarded_identity_count"] == 0
+    with pytest.raises(FullReplacementConsentRequiredError) as refused:
+        publish_page_update(
+            client,
+            preflight,
+            accept_migration=None,
+            accept_full_replacement=None,
+            accept_discarded_identities=None,
+            reason=None,
+            minor_edit=False,
+            next_action_argv=("atls", "confluence", "page", "update", "123"),
+        )
+
+    assert refused.value.context["reason"] == "full_replacement_consent_required"
+    assert refused.value.context["approval"] == "full_replacement_missing"
+    assert refused.value.context["next_actions"][0]["argv"][-2:] == ["--accept-full-replacement", fingerprint]
+    assert client.update_calls == []
+
+    result = publish_page_update(
+        client,
+        preflight,
+        accept_migration=None,
+        accept_full_replacement=fingerprint,
+        accept_discarded_identities=None,
+        reason=None,
+        minor_edit=False,
+        next_action_argv=(),
+    )
+    assert result["status"] == "updated"
+
+
+def test_full_replacement_requires_a_second_matching_approval_for_discarded_identities() -> None:
+    client = FakeClient(_FULL_REPLACEMENT_STORAGE)
+    preflight = _full_replacement_preflight(client)
+    fingerprint = preflight.replacement_fingerprint
+
+    assert fingerprint is not None
+    assert preflight.replacement_manifest is not None
+    assert preflight.replacement_manifest["discarded_identity_count"] == 1
+    assert "discarded-raw-uuid" not in json.dumps(preflight.to_dict())
+    for second in (None, "repl_sha256:" + "0" * 64):
+        with pytest.raises(FullReplacementConsentRequiredError) as refused:
+            publish_page_update(
+                client,
+                preflight,
+                accept_migration=None,
+                accept_full_replacement=fingerprint,
+                accept_discarded_identities=second,
+                reason=None,
+                minor_edit=False,
+                next_action_argv=(),
+            )
+        assert refused.value.context["approval"] == (
+            "discarded_identities_missing" if second is None else "discarded_identities_fingerprint"
+        )
+        assert client.update_calls == []
+
+    result = publish_page_update(
+        client,
+        preflight,
+        accept_migration=None,
+        accept_full_replacement=fingerprint,
+        accept_discarded_identities=fingerprint,
+        reason=None,
+        minor_edit=False,
+        next_action_argv=(),
+    )
+    assert result["status"] == "updated"
+    assert "discarded-raw-uuid" not in json.dumps(result)
+
+
+def test_full_replacement_rejects_a_wrong_primary_fingerprint_before_put() -> None:
+    client = FakeClient("<p>A</p><p>B</p>")
+    preflight = _full_replacement_preflight(client)
+
+    with pytest.raises(FullReplacementConsentRequiredError) as refused:
+        publish_page_update(
+            client,
+            preflight,
+            accept_migration=None,
+            accept_full_replacement="repl_sha256:" + "0" * 64,
+            accept_discarded_identities=None,
+            reason=None,
+            minor_edit=False,
+            next_action_argv=(),
+        )
+
+    assert refused.value.context["approval"] == "full_replacement_fingerprint"
+    assert client.update_calls == []
+
+
+def test_full_replacement_fingerprint_changes_when_only_discarded_raw_identity_changes() -> None:
+    first = _full_replacement_preflight(FakeClient(_FULL_REPLACEMENT_STORAGE))
+    second = _full_replacement_preflight(
+        FakeClient(_FULL_REPLACEMENT_STORAGE.replace("discarded-raw-uuid", "other-raw-uuid"))
+    )
+
+    assert first.replacement_manifest is not None
+    assert second.replacement_manifest is not None
+    assert first.replacement_manifest["discarded_identities"] == second.replacement_manifest["discarded_identities"]
+    assert first.replacement_fingerprint != second.replacement_fingerprint
+
+
+def test_full_replacement_rejects_candidate_body_mutation_before_put() -> None:
+    client = FakeClient("<p>A</p><p>B</p>")
+    preflight = _full_replacement_preflight(client)
+    assert preflight.replacement_fingerprint is not None
+    tampered = replace(preflight, candidate_storage="<p>tampered</p>")
+
+    with pytest.raises(ValidationError) as refused:
+        publish_page_update(
+            client,
+            tampered,
+            accept_migration=None,
+            accept_full_replacement=preflight.replacement_fingerprint,
+            accept_discarded_identities=None,
+            reason=None,
+            minor_edit=False,
+            next_action_argv=(),
+        )
+
+    assert refused.value.context["reason"] == "full_replacement_candidate_changed"
+    assert client.update_calls == []
+
+
+def test_full_replacement_second_read_blocks_remote_drift_before_put() -> None:
+    client = FakeClient("<p>A</p><p>B</p>")
+    preflight = _full_replacement_preflight(client)
+    assert preflight.replacement_fingerprint is not None
+    client.mutate_on_get = 2
+
+    with pytest.raises(StaleError) as refused:
+        publish_page_update(
+            client,
+            preflight,
+            accept_migration=None,
+            accept_full_replacement=preflight.replacement_fingerprint,
+            accept_discarded_identities=None,
+            reason=None,
+            minor_edit=False,
+            next_action_argv=(),
+        )
+
+    assert refused.value.context["reason"] == "prewrite_remote_drift"
+    assert client.update_calls == []
+
+
+def test_full_replacement_readback_mismatch_remains_a_post_put_refusal() -> None:
+    client = FakeClient("<p>A</p><p>B</p>")
+    preflight = _full_replacement_preflight(client)
+    assert preflight.replacement_fingerprint is not None
+    client.readback_reserialize = lambda _body: "<p>server mutation</p>"
+
+    with pytest.raises(ValidationError) as refused:
+        publish_page_update(
+            client,
+            preflight,
+            accept_migration=None,
+            accept_full_replacement=preflight.replacement_fingerprint,
+            accept_discarded_identities=None,
+            reason=None,
+            minor_edit=False,
+            next_action_argv=(),
+        )
+
+    assert refused.value.context["reason"] == "page_update_readback_mismatch"
+    assert len(client.update_calls) == 1
 
 
 def test_page_update_response_loss_is_adopted_by_exact_readback() -> None:

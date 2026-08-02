@@ -151,6 +151,10 @@ class MigrationConsentRequiredError(ValidationError):
     code = "MIGRATION_CONSENT_REQUIRED"
 
 
+class FullReplacementConsentRequiredError(ValidationError):
+    code = "FULL_REPLACEMENT_CONSENT_REQUIRED"
+
+
 class ConversionConsentRequiredError(ValidationError):
     code = "CONVERSION_CONSENT_REQUIRED"
 

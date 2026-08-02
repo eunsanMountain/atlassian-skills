@@ -22,6 +22,45 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-02
+
+**Requires cfxmark 0.6.1 exactly**, `>=0.6.1,<0.6.2`. The pin is narrow on purpose: the
+preservation capabilities name a converter build, and a build they were never measured
+against must not inherit them.
+
+### Added
+
+- **A deliberate whole-page rewrite has a path.** Editing a page section for section used
+  to have no supported route — the ownership proof asks which stored content an edit
+  replaces, and a rewrite cannot answer, so the only advice was "use the web editor".
+  The proof is untouched and still refuses. Beside it, `page update --body-format md`
+  now accepts `--accept-full-replacement`, and `--accept-discarded-identities` when the
+  rewrite drops macro identities.
+
+  Both are fingerprints, and the second exists because the two decisions are different
+  ones: "replace this page" and "accept that these identities go away for good". A
+  single token would let a retrying caller reuse a printed command line for both. The
+  fingerprint binds the remote version, the source and final-candidate hashes, the
+  converter, and a hash of the discarded-identity list — so a token stops matching the
+  moment any of them moves, including the list itself.
+
+  After approval the page is read again immediately before the write, and the stored
+  result is read back after it. Neither check is skipped on this path; they are the only
+  ones left. Refusals name which approval is missing or wrong, and no raw macro UUID
+  appears in any payload — kind, semantic path, ordinal and count instead.
+
+### Fixed
+
+- **`attachment upload-batch --if-exists=version` did nothing.** Only `skip` was
+  implemented; `version` and `replace` fell through to the create endpoint, where
+  Confluence answers `400 Cannot add a new attachment with same file name as an existing
+  attachment` — a message that never mentions the flag. A page whose images were all
+  already attached failed on the first one and took the whole publish with it. Both modes
+  now post a new version, which is the only thing Server/DC can do; they are two
+  spellings of one operation rather than a `replace` that deletes history to look
+  different. An unrecognised mode is refused before any request, so a typo cannot cost a
+  version.
+
 ## [0.4.0] - 2026-08-01
 
 The version is 0.4.0 rather than 0.3.4 because 0.3.4 was a local milestone that

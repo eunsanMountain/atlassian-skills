@@ -9,7 +9,7 @@ import respx
 
 from atlassian_skills.confluence.client import ConfluenceClient
 from atlassian_skills.core.auth import Credential
-from atlassian_skills.core.errors import NetworkError
+from atlassian_skills.core.errors import NetworkError, ValidationError
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "confluence"
 BASE_URL = "https://confluence.example.com"
@@ -457,22 +457,38 @@ def test_upload_attachment_raw_does_not_retry_ambiguous_multipart_post(
 
 
 @respx.mock
-def test_upload_attachments_batch_replace_mode(client: ConfluenceClient, tmp_path: Path) -> None:
+def test_upload_attachments_batch_replace_versions_the_stored_file(client: ConfluenceClient, tmp_path: Path) -> None:
+    """`replace` posts a new version of the stored attachment.
+
+    This test used to assert the opposite -- that `replace` makes no GET and goes
+    straight to the create endpoint -- and its comment called that the intent. It was
+    the reason the defect survived: on a page that already held the filename, the create
+    endpoint answers 400 and the flag the caller passed is never mentioned. The fixture
+    had no existing attachment, so the case it was named for was never exercised.
+
+    `replace` and `version` are one operation. Confluence Server/DC cannot overwrite
+    attachment bytes without adding a version, so both spellings do the same thing
+    rather than `replace` deleting history to look distinct.
+    """
+
     file_a = tmp_path / "fileA.txt"
     file_a.write_text("content A")
 
-    upload_result = {"results": [{"id": "att500", "title": "fileA.txt"}]}
-    route = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
-        return_value=httpx.Response(200, json=upload_result)
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att500", "title": "fileA.txt"}], "size": 1})
+    )
+    version = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment/att500/data").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att500", "title": "fileA.txt"}]})
+    )
+    create = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att999", "title": "fileA.txt"}]})
     )
 
-    # With if_exists="replace", no GET to list attachments should be made
     results = client.upload_attachments_batch("100", [file_a], if_exists="replace")
 
-    assert len(results) == 1
+    assert version.call_count == 1
+    assert not create.called, "a stored filename must never be re-created"
     assert results[0]["results"][0]["id"] == "att500"
-    # No list_attachments call means no GET was made
-    assert route.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -513,3 +529,46 @@ def test_delete_page_404_raises(client: ConfluenceClient) -> None:
 
     with pytest.raises(NotFoundError):
         client.delete_page("9999")
+
+
+@respx.mock
+def test_upload_attachments_batch_refuses_an_unknown_if_exists(client: ConfluenceClient, tmp_path: Path) -> None:
+    """A misspelled mode must be refused, not treated as "version".
+
+    The batch uploader branched on `if_exists == "skip"` and sent everything else to the
+    version endpoint. That reads as a two-way choice, but the CLI takes a free string, so
+    `--if-exists=typo` became a new version of a file the caller never meant to touch --
+    an unexpected remote write produced by a typo. Reproduced before the fix: with one
+    stored attachment `att-1`, `if_exists="typo"` posted to `att-1`'s data endpoint.
+
+    Refused before any request, so a wrong mode cannot cost a version even on a page the
+    caller is allowed to write.
+    """
+
+    file = tmp_path / "diagram.png"
+    file.write_bytes(b"bytes")
+    listing = respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment")
+    create = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment")
+
+    with pytest.raises(ValidationError) as refused:
+        client.upload_attachments_batch("100", [file], if_exists="typo")
+
+    assert refused.value.context["reason"] == "unknown_if_exists"
+    assert not listing.called and not create.called, "a rejected mode must not reach the network"
+
+
+@respx.mock
+def test_upload_attachments_batch_accepts_every_documented_mode(client: ConfluenceClient, tmp_path: Path) -> None:
+    """And the three the CLI advertises all still work, so the guard is not a blanket no."""
+
+    file = tmp_path / "diagram.png"
+    file.write_bytes(b"bytes")
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-1", "title": "diagram.png"}], "size": 1})
+    )
+    respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment/att-1/data").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-1"}]})
+    )
+
+    for mode in ("skip", "version", "replace"):
+        client.upload_attachments_batch("100", [file], if_exists=mode)

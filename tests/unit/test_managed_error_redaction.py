@@ -187,6 +187,29 @@ def _surface_stateless_ownership(_tmp: Path, _mp: pytest.MonkeyPatch) -> tuple[A
     return info.value, [BODY], ["ownership_proof_invalid"]
 
 
+def _surface_full_replacement_consent(_tmp: Path, _mp: pytest.MonkeyPatch) -> tuple[AtlasError, list[str], list[str]]:
+    """The replacement manifest names a dropped identity without exposing its UUID."""
+
+    storage = (
+        '<p>A</p><p>B</p><ac:structured-macro ac:name="info" ac:macro-id="BODYLEAKMARKER">'
+        f"<ac:rich-text-body><p>{BODY}</p></ac:rich-text-body></ac:structured-macro>"
+    )
+    client = StatelessClient(storage)
+    preflight = build_page_update_preflight(client, "123", "B changed\n\nA\n", body_format="md", if_version=7)
+    with pytest.raises(AtlasError) as info:
+        publish_page_update(
+            client,
+            preflight,
+            accept_migration=None,
+            accept_full_replacement=None,
+            accept_discarded_identities=None,
+            reason=None,
+            minor_edit=False,
+            next_action_argv=("atls", "confluence", "page", "update", "123"),
+        )
+    return info.value, [BODY, "BODYLEAKMARKER"], ["full_replacement_consent_required", "discarded_identity_count"]
+
+
 def _surface_update_readback(_tmp: Path, _mp: pytest.MonkeyPatch) -> tuple[AtlasError, list[str], list[str]]:
     client = StatelessClient()
     preflight = build_page_update_preflight(client, "123", "<p>new</p>", body_format="storage", if_version=7)
@@ -498,6 +521,7 @@ _SURFACES = {
     "row2a_source_conversion_invalid": _surface_source_conversion_invalid,
     "row2b_storage_candidate_invalid": _surface_storage_candidate_invalid,
     "row3_stateless_ownership": _surface_stateless_ownership,
+    "row3b_full_replacement_consent": _surface_full_replacement_consent,
     "row4_update_readback": _surface_update_readback,
     "row5_create_readback": _surface_create_readback,
     "row6_managed_ownership": _surface_managed_ownership,

@@ -1159,6 +1159,16 @@ def page_update(
         "--accept-migration",
         help="Exact migration fingerprint returned by preflight",
     ),
+    accept_full_replacement: str | None = typer.Option(
+        None,
+        "--accept-full-replacement",
+        help="Exact full-replacement fingerprint returned by preflight",
+    ),
+    accept_discarded_identities: str | None = typer.Option(
+        None,
+        "--accept-discarded-identities",
+        help="Same full-replacement fingerprint, required when identities are discarded",
+    ),
     asset_dir: str | None = typer.Option(
         None,
         "--asset-dir",
@@ -1175,7 +1185,11 @@ def page_update(
             raise ValidationError("--body-file is required for this command", context={"reason": "body_file_required"})
         body = read_body(body_file=body_file)
         client = _make_client(ctx.obj)
-        from atlassian_skills.confluence.stateless_write import build_page_update_preflight, publish_page_update
+        from atlassian_skills.confluence.stateless_write import (
+            _require_full_replacement_consent,
+            build_page_update_preflight,
+            publish_page_update,
+        )
 
         preflight = build_page_update_preflight(
             client,
@@ -1206,6 +1220,12 @@ def page_update(
         if minor_edit:
             next_action.append("--minor-edit")
         if dry_run:
+            _require_full_replacement_consent(
+                preflight,
+                accept_full_replacement=accept_full_replacement,
+                accept_discarded_identities=accept_discarded_identities,
+                argv=tuple(next_action),
+            )
             dry_result = {**preflight.to_dict(), "status": "dry_run", "method": "PUT"}
             if preflight.consent_required:
                 assert preflight.migration_fingerprint is not None
@@ -1226,6 +1246,8 @@ def page_update(
             reason=reason,
             minor_edit=minor_edit,
             next_action_argv=tuple(next_action),
+            accept_full_replacement=accept_full_replacement,
+            accept_discarded_identities=accept_discarded_identities,
         )
         if fmt == OutputFormat.COMPACT and result["status"] == "updated":
             output = WriteResult(action="updated", key=page_id)

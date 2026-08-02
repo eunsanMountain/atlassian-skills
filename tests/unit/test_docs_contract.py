@@ -82,7 +82,13 @@ def _cfxmark_requirement() -> str:
     """
 
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = re.search(r'"(cfxmark[^"]*)"', text)
+    # Anchored to a dependency entry, not merely the first quoted `cfxmark` in the file.
+    # The unanchored form matched a *comment* -- the capability build string
+    # `("cfxmark 0.6.1", "editable")` -- so this helper returned a converter label while
+    # its docstring promised the requirement. The two happened to agree until the pin
+    # became a range, and then the README had to repeat a version-with-space that
+    # pyproject never declared.
+    match = re.search(r'^\s*"(cfxmark[<>=!~][^"]*)",?\s*$', text, re.MULTILINE)
     assert match, "pyproject.toml declares no cfxmark requirement"
     return match.group(1)
 
@@ -464,10 +470,9 @@ def test_the_skill_does_not_deny_a_write_this_build_permits() -> None:
 def test_the_docs_warn_about_uv_run_exactly_while_it_is_broken() -> None:
     """Derived from the lock and `pyproject.toml`, so the note cannot outlive its reason.
 
-    Both `CLAUDE.md` and `README.md` tell a reader to run `uv run pytest`, and it cannot
-    work: `pyproject.toml` requires `cfxmark>=0.5.2` while `uv.lock` still pins 0.5.1, so
-    `cfxmark.compatibility` is not importable and the CLI cannot be constructed. An
-    instruction that fails is worse than a missing one — the reader assumes their
+    Both `CLAUDE.md` and `README.md` tell a reader to run `uv run pytest`. When the
+    declared cfxmark lower bound exceeds the registry lock, that command cannot work.
+    An instruction that fails is worse than a missing one — the reader assumes their
     environment is broken.
 
     Asserted in both directions. While the lock is behind, the warning must be present;

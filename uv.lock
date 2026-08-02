@@ -36,7 +36,7 @@ wheels = [
 
 [[package]]
 name = "atlassian-skills"
-version = "0.4.0"
+version = "0.4.1"
 source = { editable = "." }
 dependencies = [
     { name = "cfxmark" },
@@ -71,7 +71,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cfxmark", specifier = ">=0.6.0,<0.6.1" },
+    { name = "cfxmark", specifier = ">=0.6.1,<0.6.2" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "keyring", specifier = ">=24" },
     { name = "keyring", marker = "extra == 'keyring'", specifier = ">=24" },
@@ -180,15 +180,15 @@ wheels = [
 
 [[package]]
 name = "cfxmark"
-version = "0.6.0"
+version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "lxml" },
     { name = "mistletoe" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/99/7adfe95abe70601927e4392d5fa5328c06024e198d244fa3c766908cf810/cfxmark-0.6.0.tar.gz", hash = "sha256:887106c9bd8862c669c2cf98f0f42dd957b05c5a550f80bbd2b068e2cef10816", size = 437094, upload-time = "2026-07-31T23:57:49.883Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/02/609ca79f8141884abe5bcd17e2581354a035e296bc9e695ff7b33f0ae359/cfxmark-0.6.1.tar.gz", hash = "sha256:71334f1426bfd9f125a8d6579671a242b1aca883e19e22a9cd8f917cc11bf0ba", size = 444614, upload-time = "2026-08-02T00:07:22.096Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/41/5b31ede26364ee761f02b92caa1a7bf89634f0b67d3346cd74bbcaf6dcd7/cfxmark-0.6.0-py3-none-any.whl", hash = "sha256:d94fd011193f0bb5707e91faaa08fd38a07a49c854d2578a41c3549b1cd2ed52", size = 271270, upload-time = "2026-07-31T23:57:48.837Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/f2/fb5bebaa499702d901789b34d71f514926145f9996c91df83dcd62539b35/cfxmark-0.6.1-py3-none-any.whl", hash = "sha256:9f2118c20dbcece83028fad3d414989638ad9d8e1faf2eb38cd5218253f3b20f", size = 276813, upload-time = "2026-08-02T00:07:20.799Z" },
 ]
 
 [[package]]

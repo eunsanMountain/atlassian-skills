@@ -257,6 +257,16 @@
     "confluence page update": {
       "classification": "changed",
       "params": {
+        "accept_discarded_identities": {
+          "classification": "added",
+          "plan_ref": "full replacement §3",
+          "reason": "Requires the same reviewed replacement fingerprint when the final candidate discards one or more remote macro identities. Keeping it separate from the primary consent makes the irreversible identity loss explicit."
+        },
+        "accept_full_replacement": {
+          "classification": "added",
+          "plan_ref": "full replacement §3",
+          "reason": "Requires the exact final-candidate replacement fingerprint when source-bound ownership proof refuses a deliberate full page replacement."
+        },
         "accept_migration": {
           "classification": "added",
           "plan_ref": "5.7, Story 9",

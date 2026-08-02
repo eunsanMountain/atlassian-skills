@@ -577,7 +577,7 @@ atlassian-skills is a CLI re-implementation of mcp-atlassian's Jira and Confluen
 | httpx | REST client (sync) |
 | typer + rich | CLI framework |
 | pydantic | Response models |
-| cfxmark = 0.6.0 | Source-bound ownership proofs, managed Markdown projection, migration diagnostics, and Jira wiki conversion |
+| cfxmark >=0.6.1,<0.6.2 | Source-bound ownership proofs, managed Markdown projection, migration diagnostics, and Jira wiki conversion |
 | platformdirs | Config path resolution |
 
 ## Development
@@ -604,10 +604,10 @@ uv build
 # `uv run pytest` measures the working tree, which is not what anyone installs:
 # missing package data, a broken console entry point, or a runtime dependency
 # declared only as a dev extra all pass the tree and fail the artifact.
-bash scripts/wheel_smoke.sh 0.4.0
+bash scripts/wheel_smoke.sh 0.4.1
 ```
 
-This release requires **cfxmark 0.6.0** exactly. The pin is deliberate: two preservation
+This release requires **cfxmark 0.6.1** exactly — `cfxmark>=0.6.1,<0.6.2`. The pin is deliberate: two preservation
 capabilities are bound to that converter build so neither is inherited by a build it was
 never measured against, and on a newer patch they stop matching silently.
 
@@ -616,7 +616,8 @@ never measured against, and on a newer patch they stop matching silently.
 - **0.1.x** — Jira + Confluence read/write, md push/md pull/md diff, benchmarks, GitHub Actions CI/release
 - **0.2.x** — Bitbucket Server/DC PR workflow + Skill-first Claude/Codex integration
 - **0.2.7** — `atls setup` interactive wizard + `atls doctor`; `setup all/codex/claude/paths/status` deprecated
-- **0.4.0 (current)** — portable Markdown-first Confluence workflow, source-bound informed consent, exact EOF-append preservation, state-free asset/body recovery, readable view/inspect, and smart asset synchronization
+- **0.4.0** — portable Markdown-first Confluence workflow, source-bound informed consent, exact EOF-append preservation, state-free asset/body recovery, readable view/inspect, and smart asset synchronization
+- **0.4.1 (current)** — an explicit, two-step approval for a deliberate whole-page rewrite; `attachment upload-batch --if-exists` actually implemented
 - **0.4.0+** — typed table-style editing, Async client, caching, non-interactive `atls setup`, fish shell support, multi-profile wizard
 
 ## License

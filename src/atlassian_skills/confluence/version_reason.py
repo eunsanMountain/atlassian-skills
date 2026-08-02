@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from atlassian_skills.core.errors import ValidationError
 
-ProofMode = Literal["exact_remote_prefix_append", "full_migration"]
+ProofMode = Literal["exact_remote_prefix_append", "full_migration", "full_replacement"]
 
 
 def _proof_prefix(fingerprint: str) -> str:
@@ -44,6 +44,8 @@ def proof_bound_version_reason(
     proof = _proof_prefix(fingerprint)
     if proof_mode == "exact_remote_prefix_append":
         generated = f"atls exact EOF append {proof}"
+    elif proof_mode == "full_replacement":
+        generated = f"atls full replacement {proof}: {_migration_summary(migration_report)}"
     else:
         generated = f"atls markdown migration {proof}: {_migration_summary(migration_report)}"
     return f"{generated}; {user_reason}" if user_reason is not None else generated

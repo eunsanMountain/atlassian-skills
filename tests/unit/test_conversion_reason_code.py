@@ -60,7 +60,7 @@ CONTENT_MARKER = "PAGECONTENTLEAKMARKER"
 #
 # `conversion_reason_description` and `supported_alternatives` are atls-authored
 # constants selected by a stable code -- a sentence from this repository's own
-# table and a fixed list of two command shapes. They are on this list because a
+# table and a fixed list of command shapes. They are on this list because a
 # caller that gets only codes cannot act: a live publish refused with
 # `semantic-mapping-ambiguous` and had nothing to print but the code.
 #
@@ -176,7 +176,7 @@ _INJECTION_SURFACES = {
 
 
 def test_adapter_projection_is_allowlist_gated_and_backwards_compatible() -> None:
-    # Allowlisted code → generic code, the specific reason code, and the two
+    # Allowlisted code → generic code, the specific reason code, and the three
     # static things that make it actionable. A live publish refused with
     # `ownership_proof_invalid/semantic-mapping-ambiguous` and its caller had
     # nothing to print but those two words; the sentence and the alternatives
@@ -189,7 +189,11 @@ def test_adapter_projection_is_allowlist_gated_and_backwards_compatible() -> Non
         "conversion_code": "conversion_error",
         "conversion_reason_code": REASON,
         "conversion_reason_description": describe_migration_code(REASON),
-        "supported_alternatives": ["append_markdown_blocks", "page_patch_text"],
+        "supported_alternatives": [
+            "append_markdown_blocks",
+            "page_patch_text",
+            "full_replacement_with_consent",
+        ],
     }
     # Non-allowlisted code → dropped; the generic code is untouched.
     assert conversion_failure_context(cfxmark.ConversionError("m", reason_code="not-in-allowlist")) == {
@@ -232,24 +236,19 @@ def test_injected_reason_code_reaches_every_surface_value_free(
 
 
 def test_tie_end_to_end_stateless_update() -> None:
-    """A tie now arrives as a proof refusal rather than a conversion failure.
-
-    The converter's validator repeats the generator's base-free fallback instead
-    of raising at it, so the candidate is reconstructable and the refusal comes
-    from the ownership proof. The caller gets the diagnosis -- fatal class,
-    counts, the diagnostics and their resolutions -- where it used to get two
-    bare codes.
-    """
+    """A tie offers an explicit full-replacement preflight, never silent publish."""
 
     client = StatelessClient(TIE_STORAGE)
-    with pytest.raises(AtlasError) as info:
-        build_page_update_preflight(client, "123", TIE_EDITED_MD, body_format="md", if_version=7)
-    context = info.value.to_dict()["error"]["context"]
-    assert context["reason"] == "ownership_proof_invalid"
-    assert context["fatal_class"]
-    # The cause still names itself in a value-free machine code, which is what
-    # the old `conversion_reason_code` assertion protected.
-    assert REASON in {item["code"] for item in context["diagnostics"]}
+    preflight = build_page_update_preflight(client, "123", TIE_EDITED_MD, body_format="md", if_version=7)
+    receipt = preflight.to_dict()
+
+    assert receipt["status"] == "full_replacement_consent_required"
+    assert receipt["migration_fingerprint"] is None
+    assert receipt["consent_required"] is False
+    assert receipt["full_replacement_fingerprint"].startswith("repl_sha256:")
+    assert receipt["full_replacement"]["schema"] == "atls-replacement-manifest-v1"
+    assert receipt["full_replacement"]["discarded_identity_count"] == 0
+    assert REASON in {item["code"] for item in receipt["source_conversion_report"]["occurrences"]}
 
 
 def test_tie_end_to_end_managed_preflight(tmp_path: Path) -> None:

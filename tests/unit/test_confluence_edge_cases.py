@@ -471,18 +471,27 @@ def test_upload_attachment_uses_explicit_remote_filename(client: ConfluenceClien
 
 
 @respx.mock
-def test_upload_attachments_batch_replace_mode(client: ConfluenceClient, tmp_path: Path) -> None:
+def test_upload_attachments_batch_creates_files_the_page_does_not_hold(
+    client: ConfluenceClient, tmp_path: Path
+) -> None:
+    """The other half of `replace`: names the page has never seen are still creates.
+
+    Kept from the test this replaced, whose fixture had no existing attachment and so
+    only ever measured this half while being named for the other one.
+    """
+
     file1 = tmp_path / "report.txt"
     file1.write_text("report content")
     file2 = tmp_path / "summary.txt"
     file2.write_text("summary content")
 
-    expected1 = {"results": [{"id": "att10", "title": "report.txt"}]}
-    expected2 = {"results": [{"id": "att11", "title": "summary.txt"}]}
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [], "size": 0})
+    )
     route = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment")
     route.side_effect = [
-        httpx.Response(200, json=expected1),
-        httpx.Response(200, json=expected2),
+        httpx.Response(200, json={"results": [{"id": "att10", "title": "report.txt"}]}),
+        httpx.Response(200, json={"results": [{"id": "att11", "title": "summary.txt"}]}),
     ]
 
     results = client.upload_attachments_batch("100", [file1, file2], if_exists="replace")
@@ -731,3 +740,42 @@ def test_search_users_no_match_returns_empty(client: ConfluenceClient) -> None:
     users = client.search_users("zzznomatch")
 
     assert users == []
+
+
+@respx.mock
+def test_upload_attachments_batch_versions_an_existing_attachment(client: ConfluenceClient, tmp_path: Path) -> None:
+    """`--if-exists=version` must post a new version, not try to create a second file.
+
+    The batch uploader read the existing-attachment list only for `skip`. `version` and
+    `replace` were accepted by the CLI, fell through to the create endpoint, and the
+    server answered 400 "Cannot add a new attachment with same file name as an existing
+    attachment" -- a message that never mentions the flag, on a page whose attachment
+    was right there. Measured on a page carrying seven already-attached images, where it took
+    the whole publish down.
+
+    `_upload_attachment_raw` already knew how to do this: given an `attachment_id` it
+    posts to `child/attachment/{id}/data`, which is the version endpoint. Nothing needed
+    inventing; the batch path just never looked the id up.
+    """
+
+    existing = tmp_path / "diagram.png"
+    existing.write_bytes(b"new bytes")
+    fresh = tmp_path / "added.png"
+    fresh.write_bytes(b"added bytes")
+
+    respx.get(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-9", "title": "diagram.png"}], "size": 1})
+    )
+    version = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment/att-9/data").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-9", "title": "diagram.png"}]})
+    )
+    create = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-10", "title": "added.png"}]})
+    )
+
+    results = client.upload_attachments_batch("100", [existing, fresh], if_exists="version")
+
+    assert version.called, "an existing filename must go to the version endpoint"
+    assert create.call_count == 1, "only the genuinely new file may use the create endpoint"
+    assert len(results) == 2
+    assert b"new bytes" in version.calls[0].request.content

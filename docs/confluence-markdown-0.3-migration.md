@@ -161,7 +161,7 @@ current migration fingerprint again; an operation marker is not stored consent. 
 previously approved write already landed, atls may finalize the local journal without another remote mutation.
 
 `page update --body-format=storage` transports explicit caller-provided storage and is outside Markdown-conversion
-consent. It remains subject to stale-version and read-back checks. atls requires `cfxmark>=0.6.0,<0.6.1`; because the exact
+consent. It remains subject to stale-version and read-back checks. atls requires `cfxmark>=0.6.1,<0.6.2`; because the exact
 converter version is fingerprint input, an upgrade invalidates pending consent and requires managed-file revalidation.
 
 Managed files and local assets reject symlink, ancestor-symlink, hardlink/reparse, and destination-identity swaps at their mutation boundaries.

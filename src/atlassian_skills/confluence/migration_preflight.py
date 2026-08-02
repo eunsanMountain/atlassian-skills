@@ -709,7 +709,7 @@ MIGRATION_CODE_DESCRIPTIONS: dict[str, str] = {
 #: The two edit shapes that do not need a source-bound ownership proof. Named
 #: once because it is now answered on three refusal paths, and a list that says
 #: what a caller can still do is worth being the same list every time.
-SUPPORTED_ALTERNATIVES = ["append_markdown_blocks", "page_patch_text"]
+SUPPORTED_ALTERNATIVES = ["append_markdown_blocks", "page_patch_text", "full_replacement_with_consent"]
 
 # Value-free next step for a failed in-place proof. The JSON envelope already carries
 # `fatal_class` and `supported_alternatives`, but plain output prints only the message
@@ -717,8 +717,8 @@ SUPPORTED_ALTERNATIVES = ["append_markdown_blocks", "page_patch_text"]
 # with no way to narrow it. Static text -- no page, code, or leaf value crosses here.
 OWNERSHIP_PROOF_HINT = (
     "Re-run with --format=json for error.context.fatal_class and supported_alternatives. "
-    "Appending blocks at the end of the document, or page patch-text for one exact string, "
-    "does not need this proof."
+    "Appending blocks at the end of the document, page patch-text for one exact string, or an explicit "
+    "full replacement with the returned approval fingerprint does not use this proof."
 )
 
 # A managed file records the converter that produced it; a cfxmark upgrade therefore

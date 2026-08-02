@@ -147,7 +147,7 @@ RAGGED_TABLE_ISLAND_V1 = PreservationCapability(
     protects=("ragged table row/cell topology; edit Markdown outside the protected table only",),
     closed_by="test_a_ragged_table_island_survives_the_public_managed_push",
     shape="ragged-protected-tables",
-    builds=frozenset({("cfxmark 0.6.0", "editable")}),
+    builds=frozenset({("cfxmark 0.6.1", "editable")}),
 )
 
 #: The registry contains only the ragged-table shape closed by the public managed
@@ -296,7 +296,7 @@ class IdentityPreservation:
 #: none of it is inherited by a build none of it was measured against.
 IDENTITY_PRESERVATION: IdentityPreservation | None = IdentityPreservation(
     name="identity-carry-v1",
-    converter="cfxmark 0.6.0",
+    converter="cfxmark 0.6.1",
     profile="editable",
     shapes=(
         "a structured macro with a rich-text body",

@@ -1,6 +1,6 @@
 [project]
 name = "atlassian-skills"
-version = "0.4.0"
+version = "0.4.1"
 description = "Token-efficient CLI + Claude Code Skill for Atlassian Server/DC (Jira, Confluence, Bitbucket, Bamboo)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,14 +39,16 @@ dependencies = [
     "tomli-w",
     # Pinned to the exact measured build, not the compatible range, because the
     # preservation registry binds capabilities to a converter string:
-    # `ragged-table-island-v1` names `("cfxmark 0.6.0", "editable")` and the identity
-    # carry names `cfxmark 0.6.0`. That binding is deliberate -- a capability must not
+    # `ragged-table-island-v1` names `("cfxmark 0.6.1", "editable")` and the identity
+    # carry names `cfxmark 0.6.1`. That binding is deliberate -- a capability must not
     # be inherited by a build it was never measured against -- but it fails *silently*:
-    # on 0.6.1 both simply stop matching, `canonical_write_permitted` drops, and nothing
-    # is raised. `uv.lock` pins 0.6.0 so CI can never see it; only a user resolving a
-    # newer patch would. Widening this range therefore means re-measuring the
-    # capabilities and moving their build strings in the same change.
-    "cfxmark>=0.6.0,<0.6.1",
+    # on 0.6.2 both simply stop matching, `canonical_write_permitted` drops, and nothing
+    # is raised. The release lock must pin 0.6.1 so CI can never see it; until
+    # cfxmark 0.6.1 is published, this tree deliberately retains the 0.6.0
+    # registry lock instead of recording a non-portable local-wheel path.
+    # Widening this range therefore means re-measuring the capabilities and moving
+    # their build strings in the same change.
+    "cfxmark>=0.6.1,<0.6.2",
     "platformdirs",
     "keyring>=24",
     "truststore>=0.10",

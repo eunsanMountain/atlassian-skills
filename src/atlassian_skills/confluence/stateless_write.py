@@ -37,6 +37,7 @@ from atlassian_skills.confluence.version_reason import proof_bound_version_reaso
 from atlassian_skills.core.errors import (
     ConflictError,
     ConversionConsentRequiredError,
+    FullReplacementConsentRequiredError,
     MigrationConsentRequiredError,
     StaleError,
     ValidationError,
@@ -365,6 +366,10 @@ class PageUpdatePreflight:
     consent_required: bool
     ownership: dict[str, Any]
     external_image_count: int
+    #: Non-None only for the explicit replacement route.  The manifest is
+    #: already value-free: raw macro IDs contribute only to its hash.
+    replacement_manifest: dict[str, Any] | None = None
+    replacement_fingerprint: str | None = None
     #: What this publish would upload and reuse. Carried on the preflight so a dry
     #: run can show it, and so the publish does not have to resolve the document a
     #: second time and risk resolving it differently.
@@ -382,8 +387,15 @@ class PageUpdatePreflight:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        status = (
+            "full_replacement_consent_required"
+            if self.replacement_fingerprint is not None
+            else "migration_consent_required"
+            if self.consent_required
+            else "ready_to_update"
+        )
         return {
-            "status": "migration_consent_required" if self.consent_required else "ready_to_update",
+            "status": status,
             "page_id": self.page_id,
             "body_format": self.body_format,
             "title_dirty": self.title != self.remote_title,
@@ -397,6 +409,8 @@ class PageUpdatePreflight:
             "source_conversion_report_sha256": self.source_conversion_report_sha256,
             "migration_fingerprint": self.migration_fingerprint,
             "consent_required": self.consent_required,
+            "full_replacement": self.replacement_manifest,
+            "full_replacement_fingerprint": self.replacement_fingerprint,
             "ownership": self.ownership,
             "asset_sync": False,
             "external_images": {
@@ -417,6 +431,7 @@ def _build_markdown_update(
     title: str,
     #: Image references this publish will turn into attachments on the page.
     uploadable: frozenset[str] = frozenset(),
+    assets: AssetUploadPlan | None = None,
 ) -> PageUpdatePreflight:
     from atlassian_skills.confluence.push_md import _assert_push_safe_source
 
@@ -438,11 +453,18 @@ def _build_markdown_update(
             options=options,
         )
     except cfxmark.OwnershipProofError as error:
-        raise ValidationError(
-            "Markdown update has no complete source-bound ownership proof",
-            context=ownership_error_context(error.summary, reason="ownership_proof_invalid"),
-            hint=OWNERSHIP_PROOF_HINT,
-        ) from error
+        return _build_full_replacement_update(
+            page_id=page_id,
+            site=site,
+            remote_version=remote_version,
+            remote_storage=remote_storage,
+            markdown=markdown,
+            remote_title=remote_title,
+            title=title,
+            uploadable=uploadable,
+            assets=assets or AssetUploadPlan((), ()),
+            proof_summary=error.summary,
+        )
     except (cfxmark.CfxmarkError, TypeError, ValueError) as error:
         raise ValidationError(
             "Markdown update has no complete source-bound ownership proof",
@@ -517,6 +539,162 @@ def _build_markdown_update(
         consent_required=consent_required,
         ownership=ownership,
         external_image_count=external_image_count,
+        assets=assets or AssetUploadPlan((), ()),
+    )
+
+
+_FULL_REPLACEMENT_PROOF_CODES = frozenset(
+    {
+        "migration-user-overlap-ambiguous",
+        "multiple-change-owners",
+        "semantic-mapping-ambiguous",
+        "semantic-source-map-incomplete",
+        "unclassified-storage-change",
+    }
+)
+
+
+def _stateless_asset_plan_sha256(assets: AssetUploadPlan) -> str:
+    """Bind an explicit replacement to its upload/reuse plan without exposing names."""
+
+    return _sha256_bytes(_canonical_json(assets.to_dict()))
+
+
+def _build_full_replacement_update(
+    *,
+    page_id: str,
+    site: str,
+    remote_version: int,
+    remote_storage: str,
+    markdown: str,
+    remote_title: str,
+    title: str,
+    uploadable: frozenset[str],
+    assets: AssetUploadPlan,
+    proof_summary: cfxmark.OwnershipProofSummary,
+) -> PageUpdatePreflight:
+    """Build the separate, explicit route after the strict proof has refused.
+
+    The normal proof is intentionally not retried with relaxed semantics.  This
+    candidate keeps cfxmark's identity-carry and remote-subtree preservation
+    state, then derives its manifest from the exact XHTML that would be PUT.
+    """
+
+    options = cfxmark.ConversionOptions(profile="editable")
+    manifest_builder = getattr(cfxmark, "build_replacement_manifest", None)
+    if not callable(manifest_builder):
+        raise ValidationError(
+            "Installed cfxmark cannot build an explicit full-replacement manifest",
+            context={
+                "reason": "converter_fix_required",
+                "required_converter": "cfxmark>=0.6.1,<0.6.2",
+            },
+            hint="Install the declared cfxmark dependency before retrying the full-replacement dry-run.",
+        )
+    try:
+        base = cfxmark.to_md_artifact(remote_storage, options=options)
+        candidate = cfxmark.to_cfx_artifact(
+            markdown,
+            presentation=base.presentation,
+            base_artifact=base,
+            splice_source=remote_storage,
+            options=options,
+        )
+        manifest = manifest_builder(base_artifact=base, candidate=candidate)
+    except (cfxmark.CfxmarkError, TypeError, ValueError) as error:
+        raise ValidationError(
+            "Markdown update has no complete source-bound ownership proof",
+            context={
+                **ownership_error_context(proof_summary, reason="ownership_proof_invalid"),
+                **conversion_failure_context(error),
+            },
+            hint=OWNERSHIP_PROOF_HINT,
+        ) from error
+
+    report = candidate.source_migration_report or base.migration_report
+    effects_by_code = {item.code: item.effect for item in report.occurrences}
+    # The primary full-replacement consent is intentionally broader than the
+    # in-place proof: it covers known, named candidate losses such as replaced
+    # table presentation.  Unknown/fatal conversion failures remain closed.
+    # Strict-proof failures are separately allowed only because this route is
+    # outside that proof; they remain present in the receipt as diagnostics.
+    disallowed = sorted(
+        {
+            item.code
+            for item in candidate.diagnostics
+            if item.blocking
+            and item.code not in _FULL_REPLACEMENT_PROOF_CODES
+            and effects_by_code.get(item.code, "fatal") == "fatal"
+        }
+    )
+    if disallowed:
+        raise ValidationError(
+            "Markdown update has non-replacement conversion failures",
+            context={
+                **ownership_error_context(proof_summary, reason="ownership_proof_invalid"),
+                "diagnostic_codes": disallowed,
+            },
+            hint=OWNERSHIP_PROOF_HINT,
+        )
+
+    diagnostics = tuple(candidate.diagnostics)
+    external_image_count = _validate_stateless_images(markdown, candidate.document, uploadable=uploadable)
+    source_report = _source_conversion_report(diagnostics, display=True)
+    source_report_sha256 = _sha256_bytes(_canonical_json(_source_conversion_report(diagnostics, display=False)))
+    report_payload = _migration_report_payload(report, display=True)
+    report_sha256 = _report_hash(report)
+    candidate_storage_sha256 = _candidate_sha256(candidate.xhtml)
+    if manifest.candidate_storage_sha256 != candidate_storage_sha256:
+        raise ValidationError(
+            "Replacement manifest is not bound to the final candidate",
+            context={"reason": "full_replacement_candidate_mismatch"},
+        )
+    manifest_payload = manifest.to_dict()
+    fingerprint = _sha256_bytes(
+        _canonical_json(
+            {
+                "schema": "atls-replacement-fingerprint-v1",
+                "site": site,
+                "page": page_id,
+                "remote_version": remote_version,
+                "remote_storage_sha256": _sha256_text(remote_storage),
+                "remote_title_sha256": _sha256_text(remote_title),
+                "target_title_sha256": _sha256_text(title),
+                "converter": f"cfxmark/{cfxmark.__version__}",
+                "profile": "markdown-first",
+                "base_markdown_sha256": _sha256_text(base.markdown),
+                "edited_markdown_sha256": _sha256_text(markdown),
+                "candidate_storage_sha256": candidate_storage_sha256,
+                "asset_plan_sha256": _stateless_asset_plan_sha256(assets),
+                "migration_report_sha256": report_sha256,
+                "source_conversion_report_sha256": source_report_sha256,
+                "discarded_identities_sha256": manifest.discarded_identities_sha256,
+                "replacement": True,
+            }
+        ),
+        prefix="repl_sha256",
+    )
+    return PageUpdatePreflight(
+        page_id=page_id,
+        body_format="md",
+        remote_title=remote_title,
+        title=title,
+        remote_version=remote_version,
+        remote_storage=remote_storage,
+        remote_storage_sha256=_sha256_text(remote_storage),
+        candidate_storage=candidate.xhtml,
+        candidate_storage_sha256=candidate_storage_sha256,
+        migration_report=report_payload,
+        migration_report_sha256=report_sha256,
+        source_conversion_report=source_report,
+        source_conversion_report_sha256=source_report_sha256,
+        migration_fingerprint=None,
+        consent_required=False,
+        ownership=_ownership_payload(candidate),
+        external_image_count=external_image_count,
+        replacement_manifest=manifest_payload,
+        replacement_fingerprint=fingerprint,
+        assets=assets,
     )
 
 
@@ -562,17 +740,15 @@ def build_page_update_preflight(
         raise ValidationError("Confluence client base URL is missing", context={"reason": "site_missing"})
     if body_format == "md":
         assert prepared is not None
-        return replace(
-            _build_markdown_update(
-                page_id=page_id,
-                site=site_fingerprint(base_url),
-                remote_version=remote_version,
-                remote_storage=remote_storage,
-                markdown=body,
-                remote_title=remote_title,
-                title=effective_title,
-                uploadable=frozenset(item.filename for item in prepared.assets),
-            ),
+        return _build_markdown_update(
+            page_id=page_id,
+            site=site_fingerprint(base_url),
+            remote_version=remote_version,
+            remote_storage=remote_storage,
+            markdown=body,
+            remote_title=remote_title,
+            title=effective_title,
+            uploadable=frozenset(item.filename for item in prepared.assets),
             assets=prepared.plan,
         )
     try:
@@ -631,6 +807,88 @@ def _consent_error(
     )
 
 
+def _validate_full_replacement_candidate(preflight: PageUpdatePreflight) -> None:
+    """Refuse a preflight whose PUT body no longer matches its approved manifest."""
+
+    if preflight.replacement_fingerprint is None:
+        return
+    manifest = preflight.replacement_manifest
+    if not isinstance(manifest, dict):
+        raise ValidationError(
+            "Full replacement has no manifest",
+            context={"reason": "full_replacement_manifest_missing"},
+        )
+    manifest_candidate = manifest.get("candidate_storage_sha256")
+    if (
+        not isinstance(manifest_candidate, str)
+        or manifest_candidate != preflight.candidate_storage_sha256
+        or _candidate_sha256(preflight.candidate_storage) != preflight.candidate_storage_sha256
+    ):
+        raise ValidationError(
+            "Full replacement candidate changed after preflight",
+            context={"reason": "full_replacement_candidate_changed", "page_id": preflight.page_id},
+        )
+
+
+def _full_replacement_retry_action(preflight: PageUpdatePreflight, *, argv: tuple[str, ...]) -> dict[str, Any]:
+    assert preflight.replacement_fingerprint is not None
+    action = consent_retry_action(
+        argv,
+        option="--accept-full-replacement",
+        fingerprint=preflight.replacement_fingerprint,
+        description_code="REVIEW_FULL_REPLACEMENT_AND_RETRY",
+    )
+    manifest = preflight.replacement_manifest or {}
+    if manifest.get("discarded_identity_count", 0):
+        action["argv"].extend(["--accept-discarded-identities", preflight.replacement_fingerprint])
+    return action
+
+
+def _full_replacement_consent_error(
+    preflight: PageUpdatePreflight,
+    *,
+    argv: tuple[str, ...],
+    approval: str,
+) -> FullReplacementConsentRequiredError:
+    return FullReplacementConsentRequiredError(
+        "Full replacement requires explicit informed consent",
+        hint="Review the replacement manifest and run the returned command exactly.",
+        context={
+            **to_error_context(preflight.to_dict()),
+            "reason": "full_replacement_consent_required",
+            "approval": approval,
+            "accepted": False,
+            "next_actions": [_full_replacement_retry_action(preflight, argv=argv)],
+        },
+    )
+
+
+def _require_full_replacement_consent(
+    preflight: PageUpdatePreflight,
+    *,
+    accept_full_replacement: str | None,
+    accept_discarded_identities: str | None,
+    argv: tuple[str, ...],
+) -> None:
+    if preflight.replacement_fingerprint is None:
+        return
+    _validate_full_replacement_candidate(preflight)
+    fingerprint = preflight.replacement_fingerprint
+    if accept_full_replacement is None:
+        raise _full_replacement_consent_error(preflight, argv=argv, approval="full_replacement_missing")
+    if accept_full_replacement is not None and accept_full_replacement != fingerprint:
+        raise _full_replacement_consent_error(preflight, argv=argv, approval="full_replacement_fingerprint")
+    manifest = preflight.replacement_manifest or {}
+    if manifest.get("discarded_identity_count", 0) and accept_discarded_identities is None:
+        raise _full_replacement_consent_error(preflight, argv=argv, approval="discarded_identities_missing")
+    if (
+        manifest.get("discarded_identity_count", 0)
+        and accept_discarded_identities is not None
+        and accept_discarded_identities != fingerprint
+    ):
+        raise _full_replacement_consent_error(preflight, argv=argv, approval="discarded_identities_fingerprint")
+
+
 def publish_page_update(
     client: Any,
     preflight: PageUpdatePreflight,
@@ -639,6 +897,8 @@ def publish_page_update(
     reason: str | None,
     minor_edit: bool,
     next_action_argv: tuple[str, ...],
+    accept_full_replacement: str | None = None,
+    accept_discarded_identities: str | None = None,
 ) -> dict[str, Any]:
     """Publish the proven candidate, uploading its images first.
 
@@ -656,6 +916,12 @@ def publish_page_update(
             "put_count": 0,
             "version": preflight.remote_version,
         }
+    _require_full_replacement_consent(
+        preflight,
+        accept_full_replacement=accept_full_replacement,
+        accept_discarded_identities=accept_discarded_identities,
+        argv=next_action_argv,
+    )
     if preflight.consent_required and accept_migration != preflight.migration_fingerprint:
         raise _consent_error(preflight, argv=next_action_argv)
     if preflight.assets.upload:
@@ -688,7 +954,14 @@ def publish_page_update(
             context={"reason": "prewrite_remote_drift", "page_id": preflight.page_id},
         )
     version_reason = reason
-    if preflight.body_format == "md":
+    if preflight.replacement_fingerprint is not None:
+        version_reason = proof_bound_version_reason(
+            proof_mode="full_replacement",
+            fingerprint=preflight.replacement_fingerprint,
+            migration_report=preflight.migration_report,
+            user_reason=reason,
+        )
+    elif preflight.body_format == "md":
         if preflight.migration_fingerprint is None:
             raise ValidationError(
                 "Markdown update has no migration fingerprint for its version reason",
