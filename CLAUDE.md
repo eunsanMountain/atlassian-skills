@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.4.1 (adds an explicit two-step approval for a deliberate whole-page rewrite, and implements `attachment upload-batch --if-exists`)
+- **Current version**: 0.4.2 (a full-replacement refusal now prints the approval command its hint tells you to run, and only the command shape the CLI actually produces)
 
 ## Build & Run
 

@@ -6,7 +6,7 @@ import shlex
 import subprocess
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import typer
 from cfxmark.presentation import extract_presentation
@@ -329,19 +329,65 @@ _NEXT_ACTION_TEXT = {
     "PATCH_USE_MANAGED_EDIT": "For structural or macro content, use pull-md and edit as Markdown.",
 }
 
+
+#: The console rendering for every approval-gated retry `consent_retry_action` can
+#: build, keyed by its `description_code`: (approval option, fingerprint prefix,
+#: what to do *instead* of approving).
+#:
+#: A code missing from here is not a cosmetic gap. `_consent_retry_display` returns
+#: None for it, so `_handle_error` prints neither the loss summary nor the retry
+#: command -- leaving a hint that says "run the returned command exactly" above an
+#: output that returned none, and the JSON envelope as the only way to recover the
+#: fingerprint. `REVIEW_FULL_REPLACEMENT_AND_RETRY` shipped in exactly that state.
+#: `test_next_action_argv.py` now derives the required keys from the call sites.
+class _ConsentRule(NamedTuple):
+    """How one consent kind's sanctioned retry command is recognized and described."""
+
+    #: The primary approval flag. Exactly one, at the end of the command.
+    option: str
+    #: What its fingerprint must begin with, so an approval of one kind cannot be
+    #: displayed as an approval of another.
+    fingerprint_prefix: str
+    #: Additional approval flags this kind -- and only this kind -- may carry after the
+    #: primary one, each at most once and each repeating the primary fingerprint.
+    #: Empty for a consent that takes a single approval.
+    companions: frozenset[str]
+    #: What to do *instead* of approving.
+    alternative: str
+
+
 _CONSENT_ACTIONS = {
-    "REVIEW_MIGRATION_AND_RETRY": (
+    "REVIEW_MIGRATION_AND_RETRY": _ConsentRule(
         "--accept-migration",
         "mig_sha256:",
+        frozenset(),
         "Use page inspect and patch-text for a narrow plain-text edit, or revise the managed Markdown and rerun "
         "--dry-run.",
     ),
-    "REVIEW_CONVERSION_AND_RETRY": (
+    "REVIEW_CONVERSION_AND_RETRY": _ConsentRule(
         "--accept-conversion",
         "conv_sha256:",
+        frozenset(),
         "Revise unsupported Markdown constructs and rerun --dry-run before approving conversion.",
     ),
+    "REVIEW_FULL_REPLACEMENT_AND_RETRY": _ConsentRule(
+        "--accept-full-replacement",
+        "repl_sha256:",
+        frozenset({"--accept-discarded-identities"}),
+        "Re-read the page and re-apply the change in steps the in-place proof can attribute, then rerun --dry-run; "
+        "approve a replacement only when rewriting the whole page body is the intent.",
+    ),
 }
+
+#: Every approval flag any rule can carry. `_consent_retry_display` refuses to show a
+#: command whose *command part* contains one of these: the approval section is the tail
+#: and nothing else, so a second primary approval, a companion belonging to a different
+#: consent kind, or a stray approval in the middle all fail closed rather than being
+#: normalized into an apparently sanctioned retry.
+_ALL_CONSENT_OPTIONS = frozenset(
+    {rule.option for rule in _CONSENT_ACTIONS.values()}
+    | {companion for rule in _CONSENT_ACTIONS.values() for companion in rule.companions}
+)
 
 _MIGRATION_EFFECT_LABELS = {
     "converted": "converted",
@@ -372,8 +418,36 @@ def _report_groups(report: Any, field: str, labels: dict[str, str]) -> list[str]
     return [f"{label}={counts[value]}" for value, label in labels.items() if counts[value]]
 
 
+def _replacement_groups(context: dict[str, Any]) -> list[str]:
+    """What an explicit full replacement discards, from its candidate-bound manifest.
+
+    This route can legitimately carry no migration or conversion occurrence at all --
+    the strict proof refused to *attribute* the change, which is not the same as the
+    change being lossy. Without a contribution here the summary comes back empty and
+    `_handle_error` withholds the retry command, which is the correct fail-closed rule
+    (no disclosure, no approval token) applied to a case that does have a disclosure.
+
+    The counted identities are macro identities the replacement drops. Their count is
+    the load-bearing number; the raw UUIDs behind it never leave cfxmark's private
+    manifest, so nothing here can carry page content.
+    """
+
+    manifest = context.get("full_replacement")
+    if not isinstance(manifest, dict):
+        return []
+    count = manifest.get("discarded_identity_count")
+    # A negative count is not a disclosure, it is a malformed one. Letting it through
+    # produced a non-empty summary, and a non-empty summary is exactly what unlocks the
+    # retry command -- so the fail-closed rule (no disclosure, no approval token) has to
+    # reject it here rather than render it.
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        return []
+    return ["full replacement=whole page body", f"discarded identities={count}"]
+
+
 def _consent_loss_summary(context: dict[str, Any]) -> str | None:
-    groups = _report_groups(context.get("migration_report"), "effect", _MIGRATION_EFFECT_LABELS)
+    groups = _replacement_groups(context)
+    groups.extend(_report_groups(context.get("migration_report"), "effect", _MIGRATION_EFFECT_LABELS))
     groups.extend(_report_groups(context.get("source_conversion_report"), "category", _DIAGNOSTIC_CATEGORY_LABELS))
     if not groups:
         conversion = context.get("conversion")
@@ -444,14 +518,42 @@ def _consent_retry_display(action: Any) -> tuple[str, str] | None:
     argv = action.get("argv")
     if rule is None or not isinstance(argv, list) or not argv or not all(isinstance(arg, str) for arg in argv):
         return None
-    consent_option, fingerprint_prefix, alternative = rule
-    if argv[:3] != ["atls", "confluence", "page"] or argv[-2:-1] != [consent_option]:
+    if argv[:3] != ["atls", "confluence", "page"]:
         return None
-    digest = argv[-1].removeprefix(fingerprint_prefix)
+    # Peel *this rule's own* companions off the tail, each at most once, before looking
+    # for the primary approval. Anchoring at the end -- rather than searching argv for
+    # the option -- keeps the original guarantee that what gets displayed is the
+    # sanctioned shape and not a command that merely contains the flag somewhere.
+    head = list(argv)
+    seen_companions: set[str] = set()
+    companion_fingerprints: list[str] = []
+    while len(head) >= 4 and head[-2] in rule.companions:
+        if head[-2] in seen_companions:
+            return None
+        seen_companions.add(head[-2])
+        companion_fingerprints.append(head[-1])
+        head = head[:-2]
+    if len(head) < 2 or head[-2] != rule.option:
+        return None
+    # Everything before the approval section must be command, not approval. This single
+    # check covers a repeated primary approval, a companion belonging to a different
+    # consent kind, and an approval flag buried in the middle -- none of which any
+    # producer builds, and each of which would otherwise be normalized into a command
+    # the user is told to run verbatim.
+    if any(argument in _ALL_CONSENT_OPTIONS for argument in head[:-2]):
+        return None
+    fingerprint = head[-1]
+    if any(value != fingerprint for value in companion_fingerprints):
+        return None
+    # `removeprefix` is a no-op when the prefix is absent, so the length check alone
+    # would have accepted a bare digest carrying no approval kind at all.
+    if not fingerprint.startswith(rule.fingerprint_prefix):
+        return None
+    digest = fingerprint[len(rule.fingerprint_prefix) :]
     if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
         return None
     display = subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
-    return alternative, display
+    return rule.alternative, display
 
 
 def _handle_error(err: AtlasError, fmt: OutputFormat) -> None:

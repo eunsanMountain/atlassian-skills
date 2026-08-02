@@ -14,7 +14,7 @@ description: |
 
 # atls — Atlassian CLI dispatcher
 
-<!-- installed-by: atls 0.4.1 -->
+<!-- installed-by: atls 0.4.2 -->
 
 Load this skill before any `atls` command. Use `--help` for uncommon operations and `atls version --check` when a command is missing.
 

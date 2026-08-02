@@ -261,3 +261,120 @@ def test_the_help_prose_check_can_actually_fail(cli_root: Any) -> None:
         "the header no longer names its own commands, so the check above has nothing to catch"
     )
     assert "diff" in _all_command_words(cli_root), "`diff` is gone entirely; pick another live command word"
+
+
+# --- the other end of the same pipe -------------------------------------------------
+#
+# The checks above prove a `next_actions` argv names a command that exists and that help
+# admits exists. They say nothing about whether a caller is ever shown it. For an
+# approval-gated retry that is the whole value: the argv carries a fingerprint the caller
+# cannot obtain any other way without parsing the JSON envelope by hand.
+#
+# `REVIEW_FULL_REPLACEMENT_AND_RETRY` shipped with a correct, resolvable, non-hidden argv
+# and no entry in the CLI's `_CONSENT_ACTIONS` render table. `_consent_retry_display`
+# returned None, so `_handle_error` printed neither the loss summary nor the retry
+# command -- above a hint reading "run the returned command exactly". Every gate in this
+# file was green while the console was silent, because every gate was checking the
+# producer.
+#
+# `consent_retry_action` is the single constructor for these actions and `_CONSENT_ACTIONS`
+# is the single table that renders them, so the invariant is exact and has no judgement
+# in it: the set of codes produced must equal the set of codes rendered.
+
+#: One per `consent_retry_action` call site. Below the number found today, for the same
+#: reason as `_MINIMUM_SITES`.
+_MINIMUM_CONSENT_SITES = 5
+
+
+def _consent_action_sites() -> list[tuple[Path, int, str, str]]:
+    """(file, line, description_code, option) for every `consent_retry_action` call.
+
+    Both keyword arguments are string literals at every call site. One that stops being
+    a literal is not silently skipped -- it fails the count check below, which is the
+    honest outcome: this gate cannot reason about a computed code, so it must not report
+    that it checked one.
+    """
+
+    sites: list[tuple[Path, int, str, str]] = []
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+            if name != "consent_retry_action":
+                continue
+            literals: dict[str, str] = {}
+            for keyword in node.keywords:
+                if (
+                    keyword.arg in {"description_code", "option"}
+                    and isinstance(keyword.value, ast.Constant)
+                    and isinstance(keyword.value.value, str)
+                ):
+                    literals[keyword.arg] = keyword.value.value
+            if len(literals) == 2:
+                sites.append((path, node.lineno, literals["description_code"], literals["option"]))
+    return sites
+
+
+def test_the_scanner_finds_the_consent_sites_it_is_supposed_to_check() -> None:
+    sites = _consent_action_sites()
+    assert len(sites) >= _MINIMUM_CONSENT_SITES, f"only found {len(sites)} consent_retry_action sites"
+
+
+def test_every_consent_retry_a_raise_site_builds_can_be_displayed() -> None:
+    from atlassian_skills.cli.confluence import _CONSENT_ACTIONS
+
+    missing = sorted(
+        {
+            f"{code} ({path.relative_to(SRC)}:{line})"
+            for path, line, code, _option in _consent_action_sites()
+            if code not in _CONSENT_ACTIONS
+        }
+    )
+    assert not missing, "description_code with no _CONSENT_ACTIONS entry: " + ", ".join(missing)
+
+
+def test_every_consent_render_rule_agrees_with_its_raise_site_on_the_option() -> None:
+    """A rule present but wrong is the same silence as a rule absent.
+
+    `_consent_retry_display` requires the approval option in the argv to equal the one in
+    the table, so a table entry naming a different flag drops the command exactly as a
+    missing entry does -- with nothing on stderr to say so.
+    """
+
+    from atlassian_skills.cli.confluence import _CONSENT_ACTIONS
+
+    disagreements = sorted(
+        {
+            f"{code}: raise site passes {option}, table says {_CONSENT_ACTIONS[code].option}"
+            for _path, _line, code, option in _consent_action_sites()
+            if code in _CONSENT_ACTIONS and _CONSENT_ACTIONS[code].option != option
+        }
+    )
+    assert not disagreements, "; ".join(disagreements)
+
+
+def test_no_consent_render_rule_is_dead() -> None:
+    """The reverse direction, so a removed raise site leaves no rule claiming coverage."""
+
+    from atlassian_skills.cli.confluence import _CONSENT_ACTIONS
+
+    produced = {code for _path, _line, code, _option in _consent_action_sites()}
+    dead = sorted(set(_CONSENT_ACTIONS) - produced)
+    assert not dead, "_CONSENT_ACTIONS entries no raise site produces: " + ", ".join(dead)
+
+
+def test_the_consent_render_check_can_actually_fail() -> None:
+    """Mutation proof, because a gate that cannot go red guards nothing.
+
+    Drop the real full-replacement rule and the same assertion the gate makes must fail.
+    """
+
+    from atlassian_skills.cli import confluence as cli_confluence
+
+    table = dict(cli_confluence._CONSENT_ACTIONS)
+    removed = table.pop("REVIEW_FULL_REPLACEMENT_AND_RETRY", None)
+    assert removed is not None, "the rule this mutation removes is gone; update the mutation"
+    produced = {code for _path, _line, code, _option in _consent_action_sites()}
+    assert produced - set(table), "removing the rule left the gate green -- it is not load-bearing"

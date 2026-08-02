@@ -1233,3 +1233,233 @@ def test_a_faithful_page_gets_no_warning_at_all() -> None:
     assert result.exit_code == 0, result.output
     assert "content_incomplete" not in result.stderr
     assert "structure_incomplete" not in result.stderr
+
+
+def _page_with_storage(storage: str) -> dict[str, object]:
+    return {**_RAW_PAGE, "body": {"storage": {"value": storage, "representation": "storage"}}}
+
+
+def _full_replacement_invoke(tmp_path: Path, storage: str, *, fmt: str | None = None) -> object:
+    """Drive `page update` into the explicit full-replacement gate.
+
+    `B changed\n\nA\n` against `<p>A</p><p>B</p>` reorders and rewrites at once, which
+    is what the strict source-bound proof cannot attribute -- the same shape the unit
+    tests in `test_stateless_page_write.py` use, driven here through the real CLI so the
+    console rendering is exercised too.
+    """
+
+    body_file = tmp_path / "candidate.md"
+    body_file.write_text("B changed\n\nA\n", encoding="utf-8")
+    respx.get(url__regex=rf"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(200, json=_page_with_storage(storage))
+    )
+    put = respx.put(f"{CONFLUENCE_URL}/rest/api/content/12345678").mock(
+        return_value=httpx.Response(500, json={"message": "must not write"})
+    )
+    argv = ["confluence", "page", "update", "12345678", "--body-file", str(body_file), "--body-format", "md"]
+    result = runner.invoke(app, ([*["--format", fmt], *argv] if fmt else argv))
+    return result, put
+
+
+@respx.mock
+def test_full_replacement_consent_prints_the_command_its_hint_promises(tmp_path: Path) -> None:
+    """The hint says "run the returned command"; the console has to return one.
+
+    Every ingredient existed -- the raise site builds a `retry_with_consent` action whose
+    argv is the exact retry, and `_handle_error` knows how to print one -- but
+    `_CONSENT_ACTIONS` had no entry for `REVIEW_FULL_REPLACEMENT_AND_RETRY`, so the lookup
+    returned None and the command was silently dropped. A user following the hint had
+    nothing to follow, and the JSON envelope was the only way to recover the fingerprint.
+    """
+
+    result, put = _full_replacement_invoke(tmp_path, "<p>A</p><p>B</p>")
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    summary_at = result.output.index("Loss summary:")
+    alternative_at = result.output.index("Alternative:")
+    retry_at = result.output.index("Retry:")
+    assert summary_at < alternative_at < retry_at
+    assert "--accept-full-replacement repl_sha256:" in result.output
+    assert result.output.rstrip().splitlines()[-1].startswith("Retry: atls confluence page update 12345678 ")
+    assert str(_RAW_PAGE["title"]) not in result.output
+    assert CONFLUENCE_URL not in result.output
+    assert put.called is False
+
+
+@respx.mock
+def test_full_replacement_retry_carries_both_approvals_when_identities_are_discarded(tmp_path: Path) -> None:
+    """The two-flag shape has to survive display, not just construction.
+
+    With a discarded identity the sanctioned retry ends
+    `--accept-full-replacement <fp> --accept-discarded-identities <fp>`, so the display
+    guard cannot assume the approval option is the second-to-last argument.
+    """
+
+    storage = (
+        '<p>A</p><p>B</p><ac:structured-macro ac:name="info" ac:macro-id="discarded-raw-uuid">'
+        "<ac:rich-text-body><p>Old</p></ac:rich-text-body></ac:structured-macro>"
+    )
+    result, put = _full_replacement_invoke(tmp_path, storage)
+
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    retry = result.output.rstrip().splitlines()[-1]
+    assert retry.startswith("Retry: atls confluence page update 12345678 ")
+    assert "--accept-full-replacement repl_sha256:" in retry
+    assert "--accept-discarded-identities repl_sha256:" in retry
+    assert "discarded-raw-uuid" not in result.output
+    assert put.called is False
+
+
+@respx.mock
+def test_full_replacement_loss_summary_names_the_whole_page(tmp_path: Path) -> None:
+    """What is being approved, in the summary the retry command is gated on.
+
+    A full replacement can carry no migration or conversion occurrence at all, and the
+    summary is what stops `_handle_error` from withholding the command. Deriving it from
+    the manifest keeps the fail-closed rule (no disclosure, no token) while making the
+    disclosure always available on this route.
+    """
+
+    result, _put = _full_replacement_invoke(tmp_path, "<p>A</p><p>B</p>")
+
+    assert "Loss summary:" in result.output
+    assert "full replacement" in result.output
+    assert "discarded identities=0" in result.output
+    assert "retry command withheld" not in result.output
+
+
+# --- what the display guard must refuse ---------------------------------------------
+#
+# The tests above prove the sanctioned command is shown. These prove nothing else is.
+# The displayed string is run verbatim by whoever reads it, so a shape the producer
+# never builds must fail closed rather than be normalized into an apparent retry. Round
+# one shipped a guard that accepted all four of the first group.
+
+_FULL = "repl_sha256:" + "a" * 64
+_MIG = "mig_sha256:" + "b" * 64
+_OTHER_FULL = "repl_sha256:" + "e" * 64
+_BASE = ["atls", "confluence", "page", "update", "123"]
+
+
+def _action(code: str, argv: list[str]) -> dict[str, object]:
+    return {"id": "retry_with_consent", "requires_user_approval": True, "description_code": code, "argv": argv}
+
+
+#: Refusal shapes, with what each one is evidence *of*. Five of these were displayed by
+#: the first version of this guard and are why it was rewritten; the other five were
+#: already refused and are here so a later rewrite cannot quietly lose them. Measured by
+#: replaying all ten against the earlier guard rather than assumed, because a refusal
+#: test that was already passing proves nothing about the change it ships with.
+#:
+#:   fixed here   companion_on_migration, companion_on_conversion, duplicate_companion,
+#:                second_primary_approval, stray_approval_in_command
+#:   regression   companion_fingerprint_mismatch, fingerprint_of_the_wrong_kind,
+#:                unknown_description_code, not_an_approval_gated_action,
+#:                bare_digest_without_a_prefix (this one only since the prefix check;
+#:                the original length-only check accepted it)
+_REFUSED = {
+    # A companion flag is a property of one consent kind, not of consent in general.
+    "companion_on_migration": _action(
+        "REVIEW_MIGRATION_AND_RETRY", [*_BASE, "--accept-migration", _MIG, "--accept-discarded-identities", _MIG]
+    ),
+    "companion_on_conversion": _action(
+        "REVIEW_CONVERSION_AND_RETRY",
+        [
+            *_BASE,
+            "--accept-conversion",
+            "conv_sha256:" + "c" * 64,
+            "--accept-discarded-identities",
+            "conv_sha256:" + "c" * 64,
+        ],
+    ),
+    # The producer appends each companion once.
+    "duplicate_companion": _action(
+        "REVIEW_FULL_REPLACEMENT_AND_RETRY",
+        [
+            *_BASE,
+            "--accept-full-replacement",
+            _FULL,
+            "--accept-discarded-identities",
+            _FULL,
+            "--accept-discarded-identities",
+            _FULL,
+        ],
+    ),
+    # Two primary approvals is not a shape any candidate binding produces.
+    "second_primary_approval": _action(
+        "REVIEW_FULL_REPLACEMENT_AND_RETRY",
+        [*_BASE, "--accept-full-replacement", _OTHER_FULL, "--accept-full-replacement", _FULL],
+    ),
+    # An approval flag before the approval section means the command part is not command.
+    "stray_approval_in_command": _action(
+        "REVIEW_FULL_REPLACEMENT_AND_RETRY",
+        [*_BASE, "--accept-discarded-identities", _FULL, "--accept-full-replacement", _FULL],
+    ),
+    # Each companion repeats the primary fingerprint; two different ones cannot both be
+    # the candidate this manifest is bound to.
+    "companion_fingerprint_mismatch": _action(
+        "REVIEW_FULL_REPLACEMENT_AND_RETRY",
+        [*_BASE, "--accept-full-replacement", _FULL, "--accept-discarded-identities", _OTHER_FULL],
+    ),
+    # The prefix is what keeps an approval of one kind from displaying as another.
+    "fingerprint_of_the_wrong_kind": _action(
+        "REVIEW_FULL_REPLACEMENT_AND_RETRY", [*_BASE, "--accept-full-replacement", _MIG]
+    ),
+    "bare_digest_without_a_prefix": _action(
+        "REVIEW_FULL_REPLACEMENT_AND_RETRY", [*_BASE, "--accept-full-replacement", "a" * 64]
+    ),
+    "unknown_description_code": _action("REVIEW_SOMETHING_ELSE", [*_BASE, "--accept-full-replacement", _FULL]),
+    "not_an_approval_gated_action": {
+        "id": "retry",
+        "requires_user_approval": True,
+        "description_code": "REVIEW_FULL_REPLACEMENT_AND_RETRY",
+        "argv": [*_BASE, "--accept-full-replacement", _FULL],
+    },
+}
+
+
+@pytest.mark.parametrize("name", sorted(_REFUSED))
+def test_the_display_guard_refuses_every_unsanctioned_retry_shape(name: str) -> None:
+    from atlassian_skills.cli.confluence import _consent_retry_display
+
+    assert _consent_retry_display(_REFUSED[name]) is None, f"{name} was displayed as a sanctioned retry"
+
+
+def test_the_display_guard_still_accepts_both_sanctioned_shapes() -> None:
+    """The refusals above are worthless if the guard now refuses everything."""
+
+    from atlassian_skills.cli.confluence import _consent_retry_display
+
+    one_approval = _action("REVIEW_FULL_REPLACEMENT_AND_RETRY", [*_BASE, "--accept-full-replacement", _FULL])
+    two_approvals = _action(
+        "REVIEW_FULL_REPLACEMENT_AND_RETRY",
+        [*_BASE, "--accept-full-replacement", _FULL, "--accept-discarded-identities", _FULL],
+    )
+    migration = _action("REVIEW_MIGRATION_AND_RETRY", [*_BASE, "--accept-migration", _MIG])
+    for action in (one_approval, two_approvals, migration):
+        assert _consent_retry_display(action) is not None, action["description_code"]
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        {},
+        {"full_replacement": "a raw string where a manifest belongs"},
+        {"full_replacement": {}},
+        {"full_replacement": {"discarded_identity_count": True}},
+        {"full_replacement": {"discarded_identity_count": -1}},
+        {"full_replacement": {"discarded_identity_count": "2"}},
+    ],
+    ids=["missing", "not_a_dict", "count_missing", "count_is_a_bool", "count_negative", "count_is_a_string"],
+)
+def test_a_malformed_replacement_manifest_discloses_nothing(context: dict[str, object]) -> None:
+    """No valid disclosure, no approval token.
+
+    `_handle_error` gates the retry command on a non-empty loss summary, so anything that
+    yields a summary here unlocks the command. A negative count did exactly that in round
+    one: it is not a disclosure, it is a malformed one.
+    """
+
+    from atlassian_skills.cli.confluence import _consent_loss_summary
+
+    assert _consent_loss_summary(context) is None

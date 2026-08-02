@@ -604,7 +604,7 @@ uv build
 # `uv run pytest` measures the working tree, which is not what anyone installs:
 # missing package data, a broken console entry point, or a runtime dependency
 # declared only as a dev extra all pass the tree and fail the artifact.
-bash scripts/wheel_smoke.sh 0.4.1
+bash scripts/wheel_smoke.sh 0.4.2
 ```
 
 This release requires **cfxmark 0.6.1** exactly — `cfxmark>=0.6.1,<0.6.2`. The pin is deliberate: two preservation
@@ -617,7 +617,8 @@ never measured against, and on a newer patch they stop matching silently.
 - **0.2.x** — Bitbucket Server/DC PR workflow + Skill-first Claude/Codex integration
 - **0.2.7** — `atls setup` interactive wizard + `atls doctor`; `setup all/codex/claude/paths/status` deprecated
 - **0.4.0** — portable Markdown-first Confluence workflow, source-bound informed consent, exact EOF-append preservation, state-free asset/body recovery, readable view/inspect, and smart asset synchronization
-- **0.4.1 (current)** — an explicit, two-step approval for a deliberate whole-page rewrite; `attachment upload-batch --if-exists` actually implemented
+- **0.4.1** — an explicit, two-step approval for a deliberate whole-page rewrite; `attachment upload-batch --if-exists` actually implemented
+- **0.4.2 (current)** — a full-replacement refusal prints the approval command it tells you to run, and only the command shape the CLI actually produces
 - **0.4.0+** — typed table-style editing, Async client, caching, non-interactive `atls setup`, fish shell support, multi-profile wizard
 
 ## License

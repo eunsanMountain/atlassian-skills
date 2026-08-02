@@ -22,6 +22,28 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-02
+
+### Fixed
+
+- **A full-replacement refusal did not print the command it told you to run.** The hint
+  read "run the returned command exactly", but outside `--format=json` nothing was
+  returned: no loss summary, no retry line, just the message and the hint. The approval
+  fingerprint lives only in the refusal, so there was no way to obtain it short of
+  reading the JSON envelope by hand — and a caller that shells out to `atls` and reports
+  the exit code showed nothing but `exit 7`.
+
+  The console now prints what the replacement discards and the exact command to approve
+  it, including the second approval flag when the rewrite drops macro identities. The
+  refusal itself, the approval contract, and the proof are unchanged; only the rendering
+  was missing.
+
+- **A displayed retry command is now checked against the shape the CLI produces.** An
+  approval flag belonging to a different consent kind, a repeated approval, a companion
+  approval carrying a different fingerprint, or a fingerprint with no approval prefix are
+  refused rather than shown as something to run. The printed command is executed
+  verbatim by whoever reads it, so anything unrecognized fails closed and is withheld.
+
 ## [0.4.1] - 2026-08-02
 
 **Requires cfxmark 0.6.1 exactly**, `>=0.6.1,<0.6.2`. The pin is narrow on purpose: the
