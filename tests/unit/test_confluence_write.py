@@ -491,6 +491,49 @@ def test_upload_attachments_batch_replace_versions_the_stored_file(client: Confl
     assert results[0]["results"][0]["id"] == "att500"
 
 
+@respx.mock
+def test_upload_attachment_with_a_stored_id_posts_a_version(client: ConfluenceClient, tmp_path) -> None:
+    """The single-file path needed this too, and had no way to ask for it.
+
+    `upload_attachments_batch` learned to post to the version endpoint for a name the
+    page already holds. `upload_assets` -- the path behind every body publish -- called
+    `upload_attachment`, which could only create, so the second publish of a document
+    carrying a picture was answered `400 Cannot add a new attachment with same file
+    name as an existing attachment` and the body update went down with it.
+    """
+
+    source = tmp_path / "diagram.png"
+    source.write_bytes(b"png bytes")
+
+    version = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment/att-7/data").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-7", "title": "diagram.png"}]})
+    )
+    create = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-9", "title": "diagram.png"}]})
+    )
+
+    client.upload_attachment("100", source, attachment_id="att-7")
+
+    assert version.call_count == 1
+    assert not create.called, "a stored filename must never be re-created"
+
+
+@respx.mock
+def test_upload_attachment_without_a_stored_id_still_creates(client: ConfluenceClient, tmp_path) -> None:
+    """A name the page does not hold has no version to add to."""
+
+    source = tmp_path / "fresh.png"
+    source.write_bytes(b"png bytes")
+
+    create = respx.post(f"{BASE_URL}/rest/api/content/100/child/attachment").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": "att-9", "title": "fresh.png"}]})
+    )
+
+    client.upload_attachment("100", source)
+
+    assert create.call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # delete_attachment — verifies DELETE endpoint
 # ---------------------------------------------------------------------------

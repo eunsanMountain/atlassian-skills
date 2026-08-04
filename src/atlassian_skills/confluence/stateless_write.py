@@ -118,7 +118,7 @@ def _validate_stateless_images(
     *,
     uploadable: frozenset[str] = frozenset(),
 ) -> int:
-    """Refuse any image this path cannot actually put on the page.
+    """Refuse any image this path cannot actually put on the page, and count the rest.
 
     The rule was "absolute HTTPS only", written when the state-free path had no
     way to know what was already attached to a page or to put anything there. It
@@ -126,6 +126,13 @@ def _validate_stateless_images(
     will -- and only those. Everything else is refused exactly as before, because
     the reason for refusing was never that local files are suspicious; it was that
     we could not deliver them.
+
+    The count is of images this publish leaves pointing somewhere else, which is what
+    `external_images` means beside its `availability_verified: false`: the page will
+    reference something we neither placed nor checked. Every image used to be counted,
+    so a document whose pictures were all local and all uploaded reported them as
+    external and read as a warning about nothing -- measured on a page carrying two
+    local images, and it survived because no test asserted this field.
     """
 
     if "<!-- cfxmark:asset" in markdown or "<!-- atls:managed" in markdown:
@@ -133,14 +140,13 @@ def _validate_stateless_images(
             "Managed Markdown assets require pull-md/push-md",
             context={"reason": "managed_asset_requires_push_md"},
         )
-    count = 0
+    external = 0
     for value in _walk_values(document):
         if not isinstance(value, Image):
             continue
-        count += 1
         if value.src in uploadable:
             # Resolved from a real file under the base directory, and on its way
-            # to becoming an attachment on this page.
+            # to becoming an attachment on this page -- so not external.
             continue
         parsed = urlsplit(value.src)
         if (
@@ -159,7 +165,8 @@ def _validate_stateless_images(
                     "asset_sync": False,
                 },
             )
-    return count
+        external += 1
+    return external
 
 
 def _regeneration_outlook(remote_storage: str, markdown: str, options: Any) -> dict[str, Any]:

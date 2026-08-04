@@ -588,13 +588,28 @@ class ConfluenceClient(BaseClient):
         comment: str | None = None,
         *,
         filename: str | None = None,
+        attachment_id: str | None = None,
         source_stream: BinaryIO | None = None,
     ) -> dict[str, Any]:
-        """Upload a single attachment to a page."""
+        """Upload a single attachment to a page.
+
+        `attachment_id` names an attachment the page already stores, and posts a new
+        version of it instead of creating one. Server/DC refuses a create for a name it
+        already holds, so a caller uploading the same filename twice has to say which
+        stored attachment it means -- see `upload_attachments_batch`, which found this
+        first.
+        """
         path = Path(file_path)
         if source_stream is None and not path.exists():
             raise FileNotFoundError(path)
-        return self._upload_attachment_raw(page_id, path, comment, filename=filename, source_stream=source_stream)
+        return self._upload_attachment_raw(
+            page_id,
+            path,
+            comment,
+            filename=filename,
+            attachment_id=attachment_id,
+            source_stream=source_stream,
+        )
 
     def _upload_attachment_raw(
         self,

@@ -278,6 +278,9 @@ def test_an_upload_that_fails_partway_says_what_already_landed(tmp_path: Path) -
         def __init__(self) -> None:
             self.done: list[str] = []
 
+        def list_attachments(self, page_id, limit=None):
+            return []
+
         def upload_attachment(self, page_id, path, *, filename=None, **kwargs):
             if len(self.done) == 1:
                 raise RuntimeError("network went away")
@@ -300,12 +303,61 @@ def test_a_clean_upload_reports_what_landed_and_what_was_reused(tmp_path: Path) 
     )
 
     class Client:
+        def list_attachments(self, page_id, limit=None):
+            return []
+
         def upload_attachment(self, page_id, path, *, filename=None, **kwargs):
             return {"title": filename}
 
     outcome = upload_assets(Client(), "123", plan)
     assert outcome.uploaded == ("b.png",)
     assert outcome.reused == ("a.png",)
+    assert outcome.orphaned == ()
+
+
+def test_a_stored_name_carries_its_id_and_a_new_one_does_not(tmp_path: Path) -> None:
+    """Which endpoint each file goes to, decided per file.
+
+    An id means "post a version of this stored attachment"; no id means "create". The
+    page's own list is what tells them apart, and sending a stored name to the create
+    endpoint is answered `400` by Server/DC -- so applying either decision to every
+    file breaks one of the two cases.
+    """
+
+    from atlassian_skills.confluence.local_assets import plan_uploads, upload_assets
+
+    _write(tmp_path, "stored.png", PNG)
+    _write(tmp_path, "fresh.png", OTHER_PNG)
+    plan = plan_uploads(resolve_local_assets("![](stored.png) ![](fresh.png)", base_dir=tmp_path), remote_hashes={})
+
+    class Client:
+        def __init__(self) -> None:
+            self.calls: dict[str, str | None] = {}
+
+        def list_attachments(self, page_id, limit=None):
+            raise AssertionError("the caller passed `stored`; this must not be read again")
+
+        def upload_attachment(self, page_id, path, *, filename=None, attachment_id=None, **kwargs):
+            self.calls[str(filename)] = attachment_id
+            return {"title": filename}
+
+    client = Client()
+    upload_assets(client, "123", plan, stored={"stored.png": "att-3"})
+
+    assert client.calls == {"stored.png": "att-3", "fresh.png": None}
+
+
+def test_nothing_to_upload_reads_nothing(tmp_path: Path) -> None:
+    """The read is only owed when there is a file to place."""
+
+    from atlassian_skills.confluence.local_assets import AssetUploadPlan, upload_assets
+
+    class Client:
+        def list_attachments(self, page_id, limit=None):
+            raise AssertionError("an empty plan must not cost a round trip")
+
+    outcome = upload_assets(Client(), "123", AssetUploadPlan(upload=(), reuse=()))
+    assert outcome.uploaded == ()
     assert outcome.orphaned == ()
 
 

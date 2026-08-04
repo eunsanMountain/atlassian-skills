@@ -22,6 +22,57 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-04
+
+### Fixed
+
+- **Publishing a document with a picture a second time failed on the first image.**
+  `page update`, `page create` and `page md push` place a referenced image by creating
+  an attachment, and Confluence answers a create for a filename the page already holds
+  with `400 Cannot add a new attachment with same file name as an existing attachment`.
+  So a republish stopped there even though the pictures were already correct: the body
+  was left unchanged, the page stayed on its old version, and the refusal reported
+  `uploaded: []` for files that were on the page. Only the first publish of such a
+  document had ever worked.
+
+  A filename the page already stores is now posted to that attachment's own data
+  endpoint, which adds a version — the only thing Server/DC can do. `attachment
+  upload-batch` was fixed for this in 0.4.1; the path behind every body publish was
+  not, and it is the one a Markdown workflow uses.
+
+  Uploading again rather than reusing is unchanged and deliberate: a name and a byte
+  count do not prove two files are the same, so a republish costs an attachment
+  version and no content. The page's attachment list is read once per publish, and
+  only when there is something to upload. A list that cannot be read is not fatal —
+  every file then goes to the create endpoint, which is what this path did before, so
+  losing the list cannot cost a publish or, on the create path, the id of the page it
+  just made.
+
+  Two library seams gained an optional argument, both defaulting to the previous
+  behaviour: `ConfluenceClient.upload_attachment(..., attachment_id=...)` posts a
+  version of a stored attachment instead of creating one, and
+  `upload_assets(..., stored=...)` lets a caller that has already read the attachment
+  list pass it rather than pay for a second read. Callers that pass neither are
+  unaffected.
+
+  Still outstanding: `confluence page attachment upload` — the single-file command a
+  caller drives directly — always creates, so uploading a name the page already holds
+  is refused there. Use `attachment upload-batch --if-exists=version` for that today.
+
+- **A refused upload no longer says that re-running will reuse the files.** `page md
+  push` offered that hint, and nothing on this path reuses by content — after the fix a
+  rerun posts a new version instead. The wording now says so, as the other two paths
+  already did.
+
+- **`external_images.count` counted every picture, including the ones being uploaded.**
+  The field reports beside `availability_verified: false`, so it means "this page will
+  point at something we neither placed nor checked". Counting local pictures that were
+  about to become attachments made it a warning about nothing, on exactly the documents
+  the fix above is for. It now counts only images the publish leaves pointing elsewhere:
+  a document with no remote image reports `0` where it previously reported however many
+  pictures it carried. What gets refused is unchanged — an image this path cannot place
+  is still refused with `stateless_image_source_unsupported`.
+
 ## [0.4.2] - 2026-08-02
 
 ### Fixed

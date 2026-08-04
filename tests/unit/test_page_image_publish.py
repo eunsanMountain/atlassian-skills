@@ -49,6 +49,14 @@ class ImageClient(BodyClient):
         self.uploads: list[str] = []
         self.fail_upload_at: str | None = None
         self.created_title: str | None = None
+        #: `{filename: attachment id}` for what the page holds, as a server would.
+        self.attachments: dict[str, str] = {}
+        #: Uploads that named a stored attachment, so went to the version endpoint.
+        self.versioned: list[str] = []
+        self.attachment_reads = 0
+        #: Model a page whose attachment list cannot be read (permissions, a flaky
+        #: read, an older endpoint). The uploader has to degrade rather than stop.
+        self.fail_list = False
 
     # `publish_page_update` calls positionally and `push_md` calls by keyword.
     # Accepting both keeps this fake usable from either path rather than quietly
@@ -66,15 +74,28 @@ class ImageClient(BodyClient):
         self.created_title = title
         return {"id": "123"}
 
-    def upload_attachment(self, page_id, path, *, filename=None, **kwargs):
+    def upload_attachment(self, page_id, path, *, filename=None, attachment_id=None, **kwargs):
         if filename == self.fail_upload_at:
             raise RuntimeError("network went away")
+        # Server/DC, modelled rather than assumed: posting a filename the page
+        # already holds to the *create* endpoint is answered
+        # `400 Cannot add a new attachment with same file name as an existing
+        # attachment`. While this fake returned an empty list and accepted every
+        # create, no test here could see a second publish break -- and it did.
+        if attachment_id is None and str(filename) in self.attachments:
+            raise RuntimeError("400 Cannot add a new attachment with same file name as an existing attachment")
+        if attachment_id is not None:
+            self.versioned.append(str(filename))
         self.events.append(f"upload:{filename}")
         self.uploads.append(str(filename))
+        self.attachments.setdefault(str(filename), f"att-{len(self.attachments) + 1}")
         return {"title": filename}
 
     def list_attachments(self, page_id: str, limit: int | None = None) -> list:
-        return []
+        self.attachment_reads += 1
+        if self.fail_list:
+            raise RuntimeError("attachment list unavailable")
+        return [SimpleNamespace(title=title, id=identifier) for title, identifier in self.attachments.items()]
 
     # The create path reads back with `expand=`; the update path does not pass it.
     def get_page(self, page_id: str, *args: object, **kwargs: object):
@@ -93,9 +114,15 @@ class ImageClient(BodyClient):
         return SimpleNamespace(results=[])
 
 
-def _write_png(directory: Path, name: str = "diagram.png") -> Path:
+#: A second picture has to differ in *content*, not just in name: `plan_uploads`
+#: dedupes by hash, so two files holding the same bytes are one upload however they
+#: are named -- which silently turned a two-picture test into a one-picture one.
+OTHER_PNG = PNG[:-4] + b"\x00\x00\x00\x00"
+
+
+def _write_png(directory: Path, name: str = "diagram.png", data: bytes = PNG) -> Path:
     path = directory / name
-    path.write_bytes(PNG)
+    path.write_bytes(data)
     return path
 
 
@@ -143,6 +170,174 @@ def test_a_create_uploads_after_the_page_exists(tmp_path: Path) -> None:
     )
     assert client.events == ["body", "upload:diagram.png"]
     assert result["assets"]["uploaded"] == ["diagram.png"]
+
+
+# --------------------------------------------------------------------------
+# Publishing the same document more than once
+#
+# The first publish was the only one anybody measured. Server/DC refuses a create
+# for a filename it already holds, so the second one stopped at the first image and
+# took the body update with it: the attachment was already fine and the page stayed
+# on its old version. `upload_attachments_batch` had been fixed for exactly this;
+# the body path had not, and it is the one `page update`, `page create` and
+# `push-md` all use.
+# --------------------------------------------------------------------------
+
+
+def _publish(client: ImageClient, preflight: object) -> object:
+    """Publish, carrying whatever consent this candidate turns out to need.
+
+    A republish can be classified as a whole-page replacement, which is a separate
+    matter from attachments and has its own approval; a caller in that position passes
+    the fingerprint the refusal names. Passing it here keeps that gate from standing in
+    for the one under test -- and `None` when nothing is required.
+    """
+
+    return publish_page_update(
+        client,
+        preflight,  # type: ignore[arg-type]
+        accept_migration=None,
+        reason=None,
+        minor_edit=False,
+        next_action_argv=(),
+        accept_full_replacement=preflight.replacement_fingerprint,  # type: ignore[attr-defined]
+        accept_discarded_identities=preflight.replacement_fingerprint,  # type: ignore[attr-defined]
+    )
+
+
+def test_a_second_publish_versions_the_attachment_rather_than_failing(tmp_path: Path) -> None:
+    """The body has to change for this to bite.
+
+    A republish of an unchanged document is proven a no-op and returns before the
+    upload, so it never met the refusal. Editing the prose is what makes the publish
+    real -- and that is the shape the failure was reported in: a document whose text
+    was edited, whose pictures were already attached.
+    """
+
+    _write_png(tmp_path)
+    client = ImageClient()
+
+    for text in ("alpha paragraph text here", "alpha paragraph text here, edited"):
+        preflight = build_page_update_preflight(
+            client, "123", f"{text}\n\n![](diagram.png)\n", body_format="md", asset_dir=tmp_path
+        )
+        _publish(client, preflight)
+
+    assert client.uploads == ["diagram.png", "diagram.png"], (
+        "the second publish never reached the upload, or stopped inside it"
+    )
+    assert client.versioned == ["diagram.png"], (
+        "the second upload went to the create endpoint, which Server/DC answers with 400"
+    )
+    assert client.events.count("body") == 2, "the body update was taken down with the upload"
+
+
+def test_a_new_picture_beside_a_stored_one_is_created_while_the_stored_one_is_versioned(
+    tmp_path: Path,
+) -> None:
+    """Both decisions in one publish, so neither is applied to every file."""
+
+    _write_png(tmp_path)
+    _write_png(tmp_path, "second.png", OTHER_PNG)
+    client = ImageClient()
+
+    first = build_page_update_preflight(
+        client, "123", "alpha paragraph text here\n\n![](diagram.png)\n", body_format="md", asset_dir=tmp_path
+    )
+    _publish(client, first)
+    second = build_page_update_preflight(
+        client,
+        "123",
+        "alpha paragraph text here\n\n![](diagram.png)\n\n![](second.png)\n",
+        body_format="md",
+        asset_dir=tmp_path,
+    )
+    _publish(client, second)
+
+    assert client.versioned == ["diagram.png"]
+    assert "second.png" in client.uploads
+
+
+def test_the_attachment_list_is_read_once_and_only_when_there_is_something_to_upload(
+    tmp_path: Path,
+) -> None:
+    """The read is the cost of the fix, so it is bounded and stated.
+
+    A document with no local picture pays nothing: `upload_assets` returns before
+    asking. One with pictures pays a single read however many files it carries.
+    """
+
+    client = ImageClient()
+    plain = build_page_update_preflight(
+        client, "123", "alpha paragraph text here\n", body_format="md", asset_dir=tmp_path
+    )
+    publish_page_update(client, plain, accept_migration=None, reason=None, minor_edit=False, next_action_argv=())
+    assert client.attachment_reads == 0
+
+    _write_png(tmp_path)
+    _write_png(tmp_path, "second.png", OTHER_PNG)
+    with_images = build_page_update_preflight(
+        client,
+        "123",
+        "alpha paragraph text here\n\n![](diagram.png)\n\n![](second.png)\n",
+        body_format="md",
+        asset_dir=tmp_path,
+    )
+    publish_page_update(client, with_images, accept_migration=None, reason=None, minor_edit=False, next_action_argv=())
+    assert client.attachment_reads == 1
+
+
+def test_a_create_still_reports_its_page_when_the_attachment_list_cannot_be_read(
+    tmp_path: Path,
+) -> None:
+    """The list is an optimisation, and losing it must not cost the page id.
+
+    The create path uploads after the page exists and catches only
+    `AssetUploadInterrupted`, because it is documented to always report the page it just
+    made -- deleting a page a user asked for, on the strength of a picture, is the
+    outcome that comment forbids. An unreadable attachment list escaping from the
+    uploader broke exactly that: the page was created and its id was known only to the
+    server.
+    """
+
+    _write_png(tmp_path)
+    client = ImageClient()
+    client.fail_list = True
+
+    result = create_page_stateless(
+        client,
+        space="FIX",
+        title="New",
+        parent_id=None,
+        body="alpha paragraph text here\n\n![](diagram.png)\n",
+        body_format="md",
+        dry_run=False,
+        accept_conversion=None,
+        next_action_argv=(),
+        asset_dir=tmp_path,
+    )
+
+    assert result["id"] == "123"
+    # Degraded to a create, which is what this path did before the list existed.
+    assert client.uploads == ["diagram.png"]
+    assert client.versioned == []
+
+
+def test_an_update_still_publishes_when_the_attachment_list_cannot_be_read(
+    tmp_path: Path,
+) -> None:
+    """Same rule on the update path: no list means create, not a refusal."""
+
+    _write_png(tmp_path)
+    client = ImageClient()
+    client.fail_list = True
+
+    preflight = build_page_update_preflight(
+        client, "123", "alpha paragraph text here\n\n![](diagram.png)\n", body_format="md", asset_dir=tmp_path
+    )
+    _publish(client, preflight)
+
+    assert client.events == ["upload:diagram.png", "body"]
 
 
 # --------------------------------------------------------------------------
@@ -306,6 +501,42 @@ def test_an_https_image_still_publishes_untouched(tmp_path: Path) -> None:
     )
     publish_page_update(client, preflight, accept_migration=None, reason=None, minor_edit=False, next_action_argv=())
     assert client.uploads == []
+
+
+# --------------------------------------------------------------------------
+# What `external_images` counts
+#
+# It sits beside `availability_verified: false` and means "this page will point at
+# something we neither placed nor checked". Every image used to be counted, so a
+# document whose pictures were all local and all uploaded reported them as external
+# and read as a warning about nothing. Nothing asserted the field, which is how that
+# survived; these are the assertions that were missing.
+# --------------------------------------------------------------------------
+
+
+def _external_count(client: ImageClient, body: str, asset_dir: Path | None) -> int:
+    preflight = build_page_update_preflight(client, "123", body, body_format="md", asset_dir=asset_dir)
+    return int(preflight.to_dict()["external_images"]["count"])
+
+
+def test_pictures_this_publish_uploads_are_not_external(tmp_path: Path) -> None:
+    _write_png(tmp_path)
+    _write_png(tmp_path, "second.png", OTHER_PNG)
+    body = "alpha paragraph text here\n\n![](diagram.png)\n\n![](second.png)\n"
+    assert _external_count(ImageClient(), body, tmp_path) == 0
+
+
+def test_a_remote_picture_is_external(tmp_path: Path) -> None:
+    body = "alpha paragraph text here\n\n![](https://example.invalid/x.png)\n"
+    assert _external_count(ImageClient(), body, None) == 1
+
+
+def test_only_the_remote_half_of_a_mixed_document_is_counted(tmp_path: Path) -> None:
+    """The case that makes the count worth having: one picture placed, one not."""
+
+    _write_png(tmp_path)
+    body = "alpha paragraph text here\n\n![](diagram.png)\n\n![](https://example.invalid/x.png)\n"
+    assert _external_count(ImageClient(), body, tmp_path) == 1
 
 
 # --------------------------------------------------------------------------

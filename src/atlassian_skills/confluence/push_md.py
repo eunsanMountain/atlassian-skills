@@ -378,8 +378,9 @@ def push_md(
             raise ValidationError(
                 f"Image upload stopped at {interrupted.failed}; the page body was not changed.",
                 hint=(
-                    "Files already uploaded stay on the page. Re-running reuses them rather "
-                    "than uploading again, and nothing is deleted."
+                    "Files already uploaded stay on the page and nothing is deleted. Re-running "
+                    "uploads them again -- this path proves nothing about sameness from a name, "
+                    "so it never reuses -- which costs an attachment version and no content."
                 ),
                 context={
                     "reason": "asset_upload_interrupted",

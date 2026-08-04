@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -391,18 +392,94 @@ def reusable_hashes(client: Any, page_id: str) -> dict[str, str]:
     return {}
 
 
-def upload_assets(client: Any, page_id: str, plan: AssetUploadPlan) -> UploadOutcome:
+def stored_attachment_ids(client: Any, page_id: str) -> dict[str, str]:
+    """`{filename: attachment id}` for what the page already holds.
+
+    Not about reuse -- `reusable_hashes` answers that, and answers "nothing". This
+    answers a different question: *how* to upload a name that is already there.
+
+    An entry whose id did not come back is left out: without an id there is no version
+    endpoint to post to, so that file goes to the create endpoint, which is what
+    happened before this existed. Presence is a different question and must not be
+    read from here -- see `recover_assets`.
+    """
+
+    stored: dict[str, str] = {}
+    for item in client.list_attachments(page_id) or ():
+        title = getattr(item, "title", None) or (item.get("title") if isinstance(item, dict) else None)
+        identifier = getattr(item, "id", None) or (item.get("id") if isinstance(item, dict) else None)
+        if title and identifier:
+            stored[str(title)] = str(identifier)
+    return stored
+
+
+def _stored_ids_or_none_known(client: Any, page_id: str) -> dict[str, str]:
+    """`stored_attachment_ids`, or an empty map if the page's list cannot be read.
+
+    The list is an optimisation here, not a verdict: without it every file goes to the
+    create endpoint, which is exactly what this path did before and is still correct for
+    a name the page does not hold. A name it does hold is then answered `400` and
+    reported as an interrupted upload -- so the failure surfaces at the next step rather
+    than being hidden.
+
+    Raising instead costs more than it buys, and the create path is where that shows:
+    it uploads *after* the page exists, catches only `AssetUploadInterrupted`, and is
+    documented to always report the page it just made. An unreadable attachment list
+    escaping from here left a created page with its id known only to the server.
+
+    `recover_assets` is the opposite case and must keep refusing: there the list decides
+    which files are missing, so an unreadable one makes the answer unknowable.
+    """
+
+    try:
+        return stored_attachment_ids(client, page_id)
+    except Exception:  # noqa: BLE001 - an unreadable list degrades to "create", never to a stop
+        return {}
+
+
+def upload_assets(
+    client: Any,
+    page_id: str,
+    plan: AssetUploadPlan,
+    *,
+    stored: Mapping[str, str] | None = None,
+) -> UploadOutcome:
     """Put the planned files on the page, stopping at the first failure.
 
     Stops rather than continuing so the caller learns which files are already up
     when something goes wrong. Continuing would strand more of them and report
     one error at the end.
+
+    A name the page already holds is posted to that attachment's own data endpoint,
+    which adds a version. Sending it to the create endpoint instead -- what this did
+    until measured -- makes Confluence answer `400 Cannot add a new attachment with
+    same file name as an existing attachment`, so the *second* publish of any
+    document carrying a picture failed there and took the body update with it: the
+    page stayed on its old version while the pictures were already fine.
+    `upload_attachments_batch` had found and fixed this; this path had not, and it is
+    the one `page update`, `page create` and `push-md` all use.
+
+    Uploading again rather than reusing is deliberate, not a fallback -- see
+    `reusable_hashes`. This only makes "again" mean what Server/DC can actually do.
+
+    `stored` maps a filename on the page to its attachment id. A caller that has just
+    read the list passes it rather than paying for a second read; otherwise the list
+    is read here, once, and only when there is something to upload.
     """
 
+    if not plan.upload:
+        return UploadOutcome(uploaded=(), reused=tuple(item.filename for item in plan.reuse))
+
+    existing = dict(stored) if stored is not None else _stored_ids_or_none_known(client, page_id)
     uploaded: list[str] = []
     for asset in plan.upload:
         try:
-            client.upload_attachment(page_id, asset.path, filename=asset.filename)
+            client.upload_attachment(
+                page_id,
+                asset.path,
+                filename=asset.filename,
+                attachment_id=existing.get(asset.filename),
+            )
         except Exception as error:  # noqa: BLE001 - the caller decides what a partial upload means
             raise AssetUploadInterrupted(uploaded=tuple(uploaded), failed=asset.filename) from error
         uploaded.append(asset.filename)
@@ -498,6 +575,10 @@ def recover_assets(client: Any, page_id: str, markdown: str, *, base_dir: Path |
         return {"status": "no_local_assets", "page_id": page_id, "uploaded": [], "already_present": []}
 
     try:
+        # A name, not an id: this asks whether the reference resolves, and an
+        # attachment whose id did not come back is still present. Deciding presence
+        # from `stored_attachment_ids` instead would call a stored file missing and
+        # upload it again -- measured against this module's own fake.
         present = {
             str(getattr(item, "title", None) or (item.get("title") if isinstance(item, dict) else ""))
             for item in (client.list_attachments(page_id) or [])
@@ -513,7 +594,9 @@ def recover_assets(client: Any, page_id: str, markdown: str, *, base_dir: Path |
     if not missing:
         return {"status": "already_complete", "page_id": page_id, "uploaded": [], "already_present": already}
 
-    outcome = upload_assets(client, page_id, plan_uploads(missing, remote_hashes={}))
+    # Every `missing` name is by definition absent from the page, so each one is a
+    # create and needs no stored id. The empty map says so and skips a second read.
+    outcome = upload_assets(client, page_id, plan_uploads(missing, remote_hashes={}), stored={})
     return {
         "status": "recovered",
         "page_id": page_id,

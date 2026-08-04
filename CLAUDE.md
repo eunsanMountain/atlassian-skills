@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.4.2 (a full-replacement refusal now prints the approval command its hint tells you to run, and only the command shape the CLI actually produces)
+- **Current version**: 0.4.3 (a second publish of a document carrying a picture now posts a new attachment version instead of a create Confluence refuses, and `external_images` counts only the pictures the publish leaves elsewhere)
 
 ## Build & Run
 
