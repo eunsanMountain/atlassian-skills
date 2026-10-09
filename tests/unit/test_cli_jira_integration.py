@@ -245,6 +245,58 @@ def test_cli_jira_issue_create_success() -> None:
 
 
 @respx.mock
+def test_cli_jira_issue_create_subtask_sends_parent() -> None:
+    """--parent sets fields.parent, which Jira requires for a Sub-task issue type."""
+    created = {"id": "123457", "key": "PROJ-43", "self": f"{JIRA_URL}/rest/api/2/issue/123457"}
+    route = respx.post(f"{JIRA_URL}/rest/api/2/issue").mock(return_value=httpx.Response(201, json=created))
+    result = runner.invoke(
+        app,
+        [
+            "jira",
+            "issue",
+            "create",
+            "--project",
+            "PROJ",
+            "--type",
+            "Sub-task",
+            "--summary",
+            "Test subtask",
+            "--parent",
+            "PROJ-1",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "PROJ-43" in result.output
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["fields"]["parent"] == {"key": "PROJ-1"}
+
+
+@respx.mock
+def test_cli_jira_issue_create_parent_conflicts_with_fields_json() -> None:
+    """--parent plus a --fields-json parent is refused, same as any other field clash."""
+    result = runner.invoke(
+        app,
+        [
+            "jira",
+            "issue",
+            "create",
+            "--project",
+            "PROJ",
+            "--type",
+            "Sub-task",
+            "--summary",
+            "Test subtask",
+            "--parent",
+            "PROJ-1",
+            "--fields-json",
+            '{"parent": {"key": "PROJ-2"}}',
+        ],
+    )
+    assert result.exit_code != 0
+    assert "parent" in result.output
+
+
+@respx.mock
 def test_cli_jira_issue_create_json_includes_write_conversion_warnings(tmp_path: Path) -> None:
     created = {"id": "123456", "key": "PROJ-42", "self": f"{JIRA_URL}/rest/api/2/issue/123456"}
     respx.post(f"{JIRA_URL}/rest/api/2/issue").mock(return_value=httpx.Response(201, json=created))

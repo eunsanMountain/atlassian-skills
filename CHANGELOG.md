@@ -22,6 +22,17 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ## [Unreleased]
 
+### Fixed
+
+- **`jira issue create` had no way to supply the parent a Sub-task requires.**
+  Jira Server rejects a Sub-task-typed issue create that has no `parent` field
+  (`"You must specify a parent issue key when creating a sub-task"`), and the
+  only route to that field was `--fields-json '{"parent": {"key": "..."}}'` —
+  undiscoverable, and easy to read as "subtask isn't supported." `issue create`
+  now takes `--parent KEY`, which sets `fields.parent.key`; it conflicts with
+  `--fields-json` setting `parent` the same way every other field it already
+  sets does.
+
 ## [0.4.3] - 2026-08-04
 
 ### Fixed

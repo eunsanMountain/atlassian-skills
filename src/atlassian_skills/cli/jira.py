@@ -1157,6 +1157,9 @@ def issue_create(
     project: str = typer.Option(..., "--project", "-p", help="Project key"),
     type: str = typer.Option(..., "--type", "-t", help="Issue type name"),
     summary: str = typer.Option(..., "--summary", "-s", help="Issue summary"),
+    parent: str | None = typer.Option(
+        None, "--parent", help="Parent issue key (required by Jira for a Sub-task issue type)"
+    ),
     body_file: str | None = typer.Option(None, "--body-file", help="Description body file (- for stdin)"),
     body_format: str | None = typer.Option(None, "--body-format", help="Body format: md|wiki (default wiki)"),
     fields_json: str | None = typer.Option(None, "--fields-json", help="Extra fields as JSON string"),
@@ -1173,6 +1176,8 @@ def issue_create(
             "issuetype": {"name": type},
             "summary": summary,
         }
+        if parent:
+            fields["parent"] = {"key": parent}
         body_conversion = WriteConversionResult(body="")
         if body_file:
             body_text = read_body(body_file=body_file)

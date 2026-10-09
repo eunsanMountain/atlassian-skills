@@ -246,6 +246,7 @@ Re-run `atls setup` any time. Defaults are non-destructive (`s` skips a product,
 atls jira issue get PROJ-1
 atls jira issue search "project=PROJ AND status=Open" --limit=20
 atls jira issue create --project PROJ --type Story --summary "New feature" --body-file=story.md --body-format=md
+atls jira issue create --project PROJ --type Sub-task --summary "Implement validation" --parent PROJ-1
 
 # Confluence read and managed edit
 atls confluence page get 12345
