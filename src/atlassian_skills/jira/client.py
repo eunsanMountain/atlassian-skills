@@ -363,9 +363,58 @@ class JiraClient(BaseClient):
     # ------------------------------------------------------------------
 
     def create_issue(self, fields: dict[str, Any]) -> dict[str, Any]:
-        """POST /rest/api/2/issue — create a single issue."""
-        result: dict[str, Any] = self.post("/rest/api/2/issue", json={"fields": fields}).json()
-        return result
+        """POST /rest/api/2/issue — create a single issue.
+
+        Some Jira Server/DC instances refuse `issuetype: {"name": ...}` for a
+        Sub-task type with "issue type is invalid" even when the name is an
+        exact, verified match against the project's issue types — while the
+        same type accepted by `{"id": ...}` works. (Seen in practice: the
+        project's own create-meta lists the Sub-task type by that exact name,
+        yet the create call still rejects it by name.) Jira always reports
+        this as a field error keyed by the literal, unlocalized "issuetype" —
+        only the message text is translated — so detecting it doesn't depend
+        on the server's UI language. On that specific failure, resolve the
+        name to an id via create-meta and retry once; any other failure (or a
+        name that doesn't resolve) is raised unchanged.
+        """
+        try:
+            result: dict[str, Any] = self.post("/rest/api/2/issue", json={"fields": fields}).json()
+            return result
+        except ValidationError as e:
+            issuetype = fields.get("issuetype")
+            project = fields.get("project")
+            if (
+                isinstance(issuetype, dict)
+                and isinstance(issuetype.get("name"), str)
+                and isinstance(project, dict)
+                and isinstance(project.get("key"), str)
+                and str(e).startswith("issuetype:")
+            ):
+                resolved_id = self.resolve_issue_type_id(project["key"], issuetype["name"])
+                if resolved_id:
+                    retry_fields = {**fields, "issuetype": {"id": resolved_id}}
+                    result = self.post("/rest/api/2/issue", json={"fields": retry_fields}).json()
+                    return result
+            raise
+
+    def resolve_issue_type_id(self, project_key: str, name: str) -> str | None:
+        """Best-effort: resolve an issue-type name to its id for `project_key`.
+
+        Uses the two-step create-meta API (`/issue/createmeta/{project}/issuetypes`),
+        which some Jira Server/DC versions keep working after retiring the older
+        `/issue/createmeta?projectKeys=...` endpoint `get_field_options` still uses.
+        Never raises — a lookup failure just means the caller keeps what it had.
+        """
+        try:
+            data = self.get(f"/rest/api/2/issue/createmeta/{project_key}/issuetypes").json()
+        except AtlasError:
+            return None
+        values = data.get("values", []) if isinstance(data, dict) else []
+        for it in values:
+            if isinstance(it, dict) and isinstance(it.get("name"), str) and it["name"].casefold() == name.casefold():
+                issue_type_id = it.get("id")
+                return str(issue_type_id) if issue_type_id is not None else None
+        return None
 
     def batch_create_issues(self, issues: list[dict[str, Any]]) -> dict[str, Any]:
         """POST /rest/api/2/issue/bulk — create multiple issues."""

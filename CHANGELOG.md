@@ -33,6 +33,15 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   `--fields-json` setting `parent` the same way every other field it already
   sets does.
 
+- **Even with `--parent` set, some Jira Server/DC instances still refused a
+  Sub-task by name.** `issuetype: {"name": "Sub-task"}` came back `"issue
+  type is invalid"` despite the name being an exact, verified match against
+  the project's own issue types — the same type worked when sent as
+  `{"id": ...}`. `jira issue create` now retries once, resolving the name to
+  an id via the project's create-meta, whenever the server reports that
+  specific field error; any other 400, or a name create-meta doesn't
+  recognize either, surfaces the original error unchanged.
+
 ## [0.4.3] - 2026-08-04
 
 ### Fixed

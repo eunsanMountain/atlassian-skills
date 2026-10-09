@@ -46,6 +46,73 @@ def test_create_issue(client: JiraClient) -> None:
     assert result["id"] == "999999"
 
 
+@respx.mock
+def test_create_issue_retries_by_id_when_server_rejects_issuetype_name(client: JiraClient) -> None:
+    """Some Jira Server/DC instances reject an exact, verified issuetype name (e.g. a
+    Sub-task type) with "issue type is invalid" while accepting the same type by id.
+    The first POST fails that way; create_issue resolves the name via create-meta and
+    retries once with the id."""
+    fixture = _load("create-issue-expected.json")
+    post_route = respx.post(f"{BASE_URL}/rest/api/2/issue").mock(
+        side_effect=[
+            httpx.Response(400, json={"errors": {"issuetype": "The issue type selected is invalid."}}),
+            httpx.Response(201, json=fixture),
+        ]
+    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta/PROJ/issuetypes").mock(
+        return_value=httpx.Response(
+            200,
+            json={"values": [{"id": "10001", "name": "Sub-task", "subtask": True}]},
+        )
+    )
+
+    result = client.create_issue(
+        {
+            "project": {"key": "PROJ"},
+            "summary": "Test",
+            "issuetype": {"name": "Sub-task"},
+            "parent": {"key": "PROJ-1"},
+        }
+    )
+
+    assert result["key"] == "PROJ-99"
+    assert post_route.call_count == 2
+    retry_body = json.loads(post_route.calls[1].request.content)
+    assert retry_body["fields"]["issuetype"] == {"id": "10001"}
+    assert retry_body["fields"]["parent"] == {"key": "PROJ-1"}
+
+
+@respx.mock
+def test_create_issue_does_not_retry_on_unrelated_validation_error(client: JiraClient) -> None:
+    """A 400 that isn't about issuetype (e.g. a missing required field) is raised as-is,
+    with no create-meta lookup and no retry."""
+    post_route = respx.post(f"{BASE_URL}/rest/api/2/issue").mock(
+        return_value=httpx.Response(400, json={"errors": {"summary": "Summary is required."}})
+    )
+    createmeta_route = respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta/PROJ/issuetypes")
+
+    with pytest.raises(Exception, match="summary"):
+        client.create_issue({"project": {"key": "PROJ"}, "issuetype": {"name": "Task"}})
+
+    assert post_route.call_count == 1
+    assert not createmeta_route.called
+
+
+@respx.mock
+def test_create_issue_raises_original_error_when_name_does_not_resolve(client: JiraClient) -> None:
+    """If the issuetype name has no match in create-meta either, the original server
+    error is raised unchanged rather than a confusing lookup failure."""
+    respx.post(f"{BASE_URL}/rest/api/2/issue").mock(
+        return_value=httpx.Response(400, json={"errors": {"issuetype": "The issue type selected is invalid."}})
+    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta/PROJ/issuetypes").mock(
+        return_value=httpx.Response(200, json={"values": [{"id": "10000", "name": "Task", "subtask": False}]})
+    )
+
+    with pytest.raises(Exception, match="issuetype"):
+        client.create_issue({"project": {"key": "PROJ"}, "issuetype": {"name": "Sub-task"}})
+
+
 # ---------------------------------------------------------------------------
 # update_issue
 # ---------------------------------------------------------------------------
