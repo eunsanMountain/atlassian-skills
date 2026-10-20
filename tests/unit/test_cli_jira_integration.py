@@ -292,8 +292,8 @@ def test_cli_jira_issue_create_parent_conflicts_with_fields_json() -> None:
             '{"parent": {"key": "PROJ-2"}}',
         ],
     )
-    assert result.exit_code != 0
-    assert "parent" in result.output
+    assert result.exit_code == ExitCode.VALIDATION, result.output
+    assert "--fields-json would replace parent, which this command already set" in result.output
 
 
 @respx.mock

@@ -10,6 +10,7 @@ import pytest
 import respx
 
 from atlassian_skills.core.auth import Credential
+from atlassian_skills.core.errors import ValidationError
 from atlassian_skills.jira.client import JiraClient
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "jira"
@@ -111,6 +112,53 @@ def test_create_issue_raises_original_error_when_name_does_not_resolve(client: J
 
     with pytest.raises(Exception, match="issuetype"):
         client.create_issue({"project": {"key": "PROJ"}, "issuetype": {"name": "Sub-task"}})
+
+
+@respx.mock
+def test_create_issue_does_not_guess_between_issue_types_sharing_the_rejected_name(client: JiraClient) -> None:
+    """Two create-meta types under the rejected name are a choice, not a lookup result.
+    No retry: the original error is raised with both candidate ids attached."""
+    post_route = respx.post(f"{BASE_URL}/rest/api/2/issue").mock(
+        return_value=httpx.Response(400, json={"errors": {"issuetype": "The issue type selected is invalid."}})
+    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta/PROJ/issuetypes").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "values": [
+                    {"id": "10001", "name": "Sub-task", "subtask": True},
+                    {"id": "10100", "name": "sub-task", "subtask": True},
+                ]
+            },
+        )
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        client.create_issue(
+            {"project": {"key": "PROJ"}, "issuetype": {"name": "Sub-task"}, "parent": {"key": "PROJ-1"}}
+        )
+
+    assert post_route.call_count == 1
+    assert str(exc_info.value) == "issuetype: The issue type selected is invalid."
+    assert exc_info.value.context == {"reason": "issuetype_name_ambiguous", "issuetype_ids": ["10001", "10100"]}
+    assert exc_info.value.hint is not None
+    assert "10001" in exc_info.value.hint and "10100" in exc_info.value.hint
+
+
+@respx.mock
+def test_create_issue_raises_original_error_when_createmeta_is_not_json(client: JiraClient) -> None:
+    """A create-meta answer that isn't JSON (a proxy page, say) is a failed lookup, not a crash."""
+    post_route = respx.post(f"{BASE_URL}/rest/api/2/issue").mock(
+        return_value=httpx.Response(400, json={"errors": {"issuetype": "The issue type selected is invalid."}})
+    )
+    respx.get(f"{BASE_URL}/rest/api/2/issue/createmeta/PROJ/issuetypes").mock(
+        return_value=httpx.Response(200, text="<html>not json</html>")
+    )
+
+    with pytest.raises(ValidationError, match="issuetype"):
+        client.create_issue({"project": {"key": "PROJ"}, "issuetype": {"name": "Sub-task"}})
+
+    assert post_route.call_count == 1
 
 
 # ---------------------------------------------------------------------------
