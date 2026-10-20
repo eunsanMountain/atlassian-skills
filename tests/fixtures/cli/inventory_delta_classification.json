@@ -342,6 +342,18 @@
       "plan_ref": "0.3.1 corp-network, T4 / GitHub #18",
       "reason": "Gains an opt-in flag; every pre-existing parameter and default is untouched."
     },
+    "jira issue create": {
+      "classification": "changed",
+      "params": {
+        "parent": {
+          "classification": "added",
+          "plan_ref": "GitHub #22",
+          "reason": "Jira refuses a Sub-task create without `parent`, and the only route to it was `--fields-json '{\"parent\": {\"key\": ...}}'`. Sets `fields.parent.key`; a `--fields-json` parent alongside it is refused like any other field the command already set."
+        }
+      },
+      "plan_ref": "GitHub #22",
+      "reason": "Gains an optional flag; every pre-existing parameter and default is untouched."
+    },
     "jira issue description": {
       "classification": "added",
       "hidden": false,

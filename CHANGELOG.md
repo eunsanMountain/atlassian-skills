@@ -33,14 +33,17 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
   `--fields-json` setting `parent` the same way every other field it already
   sets does.
 
-- **Even with `--parent` set, some Jira Server/DC instances still refused a
-  Sub-task by name.** `issuetype: {"name": "Sub-task"}` came back `"issue
-  type is invalid"` despite the name being an exact, verified match against
-  the project's own issue types — the same type worked when sent as
-  `{"id": ...}`. `jira issue create` now retries once, resolving the name to
-  an id via the project's create-meta, whenever the server reports that
-  specific field error; any other 400, or a name create-meta doesn't
-  recognize either, surfaces the original error unchanged.
+- **Some Jira Server/DC instances refused an issue type by name that they
+  accepted by id.** Reported from a non-English-locale server: with `--parent`
+  set, a Sub-task create came back `issue type is invalid` although the
+  project's create-meta listed a type under that name, and the same request
+  succeeded with that type's id. What the server matched the name against was
+  not established. When the server rejects the `issuetype` field, `jira issue
+  create` now looks the name up in the project's create-meta and retries once
+  by id. This applies to every issue type, not only Sub-task. Any other 400, or
+  a name create-meta does not list, surfaces the original error unchanged. A
+  name create-meta lists more than once is not retried either — atls does not
+  guess between them; the original error carries the candidate ids instead.
 
 ## [0.4.3] - 2026-08-04
 

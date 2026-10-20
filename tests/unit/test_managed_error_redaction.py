@@ -828,6 +828,7 @@ _NOT_CONTENT_BEARING = {
     "core/pagination.py": "page counts and limits",
     "core/publication.py": "publication state names",
     "core/tls.py": "trust store configuration",
+    "jira/client.py": "issue type ids from create-meta; the hint names only the caller's own project key and type",
     "jira/description_merge.py": "paths to the three files it wrote, not their contents",
 }
 
