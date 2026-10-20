@@ -22,6 +22,8 @@ use the same commands — on Windows they run identically in PowerShell, cmd, or
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-20
+
 ### Fixed
 
 - **`jira issue create` had no way to supply the parent a Sub-task requires.**

@@ -6,7 +6,7 @@ A Python CLI + Claude Code Skill that lets LLM agents drive our internal Atlassi
 
 - **Binary**: `atls`
 - **Package**: `atlassian-skills`
-- **Current version**: 0.4.3 (a second publish of a document carrying a picture now posts a new attachment version instead of a create Confluence refuses, and `external_images` counts only the pictures the publish leaves elsewhere)
+- **Current version**: 0.4.4 (`jira issue create --parent` makes a Sub-task, and an issue type the server refuses by name is retried once by its create-meta id — never when the name matches more than one type)
 
 ## Build & Run
 
